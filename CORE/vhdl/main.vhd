@@ -31,6 +31,7 @@ entity main is
    );
    port (
       clk_main_i              : in  std_logic;
+      clk_cpu_i               : in  std_logic;   -- Megamiga (cpu040): the AP68040's own clock
       reset_soft_i            : in  std_logic;
       reset_hard_i            : in  std_logic;
       pause_i                 : in  std_logic;
@@ -467,6 +468,7 @@ architecture synthesis of main is
          reset_out      : out std_logic;                       -- active low (fx68k RESET instruction)
 
          clk            : in  std_logic;
+         clk_cpu        : in  std_logic;
          ph1            : in  std_logic;
          ph2            : in  std_logic;
 
@@ -523,9 +525,10 @@ architecture synthesis of main is
       );
    end component cpu_wrapper;
 
-   -- Megamiga, October 2026 (branch cpu040, EXPERIMENTAL): 1 = the AP68040 core in place
-   -- of TG68K when the 68020 is selected (cpu_wrapper.v); 0 = TG68K
-   constant C_CPU040       : integer := 1;
+   -- Megamiga, October 2026 (branch cpu040, EXPERIMENTAL): the AP68040 core in place of
+   -- TG68K when the 68020 is selected (cpu_wrapper.v): 1 = on the core clock, 2 = on its
+   -- own clock (clk_cpu_i, 47.29 MHz, behind ap040_island); 0 = TG68K
+   constant C_CPU040       : integer := 2;
    -- a chipset write to Chip RAM ($000000-$1FFFFF: banked ram_addr_o[22:21] = 00), for the
    -- AP68040's data cache, which caches Chip RAM
    signal cpu_snoop_stb    : std_logic;
@@ -846,6 +849,7 @@ begin
          reset_out       => cpu_reset_out_n,     -- fx68k RESET instruction feedback
 
          clk             => clk_main_i,
+         clk_cpu         => clk_cpu_i,
          ph1             => cpu_ph1,
          ph2             => cpu_ph2,
 

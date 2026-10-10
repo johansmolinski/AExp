@@ -178,3 +178,15 @@ set_max_delay -datapath_only -from [get_clocks eth_clk50] -to [get_clocks main_c
 ## check; MDC/MDIO and the PHY reset are slow (about 1.5 MHz) and static.
 set_false_path -from [get_ports {eth_rxd_i[*] eth_rxdv_i eth_rxer_i eth_mdio_io}]
 set_false_path -to   [get_ports {eth_txd_o[*] eth_txen_o eth_mdc_o eth_mdio_io eth_reset_o eth_led2_o}]
+
+## Megamiga cpu040 branch: the AP68040 on its own clock (cpu_clk, clk.vhd CLKOUT2,
+## 47.29 MHz) when main.vhd's C_CPU040 = 2. Every path between it and the core clock goes
+## through ap040_island's channels: a request/answer/snoop toggle with a 2-FF synchronizer
+## (ASYNC_REG) and data that was registered at least two clocks of the receiving side
+## before the synchronized toggle is seen, or 2-FF synchronized levels. So the crossings
+## only need a bounded skew, not a phase relationship.
+## The clock is named like main_clk (renaming the auto-derived MMCM clock), so the name
+## exists whether or not the output is used.
+create_generated_clock -name cpu_clk [get_pins CORE/clk_gen/i_clk_main/CLKOUT2]
+set_max_delay -datapath_only -from [get_clocks cpu_clk] -to [get_clocks main_clk] 20.000
+set_max_delay -datapath_only -from [get_clocks main_clk] -to [get_clocks cpu_clk] 20.000

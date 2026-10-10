@@ -327,6 +327,7 @@ architecture synthesis of MEGA65_Core is
 
 signal main_clk               : std_logic;               -- Core main clock
 signal main_clk4x             : std_logic;               -- 113.5 MHz, SDRAM controller
+signal main_clkcpu            : std_logic;               -- Megamiga (cpu040): 47.29 MHz, the AP68040
 signal main_fram_state        : std_logic_vector(1 downto 0);
 signal main_cpu_cacr          : std_logic_vector(3 downto 0);
 signal main_c7m               : std_logic;
@@ -1090,7 +1091,8 @@ begin
          core_speed_i      => "00",
          main_clk_o        => main_clk,        -- CORE's 28.375 MHz clock
          main_clk4x_o      => main_clk4x,      -- 113.5 MHz for the SDRAM controller
-         main_rst_o        => main_rst         -- CORE's reset, synchronized
+         main_rst_o        => main_rst,        -- CORE's reset, synchronized
+         cpu_clk_o         => main_clkcpu      -- Megamiga (cpu040): the AP68040's clock
       ); -- clk_gen
 
    main_clk_o  <= main_clk;
@@ -1334,6 +1336,7 @@ begin
       )
       port map (
          clk_main_i           => main_clk,
+         clk_cpu_i            => main_clkcpu,
          reset_soft_i         => main_reset_core_i or amiga_cold_reset,
          reset_hard_i         => main_reset_m2m_i,
          pause_i              => main_pause_core_i,

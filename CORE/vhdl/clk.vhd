@@ -77,7 +77,11 @@ entity clk is
       main_clk_o      : out std_logic;   -- Amiga PAL core clock: 28.375000 MHz (ideal: 28.3751600 MHz, -5.6 ppm)
       main_clk4x_o    : out std_logic;   -- 4 x the core clock: 113.5 MHz for the SDRAM (Megamiga),
                                          -- from the NATIVE MMCM only: keep core_speed_i at native
-      main_rst_o      : out std_logic    -- main's reset, synchronized
+      main_rst_o      : out std_logic;   -- main's reset, synchronized
+      -- Megamiga, October 2026 (branch cpu040): the AP68040's own clock, 1135 MHz / 24 =
+      -- 47.291667 MHz from the native MMCM (CLKOUT2), unrelated in phase to the core clock
+      -- for the design: cpu_wrapper's ap040_island crosses to it with synchronizers
+      cpu_clk_o       : out std_logic
    );
 end entity clk;
 
@@ -98,6 +102,7 @@ signal fast_locked        : std_logic;
 -- glitch-free mux output feeding the shared output BUFG
 signal main_clk_mmcm      : std_logic;
 signal native_clk4x_mmcm  : std_logic;
+signal cpu_clk_mmcm       : std_logic;   -- Megamiga (cpu040): the AP68040's clock
 
 begin
 
@@ -128,11 +133,16 @@ begin
          CLKOUT1_DIVIDE       => 10,         -- 113.500000 MHz = 4 x CLKOUT0, phase-aligned
          CLKOUT1_PHASE        => 0.000,
          CLKOUT1_DUTY_CYCLE   => 0.500,
-         CLKOUT1_USE_FINE_PS  => FALSE
+         CLKOUT1_USE_FINE_PS  => FALSE,
+         CLKOUT2_DIVIDE       => 24,         -- Megamiga (cpu040): 47.291667 MHz, the AP68040
+         CLKOUT2_PHASE        => 0.000,
+         CLKOUT2_DUTY_CYCLE   => 0.500,
+         CLKOUT2_USE_FINE_PS  => FALSE
       )
       port map (
          -- Output clocks
          CLKOUT1             => native_clk4x_mmcm,
+         CLKOUT2             => cpu_clk_mmcm,
          CLKFBOUT            => main_fb_mmcm,
          CLKOUT0             => native_clk_mmcm,
          -- Input clock control
@@ -252,6 +262,12 @@ begin
       port map (
          I => native_clk4x_mmcm,
          O => main_clk4x_o
+      );
+
+   cpu_clk_bufg : BUFG
+      port map (
+         I => cpu_clk_mmcm,
+         O => cpu_clk_o
       );
 
    main_clk_bufg : BUFG
