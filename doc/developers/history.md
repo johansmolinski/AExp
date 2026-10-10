@@ -1448,6 +1448,45 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   (answering the `$DD4000` mailbox from the firmware) would be a feature of
   its own. Settings file unchanged (211 bytes).
 
+- **68040 EXPERIMENT, step 1 (branch `cpu040`, worktree `../AExp-cpu040`,
+  2026-10-10, Minimig `cpu040` 34ffc65, NOT merged).** Goal (user): a fast
+  CPU, ideally an 060 at 50 MHz. Survey (`~/aexp-work/cpu060/FINDINGS.md`):
+  no open 060 exists; open 040s do - apolkosnik/AP68040 (sequential, MMU,
+  FPU, caches, GPLv2 WITHOUT "or later" - must be cleared with the author
+  before any release next to GPLv3 code) and ranzbak/AP68040-pipelined (6
+  stages, GPLv3, in MinimigAGA_TC64 on an XC7A100T at clk_114/3 = 37.8 MHz,
+  Kickstart 3.1.4 to Workbench, 47k Dhrystones = 1.44x A4000/040). OOC on our
+  -2 part at 17.62 ns: TG68K +0.039 (about 57 MHz), the pipelined core about
+  21.1 ns (about 47 MHz, 28 logic levels; the LUT count of that run was
+  inflated by the core's simulation dpram). STEP 1 integrates the pipelined
+  core at TC64's commit 8ead239 as `rtl/ap040` ON THE 28 MHz CORE CLOCK:
+  main.vhd `C_CPU040 = 1` makes cpu_wrapper instantiate it instead of TG68K
+  when the menu says 68020 (no menu change). TG68K's 16-bit bus via the
+  core's own `ap040_bus16_adapter` (BUS16 = 1), so the whole 68020 path
+  downstream is unchanged. NEW in cpu_wrapper: (a) a walker bridge - the
+  MMU's 32-bit table-walk port runs as two 16-bit cycles on the same bus,
+  only while the adapter is idle, with the core's clock enable held low
+  for the length of those cycles; ack held until the MMU drops its request;
+  (b) chipset writes to Chip RAM (main.vhd: `ram_we_n_o` and a strobe,
+  banked `ram_addr_o[22:21] = 00`) into the data cache's snoop port - the
+  core's D cache caches Chip RAM; (c) CACR bit 15 -> cpu_cache_new enable,
+  CINV/CPUSH -> its clear. dpram renamed `ap040_dpram` and replaced by
+  TC64's two-process block-RAM version (the core's own model costs ~43k LUTs
+  in Vivado). Conservative configuration: synchronous stores, none of the
+  speed-up parameters, no fill channel. PITFALL found: names used inside a
+  generate block before their module-level declaration become new undriven
+  nets in the block's scope (iverilog: the core's clock enable was X and it
+  never ran) - cpu_req, cpu_ipl, chipready, z2ram_ena, z3_* are now declared
+  above the block. SIM: `~/aexp-work/cpu060/e2e040` (the RTG e2e with
+  CPU040, `build.sh`, `bt.sh`): the whole 68020 program (autoconfig, IDE
+  MOVEM, network card, memory tests with caches, RTG, blitter) plus an
+  040 section - FPU arithmetic, MOVE16, a 3-level page table in Zorro II
+  (logical `$50000000` -> `$00500000`, TTRs for the rest), U then M set by
+  the walker, an access error on an unmapped page resumed by the handler,
+  and Chip RAM coherency against a testbench DMA write with its snoop -
+  PASS; the TG68K build of the same program (CPU040 = 0) PASS. Mutants:
+  walker halves swapped -> hang; snoop off -> $BAA9 (stale $11112222).
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).

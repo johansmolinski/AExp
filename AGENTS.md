@@ -79,6 +79,8 @@ Megamiga fork (johansmolinski):
   names at core start, PMOD serial port (0.4.2).
 - 0.5.0: network card (own Zorro II board, RMII MAC, SANA-II driver in
   `CORE/eth/`; design in `doc/developers/ethernet.md`).
+- `cpu040` (experiment, not merged): AP68040 pipelined core in place of
+  TG68K (`C_CPU040`), walker bridge + Chip RAM snoop in cpu_wrapper.
 - 0.5.1: RTG ID register `$4D01`, not MiSTer's `$5001` (AmigaVision took
   the core for a MiSTer and hung on the MiSTer shared-folder mailbox).
 

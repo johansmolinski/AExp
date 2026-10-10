@@ -146,8 +146,10 @@ set_false_path -from [get_cells -hierarchical -filter {IS_SEQUENTIAL && NAME =~ 
 ## cache and the slot logic use them from the SECOND fast edge on. Until 0.4.0 this path was left
 ## single-cycle; with the 68020 address adder (TG68K register file -> sd_ba) it had shrunk to
 ## +0.001 ns.
-set_multicycle_path -setup 2 -from [get_cells -hierarchical -filter {IS_PRIMITIVE && (NAME =~ CORE/i_main/i_cpu_wrapper/cpu_inst_p/* || NAME =~ CORE/i_main/i_cpu_wrapper/cpu_inst_o/*)}] -to [get_cells -hierarchical -filter {IS_PRIMITIVE && NAME =~ CORE/i_amiga_sdram/i_sdram_ctrl/*}]
-set_multicycle_path -hold 1 -from [get_cells -hierarchical -filter {IS_PRIMITIVE && (NAME =~ CORE/i_main/i_cpu_wrapper/cpu_inst_p/* || NAME =~ CORE/i_main/i_cpu_wrapper/cpu_inst_o/*)}] -to [get_cells -hierarchical -filter {IS_PRIMITIVE && NAME =~ CORE/i_amiga_sdram/i_sdram_ctrl/*}]
+## (cpu040 branch: the 68020/68040 instance sits in a generate block, g_tg68k.cpu_inst_p or
+## g_ap040.cpu_inst_p, hence the wildcard before cpu_inst_p.)
+set_multicycle_path -setup 2 -from [get_cells -hierarchical -filter {IS_PRIMITIVE && (NAME =~ CORE/i_main/i_cpu_wrapper/*cpu_inst_p/* || NAME =~ CORE/i_main/i_cpu_wrapper/cpu_inst_o/*)}] -to [get_cells -hierarchical -filter {IS_PRIMITIVE && NAME =~ CORE/i_amiga_sdram/i_sdram_ctrl/*}]
+set_multicycle_path -hold 1 -from [get_cells -hierarchical -filter {IS_PRIMITIVE && (NAME =~ CORE/i_main/i_cpu_wrapper/*cpu_inst_p/* || NAME =~ CORE/i_main/i_cpu_wrapper/cpu_inst_o/*)}] -to [get_cells -hierarchical -filter {IS_PRIMITIVE && NAME =~ CORE/i_amiga_sdram/i_sdram_ctrl/*}]
 
 ## Megamiga RTG blitter (rtg_blitter.vhd): the registers are written on the core clock and read by
 ## the engine on hr_clk only while a command runs (the driver does not touch them until busy is
