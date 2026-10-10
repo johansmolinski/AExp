@@ -326,7 +326,8 @@ with RDB, or [amitools](https://github.com/cnvogelg/amitools)' `rdbtool`
 make such images. Kickstart 1.3 has only the old file system (OFS) in ROM, so
 either use OFS partitions, or put the FastFileSystem into the RDB (rdbtool
 `fsadd`), which lide.device then loads at boot. The image size must be a
-multiple of 512 bytes; FAT32 limits a file to 4 GB.
+multiple of 512 bytes; FAT32 limits a file to 4 GB (for bigger disks see
+the partitions below).
 
 To format a partition on the Amiga, use `Format DRIVE DH0: NAME Work`, or
 add `QUICK` to only write the empty file system (much faster, and just as
@@ -336,6 +337,57 @@ format command, which the patched `lide.rom` of the release fixes. Workbench
 1.3's Format also needs one cylinder's worth of free memory, so partition
 images for an unexpanded A500 with small cylinders (for example 2 heads x 32
 sectors), or switch on the Fast RAM.
+
+#### Hard disks on an SD card partition (beyond 4 GB)
+
+A hard disk can also be a partition of the SD card itself instead of a file,
+which lifts FAT32's 4 GB limit (up to 128 GB per disk). The card keeps its
+FAT32 partition first (the core's files stay there) and gets up to three
+more partitions of type `7F` (hex) for Amiga disks. Megamiga only ever
+uses partitions of exactly that type: the FAT32 partition, an empty entry or
+any other type is refused.
+
+1. Make room on a PC: back up the card, shrink its FAT32 partition and add a
+   primary partition of type `7F` after it, for example with Linux `fdisk`
+   (`t` sets the type) or GParted. Partition numbers are the MBR entries,
+   1 to 4. Then fill the new partition with zeros, for example
+   `dd if=/dev/zero of=/dev/sdX2 bs=4M` (`sdX2` = that partition - check
+   the name twice). Many SD cards read never-written blocks as `FF` bytes,
+   and an Amiga partition whose first block reads `FF FF FF FF` shows up as
+   "No disk present" and cannot be formatted.
+2. Put a link file on the FAT32 side: an `.hdf` file with one line of text,
+   `MEGAMIGA-PARTITION 2` for partition 2 (the release has `part2.hdf`,
+   `part3.hdf` and `part4.hdf`). Name it `a1200.hdf` (master) or
+   `a1200-1.hdf` (slave), and the same for the other profiles, to give a
+   profile that disk - or pick the link file in the file browser like any
+   other HDF.
+3. Partition the new disk on the Amiga with HDToolBox (`lide.device`), or
+   copy an existing HDF image into the partition on a PC (`dd`); either way
+   the partition holds a whole disk with its own RDB.
+
+Format the Amiga partitions with `QUICK`: a full format writes and then
+verifies every block, one SD card block at a time, which takes a long time
+on a big partition and gains nothing on a hard disk.
+
+One partition can only be the master or the slave at a time. File systems
+beyond 4 GB need a 64-bit-capable file system on the Amiga (FFS of Kickstart
+3.1.4 or 3.2, PFS3 or SFS); with Kickstart 1.3 keep the partitions small.
+
+#### Installing AmigaOS 3.2 without a CD drive
+
+The AmigaOS 3.2 CD's own readme allows copying the CD onto any FFS volume
+named `AmigaOS3.2CD`. On a PC, make an HDF with one bootable FFS partition
+(about 150 MB, boot priority 1), label it `AmigaOS3.2CD` and copy the CD's
+contents into it, for example with amitools (`rdbtool ... create chs=300,16,63
++ init + add size=100% name=CD0 dostype=DOS3 bootable=1 pri=1`, then
+`xdftool ... open part=CD0 + format AmigaOS3.2CD ffs+intl` and `write`); an
+update such as 3.2.3 can go into the same volume. Mount it as `HDF 1:`, the
+Amiga boots from it, and `AmigaOS3.2CD:Install/StartHere` starts the
+installation onto the master. With the A1200 profile the 3.2.x Kickstart
+from the update package (`A1200.47.115.rom` as `a1200.rom`) saves the
+Modules disk and its double boot. StartHere mounts the `Install3.2` disk
+image write-protected; if a tool such as HDToolBox has to write to it, run
+`DAControl CHANGE UNIT 0 WRITEPROTECTED NO` in a Shell first.
 
 Hard disk access is a little slower than on a real IDE disk, because the
 MEGA65's small control CPU serves every sector from the SD card. A disk stays

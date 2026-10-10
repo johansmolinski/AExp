@@ -1,17 +1,17 @@
 ; ****************************************************************************
 ; Megamiga: read-only data of the core firmware
 ;
-; The QNICE ROM ends at 0x7000 - from there on the RAMROM device window lies
-; over it (M2M$RAMROM_DATA), so anything the assembler places at or above
-; 0x7000 reads back as device data. Constant data that does not need to be in
-; the ROM lives here instead: make_rom.sh assembles this file on its own into
+; The QNICE ROM ends at 0x8000 and the RAMROM device window (M2M$RAMROM_DATA)
+; is at 0x8000-0x8FFF (M2M-UPSTREAM rom-32k; it used to lie over the ROM at
+; 0x7000). Constant data that does not need to be in the ROM lives here
+; instead: make_rom.sh assembles this file on its own into
 ; m2m-rodata.rom, which preloads the block RAM of the QNICE device
 ; C_DEV_AMIGA_RODATA (mega65.vhd), and exports every label as an .EQU of its
-; WINDOW address (0x7000 + offset) to rodata_sym.asm. With that device and
+; WINDOW address (0x8000 + offset) to rodata_sym.asm. With that device and
 ; window 0 selected, a label reads exactly as if it were in memory.
 ;
 ; Use: RODATA_STR / RODATA_PUTS (strings, copied to RAM first) and
-; M2M$LOAD_POLYPHASE (filter tables, any pointer >= 0x7000), all in
+; M2M$LOAD_POLYPHASE (filter tables, any pointer >= 0x8000), all in
 ; m2m-rom.asm. Nothing here may be referenced directly as a memory pointer.
 ; Plain data only: no code, no .EQU (the export takes every symbol).
 ; ****************************************************************************
@@ -71,6 +71,14 @@ WRN_HDF_SIZE    .ASCII_P "\n\nThis is not a valid HDF image:\n"
                 .ASCII_W "512 bytes and at least 64 KB.\n"
 WRN_HDF_FAT     .ASCII_P "\n\nThe HDF file cannot be read from\n"
                 .ASCII_W "the SD card (FAT32 error).\n"
+; HDF link files (HDF_LINK): an .hdf file with one line of text that names
+; a partition of the SD card, e.g. "MEGAMIGA-PARTITION 2"
+HDF_LINK_MAGIC  .ASCII_W "MEGAMIGA-PARTITION "
+WRN_HDF_PART    .ASCII_P "\n\nThis link file names no Amiga\n"
+                .ASCII_P "partition: the SD card needs a\n"
+                .ASCII_W "partition of type 7F at that number.\n"
+WRN_HDF_PDUP    .ASCII_P "\n\nThis partition is already\n"
+                .ASCII_W "mounted as the other hard disk.\n"
 ; IDE board: the IDENTIFY strings (IDE_IDENTIFY, one character per word)
 IDE_ID_SERIAL   .ASCII_W "AEXP-HDF"
 IDE_ID_FWREV    .ASCII_W "JS01"

@@ -310,9 +310,11 @@ _PREP_LI_FATE   MOVE    1, R8                   ; error: SD card read failed
 ; ----------------------------------------------------------------------------
 ; Read-only data device (m2m-rodata.asm, mega65.vhd C_DEV_AMIGA_RODATA)
 ;
-; The QNICE ROM ends at 0x7000. Long texts and the filter tables of the core live in
-; the read-only data device instead; their labels (rodata_sym.asm) are window
-; addresses >= 0x7000 that are only valid while that device and window 0 are
+; The QNICE ROM ends at 0x8000 (the device window is at 0x8000-0x8FFF since the
+; M2M-UPSTREAM rom-32k change; it used to be 0x7000-0x7FFF). Long texts and the
+; filter tables of the core live in the read-only data device instead; their
+; labels (rodata_sym.asm) are window addresses 0x8000-0x8FFF that are only valid
+; while that device and window 0 are
 ; selected. Texts are therefore always copied into RODATA_BUF (RAM) before use,
 ; so the Shell, FATAL and puts see a plain RAM pointer.
 ;
@@ -2709,6 +2711,9 @@ _HSE_RET        DECRB
 ;         R9: drive, 0 = master, 1 = slave
 ; Output: R8: 0=OK, else error; R9: 0 or pointer to an error message
 HDF_PREP        INCRB
+                MOVE    R10, @--SP              ; the Shell keeps the ROM id in
+                MOVE    R11, @--SP              ; R12 across PREP_LOAD_IMAGE
+                MOVE    R12, @--SP              ; (HDF_LINK returns in R9..R12)
                 MOVE    R8, R0                  ; R0: the handle of the Shell
                 MOVE    R9, R6                  ; R6: the drive
 
@@ -2721,7 +2726,19 @@ HDF_PREP        INCRB
                 MOVE    R0, R1
                 ADD     FAT32$FDH_SIZE_HI, R1
                 MOVE    @R1, R3
-                MOVE    R2, R1                  ; a whole number of sectors
+                CMP     0, R3                   ; under 512 bytes: maybe a link
+                RBRA    _HDFP_FILE, !Z          ; file that names a partition
+                CMP     R2, 0x01FF
+                RBRA    _HDFP_FILE, N           ; (R2 > 511)
+                MOVE    R0, R8
+                RSUB    HDF_LINK, 1
+                CMP     0, R8
+                RBRA    _HDFP_FILE, Z           ; not a link file
+                CMP     0xFF, R8
+                RBRA    _HDFP_BADPT, Z          ; a link, but no such partition
+                MOVE    R8, R3                  ; R3: the partition (size hi
+                RBRA    _HDFP_LINK, 1           ; is 0 here anyway)
+_HDFP_FILE      MOVE    R2, R1                  ; a whole number of sectors
                 AND     0x01FF, R1
                 RBRA    _HDFP_BADSZ, !Z
                 CMP     HDF_MIN_SIZE_HI, R3     ; at least HDF_MIN_SIZE_HI
@@ -2741,6 +2758,8 @@ HDF_PREP        INCRB
                 MOVE    HDF_FDH, R1             ; never start out DIRTY: the
                 ADD     FAT32$FDH_FLAGS, R1     ; one sector buffer is tracked
                 MOVE    0, @R1                  ; by the handle address
+                MOVE    HDF_PART, R1            ; a file, not a partition
+                MOVE    0, @R1
 
                 ; total sectors = size >> 9
                 MOVE    R2, R4
@@ -2817,6 +2836,71 @@ _HDFP_SLOT      MOVE    R1, @R4
                 XOR     R9, R9
                 RBRA    _HDFP_RET, 1
 
+                ; a link file: the drive is partition R4 of the SD card (start
+                ; R10:R9, size R12:R11 blocks). It must not be the disk of the
+                ; other drive already; after HDF_SELECT, HDF_SAVE holds that one.
+_HDFP_LINK      MOVE    R9, R4                  ; R4/R5: start, R1/R7: size
+                MOVE    R10, R5
+                MOVE    R11, R1
+                MOVE    R12, R7
+                MOVE    R6, R8
+                RSUB    HDF_SELECT, 1
+                MOVE    HDF_UNITS, R8           ; the other drive mounted?
+                MOVE    @R8, R8
+                MOVE    R6, R9                  ; its bit: the other drive
+                XOR     1, R9                   ; (R6 xor 1) + 1 = 1 for the
+                ADD     1, R9                   ; master, 2 for the slave
+                AND     R9, R8
+                RBRA    _HDFP_LDUP, Z           ; no
+                MOVE    HDF_SAVE, R8            ; its HDF_PART
+                ADD     HDF_PART, R8
+                SUB     HDF_FDH, R8
+                CMP     0, @R8++
+                RBRA    _HDFP_LDUP, Z           ; it holds a file
+                CMP     R4, @R8++               ; its HDF_PST_LO / _HI
+                RBRA    _HDFP_LDUP, !Z
+                CMP     R5, @R8
+                RBRA    _HDFP_PDUP, Z           ; the very same partition
+_HDFP_LDUP      MOVE    R6, R8                  ; drop the old disk of this
+                ADD     1, R8                   ; drive
+                RSUB    HDF_DROP, 1
+                MOVE    R0, R8                  ; the handle copy: the device
+                MOVE    HDF_FDH, R9             ; for the block I/O
+                MOVE    FAT32$FDH_STRUCT_SIZE, R10
+                SYSCALL(memcpy, 1)
+                MOVE    HDF_FDH, R8
+                ADD     FAT32$FDH_FLAGS, R8
+                MOVE    0, @R8
+                MOVE    HDF_PART, R8            ; partition number and start
+                MOVE    R3, @R8                 ; (R3: from HDF_LINK)
+                MOVE    HDF_PST_LO, R8
+                MOVE    R4, @R8
+                MOVE    HDF_PST_HI, R8
+                MOVE    R5, @R8
+                CMP     R7, 0x0FFF              ; the size, at most what LBA28
+                RBRA    _HDFP_L28, !N           ; addresses (128 GB)
+                MOVE    0x0FFF, R7
+                MOVE    0xFFFF, R1
+_HDFP_L28       MOVE    HDF_SECT_LO, R8
+                MOVE    R1, @R8
+                MOVE    HDF_SECT_HI, R8
+                MOVE    R7, @R8
+                MOVE    HDF_MAPOK, R8           ; the fast block path
+                MOVE    1, @R8
+                MOVE    R0, R8                  ; the Shell reads EOF at once
+                MOVE    R2, R9                  ; (the file is under 512 bytes)
+                XOR     R10, R10
+                SYSCALL(f32_fseek, 1)
+                RBRA    _HDFP_SKD, 1
+
+_HDFP_BADPT     MOVE    WRN_HDF_PART, R8
+                RBRA    _HDFP_ERR, 1
+_HDFP_PDUP      MOVE    WRN_HDF_PDUP, R8
+_HDFP_ERR       RSUB    RODATA_STR, 1           ; (texts in the read-only data
+                MOVE    R8, R9                  ; device: copy them to RAM)
+                MOVE    1, R8
+                RBRA    _HDFP_RET, 1
+
 _HDFP_NOROM     MOVE    1, R8
                 MOVE    WRN_HDF_NOROM, R8
                 RSUB    RODATA_STR, 1           ; (text in the read-only data
@@ -2835,7 +2919,143 @@ _HDFP_FATERR    MOVE    1, R8
                 MOVE    R8, R9                  ; device: copy it to RAM)
                 MOVE    1, R8
 
-_HDFP_RET       DECRB
+_HDFP_RET       MOVE    @SP++, R12
+                MOVE    @SP++, R11
+                MOVE    @SP++, R10
+                DECRB
+                RET
+
+; HDF_LINK: is the file R8 a link file that names a partition of the SD card?
+;
+; A link file is an .hdf file under 512 bytes that starts with
+; "MEGAMIGA-PARTITION n" (n = 1..4, upper or lower case): the drive is then
+; partition n of the card the file is on, which must have the MBR type 0x7F
+; (the type for local / experimental use: no operating system claims it) and
+; at least 64 KB. Nothing else is ever used as a disk: the FAT32 partition, an
+; empty entry or another type are refused. The partition holds the disk as a
+; whole, from its own RDB on, exactly like an HDF file.
+;
+; Input:  R8: the file handle of the Shell, at position 0
+; Output: R8: 0 = not a link file, 1..4 = the partition, 0xFF = a link file but
+;         no usable partition; for 1..4: R10:R9 = its first block, R12:R11 =
+;         its size in blocks. The SD sector buffer is released (owned by
+;         nobody) once the MBR was read.
+HDF_LINK        INCRB
+                MOVE    R8, R0                  ; R0: the handle
+                MOVE    HDF_LINK_MAGIC, R8
+                RSUB    RODATA_STR, 1
+                MOVE    R8, R1                  ; R1: the magic text (RAM copy)
+_HLK_M          MOVE    @R1++, R2
+                CMP     0, R2
+                RBRA    _HLK_NUM, Z             ; the whole magic matched
+                RSUB    _HLK_RD, 1
+                RBRA    _HLK_NO, C
+                CMP     R2, R9
+                RBRA    _HLK_M, Z
+                RBRA    _HLK_NO, 1
+_HLK_NUM        RSUB    _HLK_RD, 1              ; the partition digit
+                RBRA    _HLK_NO, C
+                SUB     0x0031, R9              ; '1'..'4' -> 0..3
+                CMP     R9, 3
+                RBRA    _HLK_NO, N              ; (R9 > 3, also for < '1')
+                MOVE    R9, R3                  ; R3: partition - 1
+
+                MOVE    R0, R8                  ; the MBR: block 0, read
+                RSUB    _F32_RELEASE_BUF, 1     ; straight into the buffer
+                CMP     0, R9
+                RBRA    _HLK_BAD, !Z
+                XOR     R8, R8
+                XOR     R9, R9
+                MOVE    FAT32$DEV_BLOCK_READ, R10
+                MOVE    @R0, R11                ; the device of the file
+                RSUB    FAT32$CALL_DEV, 1
+                CMP     0, R8
+                RBRA    _HLK_BAD, !Z
+                MOVE    0x01FE, R8              ; the MBR signature 55 AA
+                RSUB    _HLK_B, 1
+                CMP     0x0055, R8
+                RBRA    _HLK_BAD, !Z
+                MOVE    0x01FF, R8
+                RSUB    _HLK_B, 1
+                CMP     0x00AA, R8
+                RBRA    _HLK_BAD, !Z
+                MOVE    R3, R4                  ; R4: the entry, 0x1BE + 16 n
+                AND     0xFFFD, SR
+                SHL     4, R4
+                ADD     0x01BE, R4
+                MOVE    R4, R8                  ; the type
+                ADD     4, R8
+                RSUB    _HLK_B, 1
+                CMP     0x007F, R8
+                RBRA    _HLK_BAD, !Z
+                MOVE    R4, R8                  ; R6:R5: first block
+                ADD     8, R8
+                RSUB    _HLK_W, 1
+                MOVE    R8, R5
+                MOVE    R4, R8
+                ADD     10, R8
+                RSUB    _HLK_W, 1
+                MOVE    R8, R6
+                MOVE    R4, R8                  ; R12:R11: size
+                ADD     12, R8
+                RSUB    _HLK_W, 1
+                MOVE    R8, R11
+                MOVE    R4, R8
+                ADD     14, R8
+                RSUB    _HLK_W, 1
+                MOVE    R8, R12
+                MOVE    R5, R8                  ; block 0 is the MBR itself
+                OR      R6, R8
+                RBRA    _HLK_BAD, Z
+                CMP     0, R12                  ; at least 128 blocks = 64 KB
+                RBRA    _HLK_OK, !Z
+                CMP     R11, 0x007F
+                RBRA    _HLK_BAD, !N            ; (R11 <= 127)
+_HLK_OK         MOVE    R5, R9
+                MOVE    R6, R10
+                MOVE    R3, R8
+                ADD     1, R8
+                RBRA    _HLK_RET, 1
+_HLK_BAD        MOVE    0x00FF, R8
+                RBRA    _HLK_RET, 1
+_HLK_NO         XOR     R8, R8
+_HLK_RET        DECRB
+                RET
+
+; _HLK_RD: next byte of the link file R0 (in the register bank of HDF_LINK) into R9, a-z as A-Z
+; Output: C=1 at the end of the file or on an error
+_HLK_RD         MOVE    R0, R8
+                SYSCALL(f32_fread, 1)
+                CMP     0, R10
+                RBRA    _HLKR_E, !Z
+                CMP     R9, 0x0060              ; 'a'..'z'?
+                RBRA    _HLKR_OK, !N            ; (R9 <= 0x60)
+                CMP     R9, 0x007A
+                RBRA    _HLKR_OK, N             ; (R9 > 'z')
+                SUB     0x0020, R9
+_HLKR_OK        AND     0xFFFB, SR              ; C=0
+                RET
+_HLKR_E         OR      0x0004, SR              ; C=1
+                RET
+
+; _HLK_B: byte R8 of the SD sector buffer -> R8. _HLK_W: the little-endian
+; word at R8 -> R8. R9 clobbered.
+_HLK_B          MOVE    IO$SD_DATA_POS, R9
+                MOVE    R8, @R9
+                MOVE    IO$SD_DATA, R9
+                MOVE    @R9, R8
+                AND     0x00FF, R8
+                RET
+_HLK_W          MOVE    R8, @--SP
+                ADD     1, R8                   ; high byte
+                RSUB    _HLK_B, 1
+                AND     0xFFFD, SR
+                SHL     8, R8
+                MOVE    R8, R9
+                MOVE    @SP++, R8               ; low byte
+                MOVE    R9, @--SP
+                RSUB    _HLK_B, 1
+                OR      @SP++, R8
                 RET
 
 ; HDF_GEOM_INIT: state of the direct block I/O for a freshly mapped HDF:
@@ -3362,6 +3582,16 @@ IDE_LBA2BLK     INCRB
                 MOVE    @R8, R8
                 MOVE    IDE_LBA_HI, R9
                 MOVE    @R9, R9
+                MOVE    HDF_PART, R0            ; a partition of the card: the
+                CMP     0, @R0                  ; block is its first block plus
+                RBRA    _IL2B_FILE, Z           ; the sector (the IDE server
+                MOVE    HDF_PST_LO, R0          ; checked the sector against the
+                ADD     @R0, R8                 ; size already)
+                MOVE    HDF_PST_HI, R0
+                ADDC    @R0, R9
+                AND     0xFFFB, SR              ; C=0
+                RBRA    _IL2B_RET, 1
+_IL2B_FILE
                 MOVE    HDF_SPC_SHIFT, R2
                 MOVE    @R2, R2                 ; R2: shift
                 MOVE    1, R3                   ; R3: sector in cluster =
@@ -4183,14 +4413,14 @@ M2M$LOAD_POLYPHASE  SYSCALL(enter, 1)
                 RET
 
 ; _PP_COPY: copy R10 words from the table R8 to R9 in the polyphase window.
-; Megamiga: a table at 0x7000 or above is a window address of the read-only
-; data device (m2m-rodata.asm) - the QNICE ROM ends at 0x7000 - and is copied
+; Megamiga: a table at 0x8000 or above is a window address of the read-only
+; data device (m2m-rodata.asm) - the QNICE ROM ends at 0x8000 - and is copied
 ; word by word, switching between that device and the polyphase device;
 ; tables in the ROM (LANCZOS2_12 of the framework, SCAN_BR_110_80) are copied
 ; with memcpy as before. Expects the polyphase device to be selected and
 ; leaves it selected. R8..R10 preserved.
-_PP_COPY        CMP     R8, 0x6FFF              ; table in the ROM?
-                RBRA    _PPC_RD, N              ; no (R8 > 0x6FFF)
+_PP_COPY        CMP     R8, 0x7FFF              ; table in the ROM?
+                RBRA    _PPC_RD, N              ; no (R8 > 0x7FFF)
                 SYSCALL(memcpy, 1)
                 RET
 _PPC_RD         INCRB
@@ -4211,7 +4441,7 @@ _PPC_L          MOVE    AEXP_DEV_RODATA, @R3    ; both use window 0)
 
 ; The three core-local filter coefficient blobs (GS_SHARPNESS_050,
 ; CRT_SIM_COMPOSITE_H, CRT_SIM_SVIDEO_H) live in m2m-rodata.asm; their labels
-; are window addresses >= 0x7000 of the read-only data device, which
+; are window addresses >= 0x8000 of the read-only data device, which
 ; M2M$LOAD_POLYPHASE recognises.
 
 ; ----------------------------------------------------------------------------
@@ -4235,19 +4465,19 @@ ADF_FILE_EXT    .ASCII_W ".ADF"
 HDF_FILE_EXT    .ASCII_W ".HDF"
 
 ; IDE board (ide_board.vhd), device AEXP_DEV_IDE, window 0
-IDE_DATA        .EQU    0x7000              ; W: data for the CPU, R: data from it
-IDE_EVENTS      .EQU    0x7100              ; event toggles, see IDE_EV_*
-IDE_TF_CMD      .EQU    0x7101              ; task file snapshot ...
-IDE_TF_COUNT    .EQU    0x7103
-IDE_TF_LBA0     .EQU    0x7104
-IDE_TF_LBA1     .EQU    0x7105
-IDE_TF_LBA2     .EQU    0x7106
-IDE_TF_DEVH     .EQU    0x7107
-IDE_NSTAT       .EQU    0x7110              ; status to apply on commit
-IDE_NERR        .EQU    0x7111              ; error register to apply on commit
-IDE_NFLAGS      .EQU    0x7112              ; bit 0: data phase CPU -> buffer
-IDE_CTRL        .EQU    0x7118              ; see IDE_CTRL_*
-IDE_COMMIT_REG  .EQU    0x711F              ; any write: commit
+IDE_DATA        .EQU    0x8000              ; W: data for the CPU, R: data from it
+IDE_EVENTS      .EQU    0x8100              ; event toggles, see IDE_EV_*
+IDE_TF_CMD      .EQU    0x8101              ; task file snapshot ...
+IDE_TF_COUNT    .EQU    0x8103
+IDE_TF_LBA0     .EQU    0x8104
+IDE_TF_LBA1     .EQU    0x8105
+IDE_TF_LBA2     .EQU    0x8106
+IDE_TF_DEVH     .EQU    0x8107
+IDE_NSTAT       .EQU    0x8110              ; status to apply on commit
+IDE_NERR        .EQU    0x8111              ; error register to apply on commit
+IDE_NFLAGS      .EQU    0x8112              ; bit 0: data phase CPU -> buffer
+IDE_CTRL        .EQU    0x8118              ; see IDE_CTRL_*
+IDE_COMMIT_REG  .EQU    0x811F              ; any write: commit
 IDE_EV_CMD      .EQU    0x0001              ; a command was written
 IDE_EV_BUF      .EQU    0x0002              ; the CPU finished a buffer
 IDE_EV_RST      .EQU    0x0004              ; reset (Amiga, RESET instr., SRST)
@@ -4289,7 +4519,7 @@ IDE_LIDE_AUTO_ID .EQU   1                   ; lide.rom = auto-load ROM 1
 IDE_ASCII_SPACE .EQU    0x0020
 HDF_MIN_SIZE_HI .EQU    1                   ; at least 64 KB
 HDF_MAP_WORDS   .EQU    257                 ; extent map: 64 extents
-HDF_BLK_WORDS   .EQU    276                 ; FDH (12) + 7 + HDF_MAP_WORDS
+HDF_BLK_WORDS   .EQU    279                 ; FDH (12) + 10 + HDF_MAP_WORDS
 
 ; commands that need no data and no action: answered with DRDY right away
 ; (INITIALIZE DEVICE PARAMETERS, SET FEATURES, RECALIBRATE, READ VERIFY,
@@ -4319,10 +4549,10 @@ IDE_ID_TAB      .DW     0, 0x0040           ; fixed disk
 ; same for every drive; only the device id differs, which is what ADF_SEL_WBC
 ; encapsulates.
 ADF_WBC_4KWIN   .EQU    0xFFFE              ; the write-back CSR window
-ADF_WBC_CTRL    .EQU    0x7000              ; bit 0: WR_EN (this unit writable)
-ADF_WBC_STAT    .EQU    0x7001              ; bit 0: any_dirty  bit 1: flush_start
-ADF_WBC_ATDELAY .EQU    0x7002              ; anti-thrashing delay in ms
-ADF_WBC_DIRTY0  .EQU    0x7010              ; ..0x701A: dirty bitmap, W1C
+ADF_WBC_CTRL    .EQU    0x8000              ; bit 0: WR_EN (this unit writable)
+ADF_WBC_STAT    .EQU    0x8001              ; bit 0: any_dirty  bit 1: flush_start
+ADF_WBC_ATDELAY .EQU    0x8002              ; anti-thrashing delay in ms
+ADF_WBC_DIRTY0  .EQU    0x8010              ; ..0x701A: dirty bitmap, W1C
 ADF_WBC_DIRTY_W .EQU    11                  ; bitmap words (166 tracks -> 11)
 ADF_TRACK_BYTES .EQU    5632                ; 11 sectors x 512 bytes
 ADF_FLUSH_CHUNK .EQU    512                 ; bytes per background time slice
@@ -4370,8 +4600,8 @@ ADF_HW_LN_TAB   .DW AEXP_OSM_DF0_HW_LN, AEXP_OSM_DF1_HW_LN, AEXP_OSM_DF2_HW_LN
 ; offset into the data window. Only the two registers the status line needs are
 ; named here; the full map lives in the header of that file (keep in sync!).
 AEXP_DEV_FDD    .EQU    0x0104              ; the diagnostics bank
-HWF_DIAG_STAT   .EQU    0x7002              ; front-end status word
-HWF_DIAG_SERVED .EQU    0x701B              ; words served into Paula (0x1B)
+HWF_DIAG_STAT   .EQU    0x8002              ; front-end status word
+HWF_DIAG_SERVED .EQU    0x801B              ; words served into Paula (0x1B)
 HWF_ST_MOTOR    .EQU    0x0004              ; status bit 2: the motor runs
 
 ; Live status line states. The order is the index into HWF_OSM_STR.
@@ -4399,8 +4629,8 @@ HWF_OSM_STR     .DW HWF_OSM_IDLE, HWF_OSM_MOTOR, HWF_OSM_READ  ; (in m2m-rodata.
 ; equals the register address (keep in sync with rtc_controller.vhd).
 AEXP_DEV_RTC    .EQU    0x0006              ; framework RTC device (C_DEV_RTC)
 RTC_4KWIN       .EQU    0x0000              ; RTC decodes addr[7:0] only
-RTC_MINUTES     .EQU    0x7002              ; internal timer: minutes (BCD, RO)
-RTC_COMMAND     .EQU    0x7008              ; b0 busy(RO) b1 read b2 write b3 running
+RTC_MINUTES     .EQU    0x8002              ; internal timer: minutes (BCD, RO)
+RTC_COMMAND     .EQU    0x8008              ; b0 busy(RO) b1 read b2 write b3 running
 RTC_CMD_STOP    .EQU    0x0000              ; stop the internal timer
 RTC_CMD_RESYNC  .EQU    0x000A              ; b1 read RTC->internal + b3 keep running
 
@@ -4470,7 +4700,9 @@ END_OF_ROM      .DW 0
 ; ----------------------------------------------------------------------------
 
 #ifdef RELEASE
-                .ORG    0x8000                  ; RAM starts at 0x8000
+                .ORG    0x9000                  ; RAM starts at 0x9000: the 4k device
+                                                ; window takes 0x8000-0x8FFF (M2M-UPSTREAM
+                                                ; rom-32k, the ROM is 32k words now)
 #endif
 
 ;
@@ -4533,6 +4765,10 @@ HDF_SPC_SHIFT   .BLOCK 1                        ; log2(sectors per cluster)
 HDF_EXT_IDX     .BLOCK 1                        ; extent of the last block lookup
 HDF_EXT_CLO     .BLOCK 1                        ; ... and the cluster index at
 HDF_EXT_CHI     .BLOCK 1                        ; which it starts
+HDF_PART        .BLOCK 1                        ; 0: an HDF file; 1..4: the SD
+                                                ; card partition of a link file
+HDF_PST_LO      .BLOCK 1                        ; ... and its first block
+HDF_PST_HI      .BLOCK 1
 HDF_MAP         .BLOCK HDF_MAP_WORDS            ; FAT32$FILE_MAP extent map
 HDF_SAVE        .BLOCK HDF_BLK_WORDS            ; the other drive
 HDF_SAVE_END    .BLOCK 1
@@ -4648,13 +4884,19 @@ MENU_HEAP_SIZE  .EQU 3520
 ; read-only data device) - both totals down by 256 (release 29440, debug 6784).
 ; Megamiga 0.3.1: the slave HDF state (HDF_SAVE, 278 words of variables) - both
 ; totals down by 288 (release 29152, debug 6496).
-HEAP_SIZE       .EQU 2976                       ; 6496 - 3520 = 2976
+; Megamiga, M2M-UPSTREAM rom-32k: the RAM lost 4096 words to the device
+; window; the develop mode (firmware in RAM) has not fit for a long time, so
+; its heap is only kept at a value that assembles.
+HEAP_SIZE       .EQU 0
 HEAP            .BLOCK 1
 
 ; in RELEASE mode: 26.97k of heap for folders with many files
 #else
 
-HEAP_SIZE       .EQU 25632                      ; 29152 - 3520 = 25632
+; Megamiga, M2M-UPSTREAM rom-32k: the device window moved into the RAM
+; (0x8000-0x8FFF), so the variables start at 0x9000 and the combined total is
+; 4096 words smaller: 25056 (the stack margin stays the same).
+HEAP_SIZE       .EQU 21536                      ; 25056 - 3520 = 21536
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract
