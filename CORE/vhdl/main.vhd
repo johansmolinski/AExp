@@ -459,6 +459,9 @@ architecture synthesis of main is
    signal blt_sel          : std_logic;
 
    component cpu_wrapper is
+      generic (
+         CPU040         : integer := 0
+      );
       port (
          reset          : in  std_logic;                       -- ACTIVE LOW
          reset_out      : out std_logic;                       -- active low (fx68k RESET instruction)
@@ -513,9 +516,19 @@ architecture synthesis of main is
 
          cpustate       : out std_logic_vector(1 downto 0);
          cacr           : out std_logic_vector(3 downto 0);
-         nmi_addr       : out std_logic_vector(31 downto 0)
+         nmi_addr       : out std_logic_vector(31 downto 0);
+
+         snoop_stb      : in  std_logic;
+         snoop_addr     : in  std_logic_vector(20 downto 1)
       );
    end component cpu_wrapper;
+
+   -- Megamiga, October 2026 (branch cpu040, EXPERIMENTAL): 1 = the AP68040 core in place
+   -- of TG68K when the 68020 is selected (cpu_wrapper.v); 0 = TG68K
+   constant C_CPU040       : integer := 1;
+   -- a chipset write to Chip RAM ($000000-$1FFFFF: banked ram_addr_o[22:21] = 00), for the
+   -- AP68040's data cache, which caches Chip RAM
+   signal cpu_snoop_stb    : std_logic;
 
    ---------------------------------------------------------------------------
    -- Signals
@@ -821,7 +834,13 @@ begin
       end if;
    end process ide_rst_proc;
 
+   cpu_snoop_stb <= '1' when ram_we_n_o = '0' and (ram_bhe_n_o = '0' or ram_ble_n_o = '0')
+                             and ram_addr_o(22 downto 21) = "00" else '0';
+
    i_cpu_wrapper : cpu_wrapper
+      generic map (
+         CPU040          => C_CPU040
+      )
       port map (
          reset           => cpu_reset_n,         -- active low, from minimig
          reset_out       => cpu_reset_out_n,     -- fx68k RESET instruction feedback
@@ -877,7 +896,10 @@ begin
 
          cpustate        => cpu_state,
          cacr            => cpu_cacr_o,
-         nmi_addr        => cpu_nmi_addr
+         nmi_addr        => cpu_nmi_addr,
+
+         snoop_stb       => cpu_snoop_stb,
+         snoop_addr      => ram_addr_o(20 downto 1)
       ); -- i_cpu_wrapper
 
    ---------------------------------------------------------------------------
