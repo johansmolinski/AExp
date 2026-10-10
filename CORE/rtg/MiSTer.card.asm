@@ -97,6 +97,17 @@ FB_BASE EQU $00400000 ; Megamiga: HyperRAM byte address of the board memory
 
 ; Megamiga: the blitter registers (rtg_blitter.vhd)
 BLT_BASE    EQU $b80800
+; Megamiga, October 2026: the card is also an autoconfig Zorro III board (manufacturer
+; 2011, product 102, 8 MB): the board memory at its base, the register page ($B80000)
+; at +$400000. An MMU setup maps a configured board (Commodore's 68040.library maps
+; nothing else), so FindCard takes the addresses from the board when there is one and
+; MiSTer's fixed addresses only without it. The routines below read them from MemBase,
+; MemEnd and BltBase (always through an address register: a PC-relative operand is a
+; program space access and could come from the 68040's instruction cache).
+BOARD_MANUF EQU 2011
+BOARD_PROD  EQU 102
+BOARD_REGS  EQU $400000+(REGISTER_BASE&$fff)
+_LVOFindConfigDev EQU -72
 BLT_SRC     EQU $00     ; long: source byte address of the first line to do
 BLT_DST     EQU $04     ; long: destination byte address of the first line
 BLT_SSTRIDE EQU $08     ; word: signed source line distance
@@ -371,12 +382,57 @@ FindCard:
 ;  BoardInfo struct supplied by the caller, the rtg.library, for example
 ;  the MemoryBase, MemorySize and RegisterBase fields.
 
-        move.l  #MEMORY_SIZE  ,PSSO_BoardInfo_MemorySize(a0)
-        move.l  #REGISTER_BASE,PSSO_BoardInfo_RegisterBase(a0)
-        move.l  #MEMORY_BASE  ,PSSO_BoardInfo_MemoryBase(a0)
-        
+;        move.l  #MEMORY_SIZE  ,PSSO_BoardInfo_MemorySize(a0)
+;        move.l  #REGISTER_BASE,PSSO_BoardInfo_RegisterBase(a0)
+;        move.l  #MEMORY_BASE  ,PSSO_BoardInfo_MemoryBase(a0)
+;        
+;        moveq   #-1,d0
+;        rts
+; Megamiga: the autoconfig board if there is one, else the fixed addresses
+        movem.l d2-d3/a2/a6,-(sp)
+        movea.l a0,a2
+        move.l  #REGISTER_BASE,d2
+        move.l  #MEMORY_BASE,d3
+        movea.l $4.w,a6
+        lea     expansionLibName(pc),a1
+        moveq   #0,d0
+        jsr     _LVOOpenLibrary(a6)
+        tst.l   d0
+        beq.s   .set
+        movea.l d0,a6
+        suba.l  a0,a0
+        move.l  #BOARD_MANUF,d0
+        moveq   #BOARD_PROD,d1
+        jsr     _LVOFindConfigDev(a6)
+        tst.l   d0
+        beq.s   .close
+        movea.l d0,a0
+        bclr    #1,14(a0)               ; cd_Flags: CDB_CONFIGME - the board is ours
+        move.l  32(a0),d3               ; cd_BoardAddr: the board memory
+        move.l  d3,d2
+        add.l   #BOARD_REGS,d2          ; the registers
+.close: movea.l a6,a1
+        movea.l $4.w,a6
+        jsr     _LVOCloseLibrary(a6)
+.set:   move.l  #MEMORY_SIZE,PSSO_BoardInfo_MemorySize(a2)
+        move.l  d2,PSSO_BoardInfo_RegisterBase(a2)
+        move.l  d3,PSSO_BoardInfo_MemoryBase(a2)
+        lea     MemBase(pc),a0
+        move.l  d3,(a0)+                ; MemBase
+        add.l   #MEMORY_SIZE,d3
+        move.l  d3,(a0)+                ; MemEnd
+        add.l   #BLT_BASE-REGISTER_BASE,d2
+        move.l  d2,(a0)                 ; BltBase
+        movem.l (sp)+,d2-d3/a2/a6
         moveq   #-1,d0
         rts
+
+MemBase:
+        dc.l    MEMORY_BASE             ; the board memory
+MemEnd:
+        dc.l    MEMORY_BASE+MEMORY_SIZE
+BltBase:
+        dc.l    BLT_BASE                ; the blitter registers
 
 ;------------------------------------------------------------------------------
 InitCard:
@@ -662,7 +718,9 @@ SetPanning:
 
         movea.l PSSO_BoardInfo_RegisterBase(a0),a0
         move.l  a1,d0
-        sub.l   #MEMORY_BASE,d0
+        ;sub.l   #MEMORY_BASE,d0
+        lea     MemBase(pc),a1          ; Megamiga: the board's address
+        sub.l   (a1),d0
         add.l   #FB_BASE,d0
         BUG     "RTG:ADDRESS = %lx",d0
         move.l  d0,REG_ADDRESS(a0)
@@ -917,7 +975,9 @@ WaitBlitter:
 ;------------------------------------------------------------------------------
 ;  void WaitBlitter(struct BoardInfo *bi)
 
-.wait:  btst    #0,BLT_BASE+BLT_CMD+1
+        lea     BltBase(pc),a1
+        movea.l (a1),a1
+.wait:  btst    #0,BLT_CMD+1(a1)
         bne.s   .wait
         rts
 
@@ -933,7 +993,7 @@ FillRect:
 ;                WORD w, WORD h, ULONG pen, UBYTE mask, RGBFTYPE format)
 ;  a0 bi, a1 ri, d0 x, d1 y, d2 w, d3 h, d4 pen, d5 mask, d7 format
 
-        movem.l d0-d7/a2,-(sp)
+        movem.l d0-d7/a2-a3,-(sp)
         cmp.l   #16,d7
         bhs     .default
         moveq   #0,d6
@@ -948,9 +1008,10 @@ FillRect:
         beq     .done                   ; no plane at all: nothing changes
 .nomask:
         move.l  RI_Memory(a1),a2
-        cmp.l   #MEMORY_BASE,a2
+        lea     MemBase(pc),a3          ; a3: MemBase, MemEnd, BltBase
+        cmp.l   (a3),a2
         blo     .default
-        cmp.l   #MEMORY_BASE+MEMORY_SIZE,a2
+        cmp.l   4(a3),a2
         bhs     .default
         ext.l   d0
         ext.l   d1
@@ -978,21 +1039,21 @@ FillRect:
         bne.s   .p4
         swap    d4
         clr.w   d4
-.p4:
-.wait:  btst    #0,BLT_BASE+BLT_CMD+1
+.p4:    movea.l 8(a3),a3                ; a3: the blitter
+.wait:  btst    #0,BLT_CMD+1(a3)
         bne.s   .wait
-        move.l  a2,BLT_BASE+BLT_DST
-        move.w  d5,BLT_BASE+BLT_DSTRIDE
-        move.w  d2,BLT_BASE+BLT_WIDTH
-        move.w  d3,BLT_BASE+BLT_HEIGHT
-        move.l  d4,BLT_BASE+BLT_PAT
-        move.w  d6,BLT_BASE+BLT_BPP
-        move.w  d7,BLT_BASE+BLT_MASK
-        move.w  #1,BLT_BASE+BLT_CMD
-.done:  movem.l (sp)+,d0-d7/a2
+        move.l  a2,BLT_DST(a3)
+        move.w  d5,BLT_DSTRIDE(a3)
+        move.w  d2,BLT_WIDTH(a3)
+        move.w  d3,BLT_HEIGHT(a3)
+        move.l  d4,BLT_PAT(a3)
+        move.w  d6,BLT_BPP(a3)
+        move.w  d7,BLT_MASK(a3)
+        move.w  #1,BLT_CMD(a3)
+.done:  movem.l (sp)+,d0-d7/a2-a3
         rts
 .default:
-        movem.l (sp)+,d0-d7/a2
+        movem.l (sp)+,d0-d7/a2-a3
         move.l  PSSO_BoardInfo_FillRectDefault(a0),-(sp)
         rts
 
@@ -1003,7 +1064,7 @@ BlitRect:
 ;                WORD dx, WORD dy, WORD w, WORD h, UBYTE mask, RGBFTYPE format)
 ;  a0 bi, a1 ri, d0 sx, d1 sy, d2 dx, d3 dy, d4 w, d5 h, d6 mask, d7 format
 
-        movem.l d0-d7/a2-a3,-(sp)
+        movem.l d0-d7/a1-a3,-(sp)
         cmp.l   #16,d7
         bhs     .default
         and.w   #$ff,d6
@@ -1017,10 +1078,10 @@ BlitRect:
         bsr     CopyRect
         tst.l   d0
         bne     .default
-.none:  movem.l (sp)+,d0-d7/a2-a3
+.none:  movem.l (sp)+,d0-d7/a1-a3
         rts
 .default:
-        movem.l (sp)+,d0-d7/a2-a3
+        movem.l (sp)+,d0-d7/a1-a3
         move.l  PSSO_BoardInfo_BlitRectDefault(a0),-(sp)
         rts
 
@@ -1033,7 +1094,7 @@ BlitRectNoMaskComplete:
 ;  a0 bi, a1 sri, a2 dri, d0 sx, d1 sy, d2 dx, d3 dy, d4 w, d5 h, d6 opcode,
 ;  d7 format
 
-        movem.l d0-d7/a2-a3,-(sp)
+        movem.l d0-d7/a1-a3,-(sp)
         cmp.b   #$0c,d6                 ; only the plain copy (minterm SRC)
         bne     .default
         cmp.l   #16,d7
@@ -1044,10 +1105,10 @@ BlitRectNoMaskComplete:
         bsr     CopyRect
         tst.l   d0
         bne     .default
-        movem.l (sp)+,d0-d7/a2-a3
+        movem.l (sp)+,d0-d7/a1-a3
         rts
 .default:
-        movem.l (sp)+,d0-d7/a2-a3
+        movem.l (sp)+,d0-d7/a1-a3
         move.l  PSSO_BoardInfo_BlitRectNoMaskCompleteDefault(a0),-(sp)
         rts
 
@@ -1055,7 +1116,7 @@ BlitRectNoMaskComplete:
 ; CopyRect: a2 source RenderInfo, a3 destination RenderInfo, d0 sx, d1 sy,
 ; d2 dx, d3 dy, d4 w, d5 h, d6.w plane mask ($FF = none), d7 format. Starts
 ; the copy and returns d0 = 0, or d0 = 1 if the engine cannot do it (nothing
-; started). Changes d0-d7/a2-a3.
+; started). Changes d0-d7/a1-a3.
 ;------------------------------------------------------------------------------
 CopyRect:
         move.w  d6,-(sp)                ; the mask, until the registers are free
@@ -1078,18 +1139,19 @@ CopyRect:
         mulu.w  d6,d0
         mulu.w  d6,d2
         move.l  RI_Memory(a2),d6        ; source: Memory + sy * bpr + sx
-        cmp.l   #MEMORY_BASE,d6
+        lea     MemBase(pc),a1          ; a1: MemBase, MemEnd, BltBase
+        cmp.l   (a1),d6
         blo     .no
-        cmp.l   #MEMORY_BASE+MEMORY_SIZE,d6
+        cmp.l   4(a1),d6
         bhs     .no
         add.l   d0,d6
         move.w  RI_BytesPerRow(a2),d0
         mulu.w  d0,d1
         add.l   d1,d6                   ; d6: source, d0.w: source stride
         move.l  RI_Memory(a3),d7        ; destination
-        cmp.l   #MEMORY_BASE,d7
+        cmp.l   (a1),d7
         blo     .no
-        cmp.l   #MEMORY_BASE+MEMORY_SIZE,d7
+        cmp.l   4(a1),d7
         bhs     .no
         add.l   d2,d7
         move.w  RI_BytesPerRow(a3),d2
@@ -1108,17 +1170,17 @@ CopyRect:
         add.l   d3,d7
         neg.l   d0
         neg.l   d2
-.fwd:
-.wait:  btst    #0,BLT_BASE+BLT_CMD+1
+.fwd:   movea.l 8(a1),a1                ; a1: the blitter
+.wait:  btst    #0,BLT_CMD+1(a1)
         bne.s   .wait
-        move.l  d6,BLT_BASE+BLT_SRC
-        move.l  d7,BLT_BASE+BLT_DST
-        move.w  d0,BLT_BASE+BLT_SSTRIDE
-        move.w  d2,BLT_BASE+BLT_DSTRIDE
-        move.w  d4,BLT_BASE+BLT_WIDTH
-        move.w  d5,BLT_BASE+BLT_HEIGHT
-        move.w  (sp),BLT_BASE+BLT_MASK
-        move.w  #2,BLT_BASE+BLT_CMD
+        move.l  d6,BLT_SRC(a1)
+        move.l  d7,BLT_DST(a1)
+        move.w  d0,BLT_SSTRIDE(a1)
+        move.w  d2,BLT_DSTRIDE(a1)
+        move.w  d4,BLT_WIDTH(a1)
+        move.w  d5,BLT_HEIGHT(a1)
+        move.w  (sp),BLT_MASK(a1)
+        move.w  #2,BLT_CMD(a1)
 .none:  addq.l  #2,sp
         moveq   #0,d0
         rts
@@ -1159,9 +1221,10 @@ BlitTemplate:
         btst    #1,T_DrawMode(a2)       ; COMPLEMENT reads the destination
         bne     .default
         move.l  RI_Memory(a1),a4
-        cmp.l   #MEMORY_BASE,a4
+        lea     MemBase(pc),a5          ; a5: MemBase, MemEnd, BltBase (until .copy)
+        cmp.l   (a5),a4
         blo     .default
-        cmp.l   #MEMORY_BASE+MEMORY_SIZE,a4
+        cmp.l   4(a5),a4
         bhs     .default
         ext.l   d0
         ext.l   d1
@@ -1234,14 +1297,17 @@ BlitTemplate:
         lea     TmplHalf(pc),a0         ; alternate between the scratch areas
         move.l  (a0),a1
         eori.l  #TMPL_HALF,(a0)
-        add.l   #MEMORY_BASE+TMPL_OFF,a1
+        lea     MemBase(pc),a5
+        add.l   (a5),a1
+        add.l   #TMPL_OFF,a1
         lea     (a1,d7.l),a0
         move.l  a0,-(sp)                ; SRC
-        cmp.l   #MEMORY_BASE,a3         ; a template in the board memory:
+        cmp.l   (a5),a3                 ; a template in the board memory:
         blo.s   .copy                   ; the engine may still be writing it
-        cmp.l   #MEMORY_BASE+MEMORY_SIZE,a3
+        cmp.l   4(a5),a3
         bhs.s   .copy
-.wait0: btst    #0,BLT_BASE+BLT_CMD+1
+        movea.l 8(a5),a0
+.wait0: btst    #0,BLT_CMD+1(a0)
         bne.s   .wait0
 .copy:  move.w  T_BytesPerRow(a2),d0
         ext.l   d0
@@ -1254,21 +1320,23 @@ BlitTemplate:
         dbf     d0,.long
         add.l   a5,a3
         dbf     d3,.row
-.wait:  btst    #0,BLT_BASE+BLT_CMD+1
+        lea     BltBase(pc),a5
+        movea.l (a5),a5                 ; a5: the blitter
+.wait:  btst    #0,BLT_CMD+1(a5)
         bne.s   .wait
-        move.l  (sp)+,BLT_BASE+BLT_SRC
-        move.w  (sp)+,BLT_BASE+BLT_SSTRIDE
-        move.w  (sp)+,BLT_BASE+BLT_MASK
-        move.w  (sp)+,BLT_BASE+BLT_BPP
-        move.w  (sp)+,BLT_BASE+BLT_HEIGHT
-        move.w  (sp)+,BLT_BASE+BLT_WIDTH
-        move.l  (sp)+,BLT_BASE+BLT_BGPAT
-        move.l  (sp)+,BLT_BASE+BLT_PAT
-        move.w  (sp)+,BLT_BASE+BLT_TBYTES
-        move.w  (sp)+,BLT_BASE+BLT_TCTRL
-        move.w  (sp)+,BLT_BASE+BLT_DSTRIDE
-        move.l  (sp)+,BLT_BASE+BLT_DST
-        move.w  #3,BLT_BASE+BLT_CMD
+        move.l  (sp)+,BLT_SRC(a5)
+        move.w  (sp)+,BLT_SSTRIDE(a5)
+        move.w  (sp)+,BLT_MASK(a5)
+        move.w  (sp)+,BLT_BPP(a5)
+        move.w  (sp)+,BLT_HEIGHT(a5)
+        move.w  (sp)+,BLT_WIDTH(a5)
+        move.l  (sp)+,BLT_BGPAT(a5)
+        move.l  (sp)+,BLT_PAT(a5)
+        move.w  (sp)+,BLT_TBYTES(a5)
+        move.w  (sp)+,BLT_TCTRL(a5)
+        move.w  (sp)+,BLT_DSTRIDE(a5)
+        move.l  (sp)+,BLT_DST(a5)
+        move.w  #3,BLT_CMD(a5)
 .done:  movem.l (sp)+,d0-d7/a0-a5
         rts
 .default:
