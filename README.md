@@ -359,6 +359,13 @@ MiSTer there, such as AmigaVision, would otherwise wait for MiSTer-only
 hardware such as the shared folder and hang. MiSTer's own `MiSTer.card`
 does not work with this card; use the one from `Megamiga_RTG.adf`.
 
+The card is also an autoconfig Zorro III board (8 MB, manufacturer 2011,
+product 102): its board memory at the board's address and its registers
+$400000 above it. A system that switches the MMU on - the 68040's
+`68040.library`, MMULib, Linux - only maps memory and configured boards,
+so the driver from `Megamiga_RTG.adf` uses the board's addresses when it
+finds the board; the fixed addresses above remain for older drivers.
+
 You need Kickstart 3.x, Workbench 3.x and
 [Picasso96 2.0](https://aminet.net/package/driver/video/Picasso96) from
 Aminet. Install Picasso96 first, then copy the driver from the

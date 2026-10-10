@@ -1486,6 +1486,43 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   and Chip RAM coherency against a testbench DMA write with its snoop -
   PASS; the TG68K build of the same program (CPU040 = 0) PASS. Mutants:
   walker halves swapped -> hang; snoop off -> $BAA9 (stale $11112222).
+  BUILD b (after two fixes, `~/aexp-builds/Megamiga-cpu040-b`): WNS +0.014,
+  WHS +0.030, main_clk +1.587, 75.8k LUTs, 93.5 BRAM. Fix 1: build a missed
+  by -0.41 ns on clk4x -> main_clk, sdram_ctrl's cpu_ack through the core's
+  clock enable (19 levels): cpu_wrapper registers the RAM answer (ram_rdy_r /
+  ram_dat_r, one CPU clock per RAM access) and drops the ramsel PORT in that
+  clock (ram_hold) so amiga_sdram's cs, which pulses low on ready&cyc for the
+  020, does not come back for a second access (the SDRAM model's read/write
+  counts are identical before and after). Fix 2: CORE.xdc's CPU->SDRAM
+  multicycle named `i_cpu_wrapper/cpu_inst_p/*`; inside the generate block
+  the instance is `g_tg68k.cpu_inst_p`/`g_ap040.cpu_inst_p` - now
+  `*cpu_inst_p/*`. HARDWARE (user, 2026-10-10): boots, SysInfo "68040" with
+  FPU and a big speed-up; RTG gave a black screen.
+  RTG ON THE 68040: Commodore's 68040.library 37.30 (OS 3.1 Install disk,
+  disassembled) switches the MMU on whenever TC is writable: at 0x9f4a it
+  builds tables for the first 4 KB, $BC0000 (256 KB), $D80000 and $F00000
+  (512 KB each), the ROM, PCMCIA/$E00000 when present, the memory list and
+  every FindConfigDev board without ERTF_MEMLIST, then at 0x646 loads
+  URP/SRP/TC and CLEARS ALL FOUR TTRs. MiSTer's RTG card sits at fixed
+  addresses ($B80100, $02000000) that are neither, so Picasso96's first
+  access faults. FIX: the card is also an autoconfig Zorro III I/O board
+  (8 MB, 2011/102, after the Z3 RAM board in the chain, so $41000000 with
+  the RAM board): +0 = the board memory (sel_rtg), +$400000 = the $B80000
+  register page repeated every 4 KB (chip_addr remapped to $B80xxx and
+  fastchip_sel, so main.vhd's RTG/blitter decode is unchanged). The fixed
+  addresses stay. ap040 compat patch: cache_z3_base0 is A31..A24 (exactly
+  the 16 MB RAM board) - the 128 MB window held the RTG board too and would
+  have cached it with the MMU off. MiSTer.card: FindCard takes the
+  addresses from the board (FindConfigDev, clears CDB_CONFIGME), else the
+  fixed ones; the blitter routines read MemBase/MemEnd/BltBase through an
+  address register (never PC-relative: a program-space read could come from
+  the 040's I-cache); BlitRect/BlitRectNoMaskComplete also save a1 (CopyRect
+  uses it). SIM: e2e040 configures the board and checks both halves against
+  the fixed addresses (ID, palette, blitter ID, page repeat, long/byte
+  memory) on the 040 and TG68K - PASS; `~/aexp-work/cpu060/drvtest` = the
+  0.4 driver test (BOARD variant: the RIs and bases at $41000000) on both
+  CPUs. The driver test needs about 41 minutes and more than 2M clocks
+  (MAXCYC 20M).
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the

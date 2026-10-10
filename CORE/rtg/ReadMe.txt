@@ -3,7 +3,10 @@ Megamiga RTG - Picasso96 driver for the MEGA65
 
 This disk holds MiSTer's Picasso96 RTG driver, rebuilt for Megamiga: the
 graphics card has 4 MB of board memory (in the MEGA65's HyperRAM) at
-$02000000. Source: CORE/rtg/MiSTer.card.asm in the Megamiga repository
+$02000000, and on cores with the RTG autoconfig board (Zorro III, 2011/102)
+the driver uses that board's addresses instead - needed whenever the MMU is
+on (68040.library on a 68040, MMULib), because the MMU then only maps
+configured boards. Source: CORE/rtg/MiSTer.card.asm in the Megamiga repository
 (LGPL 2.1, Replay/FPGAArcade and MiSTer contributors).
 
 Requirements: a profile with the 68020 (e.g. A1200), Kickstart 3.x,
