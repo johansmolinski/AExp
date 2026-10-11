@@ -1614,6 +1614,37 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   unchanged (15,272): in-cache code is bound by the core without its
   speed-ups. A line fill now costs ~32 bus clocks end to end (2 slots + the
   island's queue and answer crossings), was ~75.
+  HARDWARE (user, 2026-10-11): build h boots; SysInfo 20,040 (Zorro III) /
+  20,032 (Zorro II) Dhrystones, up from 19,446; Slow-RAM-only 2,022 after a
+  boot without startup-sequence (610 before: SysInfo had landed in Chip RAM).
+  The user's direction: Slow RAM stays as slow as a trapdoor board; the target
+  is the 68040 with Zorro III RAM.
+  CORRECTION: TC64's release (doc/release-0.1.md) gets xSysInfo 1.10x an
+  A4000/040 with copyback OFF; the 47,413 / 1.44x of FINDINGS.md was not a
+  release figure. Against the A4000 we are level with TC64 already.
+  DHRYSTONE IN SIMULATION (`~/aexp-work/cpu060/dhry`: xSysInfo's Dhrystone,
+  as AP68040-pipelined's tb/perf/dhry, loaded into Zorro II RAM with the stack
+  there, DTT0 copyback like 68040.library's Fast RAM; bench/tb020.sv, 50
+  runs, 28 MHz clocks): TG68K 75,320; build h 67,872 (~20,900/s - matches the
+  board's 20,040); all speed-ups 33.4 MHz 50,944; all + copyback 33.4 MHz
+  47,008; store path (POST_STORES, STORE_BUF, FWD, PRECISE, SB_MMU) at 42 MHz
+  53,328; store path + copyback at 42 MHz 47,180 (1.44x build h). Dhrystone
+  is store-bound: write-through stores drain one per SDRAM slot.
+  cpu_wrapper `CPU040_OPTS` (bit per speed-up, bit 8 COPYBACK), main.vhd
+  `C_CPU040_OPTS`; the compat's copyback window `cb_win` now includes the
+  Zorro RAM windows (`cache_zwin`). This core's copyback is conservative: CINV
+  pushes dirty lines too, and an access that bypasses the cache pushes its
+  set first. TC64 shipped COPYBACK=0 ("unstable under disk load", unsolved,
+  doc/backlog.md); Commodore's 68040.library maps all Fast RAM copyback, so
+  a copyback build runs the whole system in copyback.
+  e2e040: a copyback section (TTRs CM = 01, 4 KB of Zorro lines read, written
+  dirty, read back, CPUSHA, CINVA, memory checked; code copied, CPUSHA, run).
+  PASS with OPTS 311 at 42 MHz, OPTS 256 + FAST 2, and OPTS 55. Mutant: pushed
+  data corrupted -> $BAC1. (Removing the CPUSHA is NOT a mutant here: CINV and
+  the cache-off reads push as well.)
+  BUILD i (`~/aexp-builds/Megamiga-cpu040-i`): OPTS 311 (store path +
+  copyback), 42.04 MHz, WNS +0.048. BUILD j (`Megamiga-cpu040-j`): OPTS 55
+  (store path, no copyback), WNS +0.018. Neither hardware-tested.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the

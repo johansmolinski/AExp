@@ -473,7 +473,8 @@ architecture synthesis of main is
       generic (
          CPU040         : integer := 0;
          CPU040_FAST    : integer := 0;
-         CPU040_FASTRAM : integer := 0
+         CPU040_FASTRAM : integer := 0;
+         CPU040_OPTS    : integer := 0
       );
       port (
          reset          : in  std_logic;                       -- ACTIVE LOW
@@ -557,6 +558,11 @@ architecture synthesis of main is
    -- C_CPU040 = 2 only: 1 = Fast RAM accesses and the AP68040's line fills go straight into
    -- the SDRAM controller (32 bits, 16-byte lines) instead of over the 16-bit CPU bus
    constant C_CPU040_FASTRAM : integer := 1;
+   -- C_CPU040 = 2 only: the AP68040's speed-ups one by one (cpu_wrapper.v CPU040_OPTS): bit 0
+   -- POST_STORES, 1 STORE_BUF, 2 FWD, 3 RAS, 4 PRECISE, 5 SB_MMU, 6 BTFN, 7 LDX, 8 COPYBACK.
+   -- 311 = the store path (posted stores, store buffer, forwarding, precise, MMU-on posting)
+   -- + copyback for the Zorro RAM
+   constant C_CPU040_OPTS  : integer := 311;
    -- a chipset write to Chip RAM ($000000-$1FFFFF: banked ram_addr_o[22:21] = 00), for the
    -- AP68040's data cache, which caches Chip RAM
    signal cpu_snoop_stb    : std_logic;
@@ -872,7 +878,8 @@ begin
       generic map (
          CPU040          => C_CPU040,
          CPU040_FAST     => C_CPU040_FAST,
-         CPU040_FASTRAM  => C_CPU040_FASTRAM
+         CPU040_FASTRAM  => C_CPU040_FASTRAM,
+         CPU040_OPTS     => C_CPU040_OPTS
       )
       port map (
          reset           => cpu_reset_n,         -- active low, from minimig
