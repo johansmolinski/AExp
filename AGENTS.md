@@ -30,8 +30,9 @@ the history file.
   submenus), `V0.3.1` (floppy buffers in SDRAM, master+slave HDF), 0.4.x
   (RTG card + blitter, text/plane masks/read-ahead, PMOD serial), 0.5.0
   (network card), 0.5.1 (AmigaVision fix), 0.5.2 (32K ROM, hard disks
-  on SD card partitions). All hardware-confirmed by the user except the PMOD
-  serial port (no tester hardware).
+  on SD card partitions), 0.6.0 (68040, Megamiga.card). All
+  hardware-confirmed by the user except the PMOD serial port (no tester
+  hardware).
 
 ### Increment index (details: `doc/developers/history.md`)
 
@@ -80,7 +81,7 @@ Megamiga fork (johansmolinski):
   names at core start, PMOD serial port (0.4.2).
 - 0.5.0: network card (own Zorro II board, RMII MAC, SANA-II driver in
   `CORE/eth/`; design in `doc/developers/ethernet.md`).
-- `cpu040` (merged after 0.5.2): AP68040 pipelined core next to TG68K
+- 0.6.0 = `cpu040` (merged after 0.5.2): AP68040 pipelined core next to TG68K
   (`C_CPU040` = 2: `ap040_island.v` on its own 42.04 MHz clock, Fast RAM
   port `fp_*` into sdram_ctrl, `C_CPU040_OPTS` 311 = store-path speed-ups +
   copyback), chosen per profile by the CPU radio (68000 / 68020 / 68040; the

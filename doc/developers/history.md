@@ -1747,6 +1747,27 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   GPL-2.0-or-later (he will update the terms in his repository) - the open
   question from step 1 is closed.
 
+- **Megamiga 0.6.0 (2026-10-11): the 68040.** CORE_VERSION 0.6.0. Contents:
+  the 68040 entries above (island at 42.04 MHz, Fast RAM port, store-path
+  speed-ups + copyback, CPU radio 68000 / 68020 / 68040, TG68K and the
+  AP68040 side by side) plus the RTG driver rename: `MiSTer.card` ->
+  `Megamiga.card` (CORE/rtg/Megamiga.card.asm: board name, library name and
+  version string only), monitor `Devs/Monitors/Megamiga` with tool type
+  `BOARDTYPE=Megamiga`, screen modes `Megamiga:...` - CORE/rtg/rename_board.py
+  rewrites MiSTer_RTG.lha's monitor icon (tool type length field) and the
+  fixed-size name fields of Picasso96Settings (STHD from byte 8, BDNM, RSHD
+  from byte 14), so make_adf.sh stays reproducible. Reasons: the driver is no
+  longer MiSTer's (board search, ID $4D01) and a MiSTer package's MiSTer.card
+  can no longer overwrite it. Manufacturer ID 2011 kept for now (registry:
+  "Reserved", Commodore's "hackers" number, also UAE's; a free ID can be
+  requested from Hyperion, support@hyperion-entertainment.com). scsi.device
+  as lide.device's name was discussed and rejected (Kickstart 3.x and the
+  3.1.4/3.2 updates have their own scsi.device); the clean way is Gayle IDE
+  for the A600/A1200 profiles, a later feature. README: 68040 section,
+  credits (Adam Polkosnik, Renee Cousins, Paul Honig), upgrade steps for the
+  driver rename, HDToolBox tool type SCSI_DEVICE_NAME=lide.device. Settings
+  file unchanged (211 bytes).
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).
