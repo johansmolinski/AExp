@@ -180,11 +180,11 @@ print_file_handles "HNDL_RM_FILES" "HANDLE_RM_FILE" $crtrom_man_max
 ##############################################################################
 # Megamiga: the read-only data device
 #
-# m2m-rodata.asm holds the constant data that does not fit below 0x7000, where
-# the RAMROM device window starts. It is assembled on its own into
-# m2m-rodata.rom (preloads the block RAM of C_DEV_AMIGA_RODATA, mega65.vhd),
-# and every label is exported to rodata_sym.asm as its window address, 0x7000 +
-# offset. qasm is called directly: the asm wrapper copies its output to the
+# m2m-rodata.asm holds constant data that does not need to be in the ROM. It
+# is assembled on its own into m2m-rodata.rom (preloads the block RAM of
+# C_DEV_AMIGA_RODATA, mega65.vhd), and every label is exported to
+# rodata_sym.asm as its window address, 0x8000 + offset (the RAMROM device
+# window is at 0x8000-0x8FFF since the M2M-UPSTREAM rom-32k change). qasm is called directly: the asm wrapper copies its output to the
 # clipboard (xclip), which keeps pipes open.
 ##############################################################################
 
@@ -209,7 +209,7 @@ function hex(s,   i, d, v) {
     for (i = 1; i <= length(s); i++) { d = index("0123456789ABCDEF", substr(s, i, 1)) - 1; v = v * 16 + d }
     return v
 }
-{ printf("%-31s .EQU 0x%04X\n", $1, hex($3) + 28672) }' >> rodata_sym.asm
+{ printf("%-31s .EQU 0x%04X\n", $1, hex($3) + 32768) }' >> rodata_sym.asm
 RD_WORDS=$(wc -l < m2m-rodata.rom)
 if [ "$RD_WORDS" -gt 4096 ]; then
     echo "ERROR: m2m-rodata.rom has $RD_WORDS words, the device holds 4096"
@@ -222,12 +222,14 @@ ASM_RC=$?
 ##############################################################################
 # Trim the variables off the ROM image and guard the Shell-ROM budget.
 #
-# QNICE reserves 0x7000-0x7FFF for memory-mapped I/O, so the usable ROM is
-# 0x0000-0x6FFF = 28672 words. The assembler does NOT check this; an overflow
-# would otherwise fail obscurely later (in Vivado).
+# Megamiga (M2M-UPSTREAM rom-32k): the RAMROM device window is at 0x8000-0x8FFF,
+# at the start of the RAM, so the whole ROM 0x0000-0x7FFF = 32768 words is
+# usable (originally the window took 0x7000-0x7FFF and left 28672 words). The
+# assembler does NOT check this; an overflow would otherwise fail obscurely
+# later (in Vivado).
 #
 # qasm2rom serializes every word of the .out file in source order and ignores
-# addresses, so the words that ".ORG 0x8000" and ".ORG 0xFEE0" reserve for the
+# addresses, so the words that ".ORG 0x9000" and ".ORG 0xFEE0" reserve for the
 # variables get appended to the ROM image as zero words. They land at ROM
 # addresses the CPU can never read, but they inflate the image and made a plain
 # "wc -l" report a full ROM ~600 words too early.
@@ -236,7 +238,7 @@ ASM_RC=$?
 # M2M/QNICE/vhdl/block_rom.vhd) loads file line N into ROM address N. So inside
 # the ROM the address of a record always equals its line number minus one, and
 # the ROM image is exactly the leading run of .out records for which that holds.
-# Everything after that run has to be a variable (address >= 0x7000); anything
+# Everything after that run has to be a variable (address >= 0x9000); anything
 # else means the source layout changed in a way qasm2rom cannot serialize
 # correctly at all, so fail loudly instead of truncating something real.
 #
@@ -246,7 +248,7 @@ ASM_RC=$?
 # silently corrupt the free-ROM figure that the Shell logs at boot (it computes
 # M2M$RAMROM_DATA - END_OF_ROM).
 ##############################################################################
-ROM_MAX_WORDS=28672
+ROM_MAX_WORDS=32768
 
 # The asm wrapper deletes m2m-rom.rom up front and only regenerates it on success,
 # so a missing .rom (or a non-zero exit) means assembly failed -- fail the build
@@ -281,7 +283,7 @@ function hex(s,   i, c, v, d) {
     if (a < 0)                { err = "unparsable address in line " NR ": " $1; exit 1 }
     if (!done && a == NR - 1) { n = NR; next }
     done = 1
-    if (a < 28672)            { err = "address " $1 " (line " NR ") is inside the ROM but outside the contiguous image"; exit 1 }
+    if (a < 32768)            { err = "address " $1 " (line " NR ") is inside the ROM but outside the contiguous image"; exit 1 }
 }
 END {
     if (err != "")  { print "ERROR: m2m-rom.out cannot be trimmed: " err; exit 1 }
@@ -308,7 +310,7 @@ case "$EOR_ADDR" in
     0x[0-9A-Fa-f]*) ;;
     *)  echo "ERROR: END_OF_ROM not found in the label list of m2m-rom.lis."
         echo "       It has to stay the last ROM item, directly before the"
-        echo "       variables section (.ORG 0x8000) in m2m-rom.asm."
+        echo "       variables section (.ORG 0x9000) in m2m-rom.asm."
         exit 1 ;;
 esac
 
@@ -329,7 +331,7 @@ head -n "$ROM_WORDS" m2m-rom.rom > m2m-rom.rom.tmp && mv m2m-rom.rom.tmp m2m-rom
 
 if [ "$ROM_WORDS" -gt "$ROM_MAX_WORDS" ]; then
     echo "ERROR: m2m-rom.rom is ${ROM_WORDS} words, exceeds the ${ROM_MAX_WORDS}-word"
-    echo "       Shell-ROM budget (0x0000-0x6FFF; 0x7000+ is QNICE MMIO)."
+    echo "       Shell-ROM budget (0x0000-0x7FFF; 0x8000-0x8FFF is the QNICE device window)."
     exit 1
 fi
 echo "Shell ROM: ${ROM_WORDS}/${ROM_MAX_WORDS} words."

@@ -29,7 +29,8 @@ the history file.
   `V0.3.0` (68020, Z3 RAM, AGA, SuperHires, machine profiles, nested
   submenus), `V0.3.1` (floppy buffers in SDRAM, master+slave HDF), 0.4.x
   (RTG card + blitter, text/plane masks/read-ahead, PMOD serial), 0.5.0
-  (network card). All hardware-confirmed by the user except the PMOD
+  (network card), 0.5.1 (AmigaVision fix), 0.5.2 (32K ROM, hard disks
+  on SD card partitions). All hardware-confirmed by the user except the PMOD
   serial port (no tester hardware).
 
 ### Increment index (details: `doc/developers/history.md`)
@@ -83,6 +84,9 @@ Megamiga fork (johansmolinski):
   TG68K (`C_CPU040`), walker bridge + Chip RAM snoop in cpu_wrapper.
 - 0.5.1: RTG ID register `$4D01`, not MiSTer's `$5001` (AmigaVision took
   the core for a MiSTer and hung on the MiSTer shared-folder mailbox).
+- 0.5.2: 32K QNICE ROM (M2M exception 15 `rom-32k`, window at
+  `0x8000`; HW-confirmed) + hard disks on SD card partitions through HDF
+  link files (`MEGAMIGA-PARTITION n`, MBR type `0x7F`, `HDF_LINK`).
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
@@ -117,7 +121,7 @@ the dated facts.
 
 ## Repository map
 
-- `M2M/` — the framework. **NEVER modify**, with FOURTEEN sanctioned
+- `M2M/` — the framework. **NEVER modify**, with FIFTEEN sanctioned
   exceptions (all testbeds for a later M2M upstream merge, tagged
   `M2M-UPSTREAM <name>` in-code, greppable): (1) `interlace` — new
   `video_fl_i` input through framework → av_pipeline → digital_pipeline
@@ -223,6 +227,14 @@ the dated facts.
   `MEGA65_Core` for the network card (floppy-pins pattern, original tie-offs
   kept as comments). Added in the JS fork 2026-10-09, NOT maintainer-approved
   yet.
+  (15) `rom-32k` — the QNICE 4K device window moved from `0x7000`-`0x7FFF`
+  (over the top of the ROM) to `0x8000`-`0x8FFF` (the bottom of the RAM):
+  `M2M/vhdl/QNICE/qnice.vhd` decodes nibble 8 for the window, enables the ROM
+  on all of `0x0000`-`0x7FFF` and keeps the RAM off the window; every window
+  constant in `M2M/rom/sysdef.asm` is `0x8xxx` (77, all window addresses), the
+  develop-mode `.ORG` in `main.asm` is `0x9000`. The firmware gets the whole
+  32,768-word ROM, the RAM gives up 4,096 words. Added in the JS fork
+  2026-10-10, hardware-confirmed, NOT maintainer-approved yet.
   All other framework fixes
   go into `CORE/CORE.xdc` (constraints) or get documented for upstreaming.
   Git remote `upstream` = sy2002/MiSTer2MEGA65 (master = V2.0.1).
@@ -423,7 +435,11 @@ the dated facts.
   m2m-rom.asm | sed '/^#.*/d' > __t.asm && "$TMP"/qasm __t.asm
   m2m-rom.out && "$TMP"/qasm2rom m2m-rom.out m2m-rom.rom` (verified to
   produce a `.def`-identical ROM vs the VM build).
-  **The firmware ROM must end below `0x7000`**: M2M maps the 4K RAMROM/device
+  **Megamiga since 2026-10-10: the ROM ends below `0x8000` (32768 words) -
+  M2M exception 15 moved the window to `0x8000`-`0x8FFF`; `make_rom.sh` checks
+  that limit, exports rodata labels as `0x8000` + offset and expects the
+  variables at `0x9000`+. The AExp text that follows describes the old
+  layout.** The firmware ROM must end below `0x7000`: M2M maps the 4K RAMROM/device
   window at `0x7000`-`0x7FFF`, so only 28672 words of the 32K-word QNICE ROM
   are usable; `make_rom.sh` enforces this (ported from the C64 core): it
   derives the image size from the serialized addresses rather than from

@@ -178,7 +178,8 @@ signal sd_cd_int                  : std_logic;
 signal sd_cd_ext                  : std_logic;
 
 -- M2M specific QNICE MMIO signals
-signal ramrom_en                 : std_logic;                        -- $7000
+signal ramrom_en                 : std_logic;                        -- $8000 (M2M-UPSTREAM rom-32k)
+signal ram_ce                    : std_logic;
 signal ramrom_we                 : std_logic;
 signal ramrom_data_out           : std_logic_vector(15 downto 0);
 signal csr_en                    : std_logic;                        -- $FFE0
@@ -311,7 +312,7 @@ begin
       port map
       (
          clk                  => clk50_i,
-         ce                   => ram_en,
+         ce                   => ram_ce,
          address              => cpu_addr(14 downto 0),
          we                   => cpu_data_dir,
          data_i               => cpu_data_out,
@@ -448,7 +449,8 @@ begin
          cpu_wait_for_data    => cpu_wait_for_data,
 
          -- ROM is enabled when the address is < $8000 and the CPU is reading
-         -- But because we map the general purpose 4k MMIO window to $7000, this is only a "maybe"
+         -- M2M-UPSTREAM rom-32k (Megamiga 2026-10-10): the 4k MMIO window is at $8000 now, so the
+         -- whole 32k-word ROM is visible; originally the window at $7000 made this a "maybe"
          rom_enable           => rom_en_maybe,
          rom_busy             => '0',
 
@@ -508,7 +510,7 @@ begin
       );
 
    -- Additional MiSTer2MEGA65 specific MMIO (refer to M2M/rom/sysdef.asm for a memory map and more details)
-   -- 0x7000: 4k MMIO window
+   -- 0x8000: 4k MMIO window (M2M-UPSTREAM rom-32k; originally 0x7000, see below)
    -- 0xFFE0: Control and status register
    -- 0xFFE1: OSM x|y coordinates (in chars)
    -- 0xFFE2: OSM dx|dy width|height (in chars)
@@ -516,11 +518,17 @@ begin
    -- 0xFFE8: Low active realtime snapshot of the currently pressed keys (read-only)
    -- 0xFFF0 .. 0xFFF3: access 256-bit general purpose control flags via address/data pairs
    -- 0xFFF4 -- 0xFFF5: 4k-segmented access to RAMs, ROMs and similarily behaving devices
-   ramrom_en                  <= '1' when cpu_addr(15 downto 12) = x"7" else '0';
+   -- M2M-UPSTREAM rom-32k (Megamiga 2026-10-10): the window moved from $7000-$7FFF (the top 4k
+   -- words of the ROM) to $8000-$8FFF (the bottom 4k words of the RAM), so the firmware can use
+   -- the whole 32k-word ROM; the RAM gives up those 4k words instead. Original:
+   -- ramrom_en                  <= '1' when cpu_addr(15 downto 12) = x"7" else '0';
+   -- rom_en                     <= rom_en_maybe and not ramrom_en;
+   ramrom_en                  <= '1' when cpu_addr(15 downto 12) = x"8" else '0';
    ramrom_we                  <= ramrom_en and cpu_data_dir and cpu_data_valid;
    ramrom_data_out            <= ramrom_data_i when ramrom_en = '1' and ramrom_we = '0' else (others => '0');
 
-   rom_en                     <= rom_en_maybe and not ramrom_en;
+   rom_en                     <= rom_en_maybe;
+   ram_ce                     <= ram_en and not ramrom_en;
 
    csr_en                     <= '1' when cpu_addr = x"FFE0" else '0';
    csr_we                     <= csr_en and cpu_data_dir and cpu_data_valid;

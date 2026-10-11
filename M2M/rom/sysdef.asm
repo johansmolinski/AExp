@@ -208,7 +208,7 @@ M2M$SDRAM           .EQU 0x0005     ; @TODO/RESERVED for future R4 boards
 M2M$SYS_INFO        .EQU 0x00FF     ; Device for System Info
 
 M2M$RAMROM_4KWIN    .EQU 0xFFF5     ; 4k window selector
-M2M$RAMROM_DATA     .EQU 0x7000     ; 4k MMIO window to read/write
+M2M$RAMROM_DATA     .EQU 0x8000     ; 4k MMIO window to read/write
 
 ; ----------------------------------------------------------------------------
 ; Sysinfo device: Selectors and addresses
@@ -225,27 +225,27 @@ M2M$SYS_CORE        .EQU 0x0030     ; info about the MiSTer core
 ; firmware. They enable the ability to specify the hardware screen resolution
 ; in characters as well as the start coordinates and size of the main screen.
 ; The position and size of the option menu is deducted.
-M2M$SYS_DXDY        .EQU 0x7000
-M2M$SHELL_M_XY      .EQU 0x7001     ; main screen: x|y start coordinates
-M2M$SHELL_M_DXDY    .EQU 0x7002     ; main screen: dx|dy width and height
+M2M$SYS_DXDY        .EQU 0x8000
+M2M$SHELL_M_XY      .EQU 0x8001     ; main screen: x|y start coordinates
+M2M$SHELL_M_DXDY    .EQU 0x8002     ; main screen: dx|dy width and height
 
 ; M2M$SYS_CORE registers: measurement from ASCAL
-M2M$SYS_CORE_X      .EQU 0x7000     ; visible dx measurement from ASCAL
-M2M$SYS_CORE_Y      .EQU 0x7001     ; visible dy measurement from ASCAL
+M2M$SYS_CORE_X      .EQU 0x8000     ; visible dx measurement from ASCAL
+M2M$SYS_CORE_Y      .EQU 0x8001     ; visible dy measurement from ASCAL
 
 ; M2M$SYS_CORE registers: measurement from M2M component
-M2M$SYS_CORE_H_PXLS .EQU 0x7002     ; visible dx
-M2M$SYS_CORE_V_PXLS .EQU 0x7003     ; visible dy
-M2M$SYS_CORE_H_PLSE .EQU 0x7004     ; horizontal pulse
-M2M$SYS_CORE_H_BP   .EQU 0x7005     ; horizontal back porch
-M2M$SYS_CORE_H_FP   .EQU 0x7006     ; horizontal front porch
-M2M$SYS_CORE_V_PLSE .EQU 0x7007     ; vertical pulse
-M2M$SYS_CORE_V_BP   .EQU 0x7008     ; vertical back porch
-M2M$SYS_CORE_V_FP   .EQU 0x7009     ; vertical front porch
-M2M$SYS_CORE_H_FREQ .EQU 0x700A     ; horizontal frequency in Hz
+M2M$SYS_CORE_H_PXLS .EQU 0x8002     ; visible dx
+M2M$SYS_CORE_V_PXLS .EQU 0x8003     ; visible dy
+M2M$SYS_CORE_H_PLSE .EQU 0x8004     ; horizontal pulse
+M2M$SYS_CORE_H_BP   .EQU 0x8005     ; horizontal back porch
+M2M$SYS_CORE_H_FP   .EQU 0x8006     ; horizontal front porch
+M2M$SYS_CORE_V_PLSE .EQU 0x8007     ; vertical pulse
+M2M$SYS_CORE_V_BP   .EQU 0x8008     ; vertical back porch
+M2M$SYS_CORE_V_FP   .EQU 0x8009     ; vertical front porch
+M2M$SYS_CORE_H_FREQ .EQU 0x800A     ; horizontal frequency in Hz
 
 ; M2M-UPSTREAM screen-center (AExp 2026-07-08): core video flags register
-M2M$SYS_CORE_FLAGS  .EQU 0x700B     ; core video flags (read-only)
+M2M$SYS_CORE_FLAGS  .EQU 0x800B     ; core video flags (read-only)
 M2M$SYS_CORE_FL_INT .EQU 0x0001     ; SYS_CORE_FLAGS bit 0: input is interlaced
 
 ; ----------------------------------------------------------------------------
@@ -281,7 +281,7 @@ M2M$CFG_OPTM_DEPS   .EQU 0x0313     ; Per-line menu dependency word (OPTM_DEP);
 
 ; M2M$CFG_WHS
 
-M2M$WHS_PAGES       .EQU 0x7FFF     ; Amount of pages in current WHS element
+M2M$WHS_PAGES       .EQU 0x8FFF     ; Amount of pages in current WHS element
 M2M$WHS_WELCOME     .EQU 0x0000     ; WHS array element: Welcome page
 M2M$WHS_HELP_INDEX  .EQU 0x0001     ; WHS array: Help pages start with index 1
 M2M$WHS_HELP_NEXT   .EQU 0x0100     ; WHS array element: Next help structure
@@ -289,29 +289,29 @@ M2M$WHS_PAGE_NEXT   .EQU 0x0001     ; WHS array element: Next page / prev page
 
 ; M2M$CFG_OPTM_DIM: Addresses
 
-M2M$SHELL_O_DX      .EQU 0x7000     ; Width of Help/Options menu
-M2M$SHELL_O_DY      .EQU 0x7001     ; Height of Help/Options menu
+M2M$SHELL_O_DX      .EQU 0x8000     ; Width of Help/Options menu
+M2M$SHELL_O_DY      .EQU 0x8001     ; Height of Help/Options menu
 
 ; M2M$CFG_GENERAL Addresses
 
-M2M$CFG_RP_COUNTER  .EQU 0x7001     ; keep reset for a "QNICE loop while"
-M2M$CFG_RP_PAUSE    .EQU 0x7002     ; pause core when any OSD opens
-M2M$CFG_RP_WELCOME  .EQU 0x7003     ; show the welcome screen in general
-M2M$CFG_RP_WLCM_RST .EQU 0x7004     ; show welcome screen after reset
-M2M$CFG_RP_KB_RST   .EQU 0x7005     ; connect the keyboard at reset
-M2M$CFG_RP_J1_RST   .EQU 0x7006     ; connect the joystick 1 at reset
-M2M$CFG_RP_J2_RST   .EQU 0x7007     ; connect the joystick 2 at reset
-M2M$CFG_RP_KB_OSD   .EQU 0x7008     ; connect the keyboard at OSD
-M2M$CFG_RP_J1_OSD   .EQU 0x7009     ; connect the joystick 1 at OSD
-M2M$CFG_RP_J2_OSD   .EQU 0x700A     ; connect the joystick 2 at OSD
+M2M$CFG_RP_COUNTER  .EQU 0x8001     ; keep reset for a "QNICE loop while"
+M2M$CFG_RP_PAUSE    .EQU 0x8002     ; pause core when any OSD opens
+M2M$CFG_RP_WELCOME  .EQU 0x8003     ; show the welcome screen in general
+M2M$CFG_RP_WLCM_RST .EQU 0x8004     ; show welcome screen after reset
+M2M$CFG_RP_KB_RST   .EQU 0x8005     ; connect the keyboard at reset
+M2M$CFG_RP_J1_RST   .EQU 0x8006     ; connect the joystick 1 at reset
+M2M$CFG_RP_J2_RST   .EQU 0x8007     ; connect the joystick 2 at reset
+M2M$CFG_RP_KB_OSD   .EQU 0x8008     ; connect the keyboard at OSD
+M2M$CFG_RP_J1_OSD   .EQU 0x8009     ; connect the joystick 1 at OSD
+M2M$CFG_RP_J2_OSD   .EQU 0x800A     ; connect the joystick 2 at OSD
 
-M2M$CFG_ASCAL_USAGE .EQU 0x700B     ; firmware treatment of ascal mode
-M2M$CFG_ASCAL_MODE  .EQU 0x700C     ; hardcoded ascal mode, if applicable
+M2M$CFG_ASCAL_USAGE .EQU 0x800B     ; firmware treatment of ascal mode
+M2M$CFG_ASCAL_MODE  .EQU 0x800C     ; hardcoded ascal mode, if applicable
 
-M2M$CFG_VD_AT_DELAY .EQU 0x700D     ; Anti-Thrashing delay (virtual drives)
-M2M$CFG_VD_ITERSIZE .EQU 0x700E     ; Bytes that are saving per flushing-iter.
+M2M$CFG_VD_AT_DELAY .EQU 0x800D     ; Anti-Thrashing delay (virtual drives)
+M2M$CFG_VD_ITERSIZE .EQU 0x800E     ; Bytes that are saving per flushing-iter.
 
-M2M$CFG_SAVEOSDCFG  .EQU 0x700F     ; Remember on-screen-menu settings
+M2M$CFG_SAVEOSDCFG  .EQU 0x800F     ; Remember on-screen-menu settings
 
 ; M2M$CFG_ASCAL_USAGE modes
 M2M$CFG_AUSE_CFG    .EQU 0x0000     ; use ASCAL_MODE from config.vhd
@@ -323,55 +323,55 @@ M2M$CFG_AUSE_AUTO   .EQU 0x0002     ; auto-sync via M2M$CFG_ASCAL_USAGE
 ; ----------------------------------------------------------------------------
 
 ; sysinfo addresses (data is configured by the user in globals.vhd)
-VD_NUM              .EQU 0x7000     ; amount of virtual drives
-VD_DEVICE           .EQU 0x7001     ; address of the vdrives.vhd device
-VD_RAM_BUFFERS      .EQU 0x7100     ; array of RAM buffers to store dsk images
+VD_NUM              .EQU 0x8000     ; amount of virtual drives
+VD_DEVICE           .EQU 0x8001     ; address of the vdrives.vhd device
+VD_RAM_BUFFERS      .EQU 0x8100     ; array of RAM buffers to store dsk images
 
 ; window selectors for vdrives.vhd
 VD_WIN_CAD          .EQU 0x0000     ; control and data registers
 VD_WIN_DRV          .EQU 0x0001     ; drive 0, next window = drive 1, ...
 
 ; VD_WIN_CAD: control and data registers
-VD_IMG_MOUNT        .EQU 0x7000     ; image mounted, lowest bit = drive 0
-VD_RO               .EQU 0x7001     ; read-only for currently mounted drive
-VD_SIZE_L           .EQU 0x7002     ; image file size, low word
-VD_SIZE_H           .EQU 0x7003     ; image file size, high word
-VD_TYPE             .EQU 0x7004     ; image file type (2-bit value)
-VD_B_ADDR           .EQU 0x7005     ; drive buffer: address
-VD_B_DOUT           .EQU 0x7006     ; drive buffer: data out (to drive)
-VD_B_WREN           .EQU 0x7007     ; drive buffer: write enable (also needs ack)
-VD_VDNUM            .EQU 0x7008     ; number of virtual drives
-VD_BLKSZ            .EQU 0x7009     ; block size for LBA in bytes
-VD_DRV_MOUNT        .EQU 0x700A     ; drive mounted, lowest bit = drive 0
+VD_IMG_MOUNT        .EQU 0x8000     ; image mounted, lowest bit = drive 0
+VD_RO               .EQU 0x8001     ; read-only for currently mounted drive
+VD_SIZE_L           .EQU 0x8002     ; image file size, low word
+VD_SIZE_H           .EQU 0x8003     ; image file size, high word
+VD_TYPE             .EQU 0x8004     ; image file type (2-bit value)
+VD_B_ADDR           .EQU 0x8005     ; drive buffer: address
+VD_B_DOUT           .EQU 0x8006     ; drive buffer: data out (to drive)
+VD_B_WREN           .EQU 0x8007     ; drive buffer: write enable (also needs ack)
+VD_VDNUM            .EQU 0x8008     ; number of virtual drives
+VD_BLKSZ            .EQU 0x8009     ; block size for LBA in bytes
+VD_DRV_MOUNT        .EQU 0x800A     ; drive mounted, lowest bit = drive 0
 
 ; VD_WIN_DRV (and onwards): virtual drive specific registers
-VD_LBA_L            .EQU 0x7000     ; SD LBA low word
-VD_LBA_H            .EQU 0x7001     ; SD LBA high word
-VD_BLKCNT           .EQU 0x7002     ; SD block count
-VD_BYTES_L          .EQU 0x7003     ; SD block address in bytes: low word
-VD_BYTES_H          .EQU 0x7004     ; SD block address in bytes: high word
-VD_SIZEB            .EQU 0x7005     ; SD block data amount in bytes
-VD_4K_WIN           .EQU 0x7006     ; SD block address in 4k win logic: window
-VD_4K_OFFS          .EQU 0x7007     ; SD block address in 4k win logic: offset
-VD_RD               .EQU 0x7008     ; SD read request
-VD_WR               .EQU 0x7009     ; SD write request
-VD_ACK              .EQU 0x700A     ; SD acknowledge
-VD_B_DIN            .EQU 0x700B     ; drive buffer: data in (from drive)
-VD_CACHE_DIRTY      .EQU 0x700C     ; cache dirty flag
-VD_CACHE_FLUSHING   .EQU 0x700D     ; cache flushing flag
-VD_CACHE_FLUSH_ST   .EQU 0x700E     ; cache flushing can start now
-VD_CACHE_FLUSH_DE   .EQU 0x700F     ; delay in ms between VD_WR and FLUSH_ST
+VD_LBA_L            .EQU 0x8000     ; SD LBA low word
+VD_LBA_H            .EQU 0x8001     ; SD LBA high word
+VD_BLKCNT           .EQU 0x8002     ; SD block count
+VD_BYTES_L          .EQU 0x8003     ; SD block address in bytes: low word
+VD_BYTES_H          .EQU 0x8004     ; SD block address in bytes: high word
+VD_SIZEB            .EQU 0x8005     ; SD block data amount in bytes
+VD_4K_WIN           .EQU 0x8006     ; SD block address in 4k win logic: window
+VD_4K_OFFS          .EQU 0x8007     ; SD block address in 4k win logic: offset
+VD_RD               .EQU 0x8008     ; SD read request
+VD_WR               .EQU 0x8009     ; SD write request
+VD_ACK              .EQU 0x800A     ; SD acknowledge
+VD_B_DIN            .EQU 0x800B     ; drive buffer: data in (from drive)
+VD_CACHE_DIRTY      .EQU 0x800C     ; cache dirty flag
+VD_CACHE_FLUSHING   .EQU 0x800D     ; cache flushing flag
+VD_CACHE_FLUSH_ST   .EQU 0x800E     ; cache flushing can start now
+VD_CACHE_FLUSH_DE   .EQU 0x800F     ; delay in ms between VD_WR and FLUSH_ST
 
 ; ----------------------------------------------------------------------------
 ; Automatically and manually loadable cartridges and ROMs
 ; ----------------------------------------------------------------------------
 
 ; sysinfo addresses (data is configured by the user in globals.vhd)
-CRTROM_MAN_NUM_A    .EQU 0x7000     ; amount of manually loadable CRTs/ROMs
-CRTROM_AUT_NUM_A    .EQU 0x7001     ; amount of automatically loadable ROMs
-CRTROM_MAN_BUFFERS  .EQU 0x7100     ; array of records: manually loadable
-CRTROM_AUT_BUFFERS  .EQU 0x7200     ; array of records: automatically loadable
-CRTROM_AUT_FILES    .EQU 0x7300     ; auto-load filesnames
+CRTROM_MAN_NUM_A    .EQU 0x8000     ; amount of manually loadable CRTs/ROMs
+CRTROM_AUT_NUM_A    .EQU 0x8001     ; amount of automatically loadable ROMs
+CRTROM_MAN_BUFFERS  .EQU 0x8100     ; array of records: manually loadable
+CRTROM_AUT_BUFFERS  .EQU 0x8200     ; array of records: automatically loadable
+CRTROM_AUT_FILES    .EQU 0x8300     ; auto-load filesnames
 
 ; Type of byte streaming device for receiving the CRT/ROM data
 CRTROM_TYPE_DEVICE  .EQU 0x0000     ; any QNICE compatible device
@@ -383,14 +383,14 @@ CTRROM_TYPE_OPTNL   .EQU 0x0004     ; optional ROM
 ; Control and status registers of a CRT/ROM device
 CRTROM_CSR_4KWIN    .EQU 0xFFFF     ; 4K window in the device addr. space
    
-CRTROM_CSR_STATUS   .EQU 0x7000     ; QNICE to device: load status (see below)
-CRTROM_CSR_FS_LO    .EQU 0x7001     ; filesize of CRT/ROM: low word
-CRTROM_CSR_FS_HI    .EQU 0x7002     ; filesize of CRT/ROM: high word
-CRTROM_CSR_PARSEST  .EQU 0x7010     ; device to QNICE: parse status
-CRTROM_CSR_PARSEE1  .EQU 0x7011     ; device to QNICE: error code
-CRTROM_CSR_ADDR_LO  .EQU 0x7012     ; device to QNICE: load address low word
-CRTROM_CSR_ADDR_HI  .EQU 0x7013     ; device to QNICE: load address high word
-CRTROM_CSR_ERR_STRT .EQU 0x7100     ; device to QNICE: status string
+CRTROM_CSR_STATUS   .EQU 0x8000     ; QNICE to device: load status (see below)
+CRTROM_CSR_FS_LO    .EQU 0x8001     ; filesize of CRT/ROM: low word
+CRTROM_CSR_FS_HI    .EQU 0x8002     ; filesize of CRT/ROM: high word
+CRTROM_CSR_PARSEST  .EQU 0x8010     ; device to QNICE: parse status
+CRTROM_CSR_PARSEE1  .EQU 0x8011     ; device to QNICE: error code
+CRTROM_CSR_ADDR_LO  .EQU 0x8012     ; device to QNICE: load address low word
+CRTROM_CSR_ADDR_HI  .EQU 0x8013     ; device to QNICE: load address high word
+CRTROM_CSR_ERR_STRT .EQU 0x8100     ; device to QNICE: status string
 
 ; QNICE to device: CRT/ROM load status
 CRTROM_CSR_ST_IDLE  .EQU 0x0000     ; device is initialized, no loading

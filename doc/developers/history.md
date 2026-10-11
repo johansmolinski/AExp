@@ -1448,6 +1448,67 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   (answering the `$DD4000` mailbox from the firmware) would be a feature of
   its own. Settings file unchanged (211 bytes).
 
+- **Megamiga 0.5.2, 32K ROM + HARD DISKS ON SD CARD PARTITIONS
+  (2026-10-10).** (1) M2M exception 15 `rom-32k` (see AGENTS.md): the QNICE
+  device window moved to `0x8000`-`0x8FFF`, so the firmware has the whole
+  32,768-word ROM (it was at 28650/28672). R6 build rom32k-a (WNS +0.012; the
+  thin paths are the known hr_rwds input and TG68K -> sdram `ram_cs`, not
+  QNICE) HARDWARE-CONFIRMED by the user: menu, ADF boot, HDF boot, an HDMI
+  filter (= `_PP_COPY` from the moved rodata window), settings saved.
+  Firmware side: core window constants `0x8xxx`, variables `.ORG 0x9000`,
+  `_PP_COPY` tests `> 0x7FFF`, release heap total 29152 -> 25056 (`HEAP_SIZE`
+  21536; HEAP 0x95E8 + 25056 = 0xF7C8, 1816 words for the 1536-word stack -
+  the margin is unchanged because variables and heap moved together), the
+  develop-mode heap is 0 (that mode has not fit for ages); `make_rom.sh`
+  exports rodata labels as 0x8000 + offset, ROM_MAX_WORDS 32768, variables
+  expected >= 0x9000. The QNICE RAM BRAM outputs 0 when not enabled (it shares
+  the ORed bus with the window). Test harnesses that relocate windows
+  (`~/aexp-work/fw-ide2/extract.py`: `0x81..`/`0x8000` -> `0xC1..`/`0xC000`)
+  must follow. (2) HDF LINK FILES (`HDF_LINK` in m2m-rom.asm): an .hdf file
+  under 512 bytes starting with `MEGAMIGA-PARTITION n` (n 1..4, any case)
+  makes the drive MBR partition n of that card - only type `0x7F` (the "local
+  / experimental use" type of the MBR list; no OS claims it), >= 64 KB, start
+  block > 0, signature 55 AA; anything else is refused (`WRN_HDF_PART`); the
+  other drive holding the same partition start -> `WRN_HDF_PDUP`. The FAT32
+  library reports ABSOLUTE card blocks (its mount stores the MBR start), so
+  the partition uses the same device handle and block calls as the HDF fast
+  path. Per-drive state block gained `HDF_PART`/`HDF_PST_LO/HI`
+  (`HDF_BLK_WORDS` 279); file mounts clear `HDF_PART`; `IDE_LBA2BLK` returns
+  start + LBA for a partition (`HDF_MAPOK` = 1); size capped at LBA28. The
+  QNICE FAT32 library has NO file creation, which is why the per-profile
+  choice is a link FILE (`a1200.hdf` = link) and not something the firmware
+  writes. Firmware 28971/32768. TEST: `~/aexp-work/fw-ide2` case `case_p`
+  (gen.py: MBR entry 2 = 0x7F 2 MB with the keyed pattern, 3 = 0x7F too
+  small, 4 = FAT16; link files P2 / P2L (lower case) / P1 / P3 / P4 / P5 / PX;
+  mount, the full block of commands, interleaving with a file slave, the
+  same partition on the slave refused, refusals, remount, a fast-path FILE
+  after a partition on the same drive; hostcheck checks the raw partition
+  blocks) PASS + the old cases; 9/9 `lnk_*` mutants killed (the runner now
+  counts `FAIL record` output as a run - with many failures run.sh's head cut
+  the RESULT line).
+  HARDWARE ROUND (2026-10-10, R6 builds part-a WNS +0.137, part-b same):
+  through the profile a link file mounts and HDToolBox wrote a valid RDB into
+  partition 3 (MDH0 100 MB + MDH1 900 MB, FFS in the RDB), both formatted and
+  work; a menu-picked link file and master + slave on two partitions pass
+  too. Found on the way: (a) FATAL 0x0005 when a link file was picked in the
+  menu: the link path of `HDF_PREP` returned with R10..R12 changed (HDF_LINK
+  answers in R9..R12), and the Shell keeps the CRT/ROM id in R12 across
+  PREP_LOAD_IMAGE (the KICK_PREP lesson of 0.2.0 again; the profile path does
+  not care, so the first test passed). FIX: `HDF_PREP` saves and restores
+  R10..R12 at its one exit; the harness now seeds R10..R12 before every
+  `HDF_PREP` and checks them (code 0x010F) - RED on the old code at exactly
+  the 10 link mounts, GREEN fixed. (b) "MDH1: No disk present" / Format "no
+  disk in drive" was NOT a core bug: the monitor (`M C FFF4 0107`, `M D 8100
+  811F`) showed MDH1's boot-block READ (LBA 201600) answered OK; the block
+  was never written and that card reads such blocks as 0xFF, and FFS takes a
+  first long of 0xFFFFFFFF (= -1) as ID_NO_DISK_PRESENT. Zeroing the block
+  fixed it; README now says to zero a new 0x7F partition. (c) The emulator
+  test's partition had 4096 sectors, so the LBA high word was never used on
+  the partition path: case_p now has 140000 sectors (0x10000 and 0x20000
+  boundaries, the end) and a mutant that drops the high word (`ADDC` ->
+  `MOVE` in `IDE_LBA2BLK`) fails 40 records where the old case PASSED.
+  A full (non-QUICK) Format is slow (one SD block write per sector + the
+  verify pass): use QUICK. Released as 0.5.2. Firmware 28977/32768.
 - **68040 EXPERIMENT, step 1 (branch `cpu040`, worktree `../AExp-cpu040`,
   2026-10-10, Minimig `cpu040` 34ffc65, NOT merged).** Goal (user): a fast
   CPU, ideally an 060 at 50 MHz. Survey (`~/aexp-work/cpu060/FINDINGS.md`):
