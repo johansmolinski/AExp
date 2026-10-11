@@ -8,7 +8,7 @@ boots from; version 0.2 turned the machine into an Amiga 500+ (ECS, 2 MB Chip
 RAM, 512 KB Kickstart ROMs, all Amiga memory in the board SDRAM), and version
 0.3 adds the 68020, 16 MB Zorro III Fast RAM, the AGA chipset with SuperHires,
 and three machine profiles - A500, A600 and A1200 - on the main page of the
-menu. Megamiga needs a MEGA65 R4 or newer; the R3 has no SDRAM. Everything
+menu; version 0.6 adds a 68040 with MMU, FPU and caches at 42 MHz. Megamiga needs a MEGA65 R4 or newer; the R3 has no SDRAM. Everything
 else - and most of this README - is AExp; where the text says "AExp", it
 describes the core Megamiga is built on.
 
@@ -34,10 +34,22 @@ Credits
   by many others over the years.
 * The CPU is [fx68k](https://github.com/ijor/fx68k) by Jorge Cwik, a cycle
   accurate implementation of the 68000.
-* The 68040 is the pipelined AP68040
-  ([ranzbak/AP68040-pipelined](https://github.com/ranzbak/AP68040-pipelined),
-  as in MinimigAGA_TC64), based on Adam Polkosnik's
-  [AP68040](https://github.com/apolkosnik/AP68040).
+* The 68040 (Megamiga 0.6) is
+  [AP68040-pipelined](https://github.com/ranzbak/AP68040-pipelined), a
+  pipelined MC68040 with MMU, FPU and caches:
+  * **Adam Polkosnik** wrote [AP68040](https://github.com/apolkosnik/AP68040),
+    the original 68040 core with its MMU, FPU, caches and test benches, as part
+    of his [Minimig-AGA_MiSTer](https://github.com/apolkosnik/Minimig-AGA_MiSTer)
+    work (GPL-2.0-or-later).
+  * **Renee Cousins (nonarkitten)** started the six-stage pipelined core
+    ([nonarkitten/AP68040](https://github.com/nonarkitten/AP68040)).
+  * **Paul Honig (ranzbak)** completed the pipelined core - the full integer
+    instruction set, exceptions, MMU, FPU, the split read paths and timing
+    closure - and brought it up on hardware in
+    [MinimigAGA_TC64](https://github.com/ranzbak/MinimigAGA_TC64), whose
+    integration Megamiga's follows.
+  * Megamiga runs it on its own 42 MHz clock with a 32-bit path into the SDRAM
+    for Fast RAM, next to TG68K.
 * [sy2002](http://www.sy2002.de) ported the core to the MEGA65 in 2026.
 * The core uses the [MiSTer2MEGA65](https://github.com/sy2002/MiSTer2MEGA65)
   framework and [QNICE-FPGA](https://github.com/sy2002/QNICE-FPGA) for
@@ -235,7 +247,7 @@ and whole cache lines at a time.
   1.4x an A4000/040 at 25 MHz. Chip and Slow RAM
   stay as slow as on a real Amiga, and code in Chip RAM is never cached
   (chipset DMA can change it).
-* **RTG** needs the `MiSTer.card` from `Megamiga_RTG.adf`: with the MMU on,
+* **RTG** needs the `Megamiga.card` from `Megamiga_RTG.adf`: with the MMU on,
   only that driver finds the graphics card (see the RTG section).
 * **Known limits.** Ctrl-Amiga-Amiga resets at once, so data the data cache
   has not written back yet is lost (the OS flushes before its own reboots);
@@ -348,7 +360,14 @@ before a reset.
 
 lide.device finds both drives on its own; HDToolBox lists them as units 0 and
 1 of `lide.device`, and their partitions appear as `DH0:`, `DH1:` and so on
-in the order of the drives. Never mount the same image as master and slave at
+in the order of the drives.
+
+HDToolBox looks at `scsi.device` unless told otherwise. Select its icon,
+choose **Icons > Information** in Workbench, add the tool type
+`SCSI_DEVICE_NAME=lide.device` and save: from then on it opens with the
+Megamiga drives. From a Shell, `HDToolBox lide.device` does the same once.
+Installers that ask for the hard disk's device (the AmigaOS 3.2 one, for
+example) take `lide.device` too. Never mount the same image as master and slave at
 once: the two drives would write to one file without knowing of each other.
 
 The image must be a whole hard disk with a partition table (a Rigid Disk
@@ -439,8 +458,9 @@ Picasso96 driver, rebuilt for the 4 MB of board memory the MEGA65 has for it
 (`$02000000`-`$023FFFFF`, in the HyperRAM). Only its ID register differs
 (`$B8010E` reads `$4D01`, not MiSTer's `$5001`): software that looks for a
 MiSTer there, such as AmigaVision, would otherwise wait for MiSTer-only
-hardware such as the shared folder and hang. MiSTer's own `MiSTer.card`
-does not work with this card; use the one from `Megamiga_RTG.adf`.
+hardware such as the shared folder and hang. Its driver is `Megamiga.card`
+from `Megamiga_RTG.adf` (it was called `MiSTer.card` until 0.5.2); MiSTer's
+own `MiSTer.card` is not made for this card.
 
 The card is also an autoconfig Zorro III board (8 MB, manufacturer 2011,
 product 102): its board memory at the board's address and its registers
@@ -454,12 +474,19 @@ You need Kickstart 3.x, Workbench 3.x and
 Aminet. Install Picasso96 first, then copy the driver from the
 `Megamiga_RTG.adf` disk of the release (or from `CORE/rtg/` of the source):
 
-    Libs/Picasso96/MiSTer.card   to LIBS:Picasso96/
-    Devs/Monitors/MiSTer         to DEVS:Monitors/  (with MiSTer.info)
-    Devs/Picasso96Settings       to DEVS:           (the screen modes)
+    Libs/Picasso96/Megamiga.card   to LIBS:Picasso96/
+    Devs/Monitors/Megamiga         to DEVS:Monitors/  (with Megamiga.info)
+    Devs/Picasso96Settings         to DEVS:           (the screen modes)
 
-Reboot and pick one of the `MiSTer:` modes in Prefs/ScreenMode. The driver
-keeps MiSTer's name, so MiSTer's settings files work unchanged.
+Reboot and pick one of the `Megamiga:` modes in Prefs/ScreenMode.
+
+**Coming from Megamiga 0.5.2 or older:** the card was called `MiSTer` there.
+Delete `DEVS:Monitors/MiSTer`, `DEVS:Monitors/MiSTer.info` and
+`LIBS:Picasso96/MiSTer.card`, then install the three files above. Copying the
+new `Picasso96Settings` replaces your screen modes with the standard set, now
+named `Megamiga:`; if you made your own modes, recreate them with
+Picasso96Mode instead (they are stored under the board name). Programs set to
+a `MiSTer:` mode need the new mode chosen once.
 
 The card has a blitter: Picasso96 hands rectangle fills, copies (window
 moves, scrolling) and text to the FPGA instead of doing them with the 68020.

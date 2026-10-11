@@ -1,3 +1,9 @@
+; Megamiga.card - P96 RTG driver for the Megamiga graphics card (MEGA65)
+; Megamiga, October 2026: renamed from MiSTer's MiSTer.card - it finds the card as an
+; autoconfig Zorro III board first and the card no longer answers with MiSTer's ID, so
+; it is not MiSTer's driver any more (and a MiSTer package's MiSTer.card can no longer
+; overwrite it). The board name is "Megamiga": Devs:Monitors/Megamiga, BOARDTYPE=Megamiga.
+
 ; Minimig.card - P96 RTG driver for the Minimig Amiga core
 ; MiSTer specific version
 
@@ -214,12 +220,15 @@ RomTag:
         dc.l    IDString
         dc.l    InitTable
 CardName:
-        dc.b    'MiSTer',0
+        ;dc.b    'MiSTer',0
+        dc.b    'Megamiga',0
 MinimigCard:
-        dc.b    'MiSTer.card',0,0
+        ;dc.b    'MiSTer.card',0,0
+        dc.b    'Megamiga.card',0,0
         dc.b    '$VER: '
 IDString:
-        dc.b    'MiSTer.card 0.1 (19.Oct.2020)',0
+        ;dc.b    'MiSTer.card 0.1 (19.Oct.2020)',0
+        dc.b    'Megamiga.card 0.6 (11.10.2026)',0
         dc.b    0
 expansionLibName:
         dc.b    'expansion.library',0
