@@ -327,7 +327,7 @@ architecture synthesis of MEGA65_Core is
 
 signal main_clk               : std_logic;               -- Core main clock
 signal main_clk4x             : std_logic;               -- 113.5 MHz, SDRAM controller
-signal main_clkcpu            : std_logic;               -- Megamiga (cpu040): 42.04 MHz, the AP68040
+signal main_clkcpu            : std_logic;               -- Megamiga (cpu040): 37.83 MHz, the AP68040
 signal main_fram_state        : std_logic_vector(1 downto 0);
 signal main_cpu_cacr          : std_logic_vector(3 downto 0);
 signal main_c7m               : std_logic;

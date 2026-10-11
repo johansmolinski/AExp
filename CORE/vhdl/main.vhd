@@ -528,7 +528,7 @@ architecture synthesis of main is
 
    -- Megamiga, October 2026 (branch cpu040, EXPERIMENTAL): the AP68040 core in place of
    -- TG68K when the 68020 is selected (cpu_wrapper.v): 1 = on the core clock, 2 = on its
-   -- own clock (clk_cpu_i, 42.04 MHz, behind ap040_island); 0 = TG68K
+   -- own clock (clk_cpu_i, 37.83 MHz, behind ap040_island); 0 = TG68K
    constant C_CPU040       : integer := 2;
    -- 1 = the AP68040's speed-ups (posted stores, store buffer, forwarding, return stack, ...;
    -- MinimigAGA_TC64's set without copyback), C_CPU040 = 2 only

@@ -78,9 +78,10 @@ entity clk is
       main_clk4x_o    : out std_logic;   -- 4 x the core clock: 113.5 MHz for the SDRAM (Megamiga),
                                          -- from the NATIVE MMCM only: keep core_speed_i at native
       main_rst_o      : out std_logic;   -- main's reset, synchronized
-      -- Megamiga, October 2026 (branch cpu040): the AP68040's own clock, 1135 MHz / 27 =
-      -- 42.037037 MHz from the native MMCM (CLKOUT2), unrelated in phase to the core clock
-      -- (47.29 MHz, / 24, missed by 1.5 ns in build cpu040-d: the core needs ~22.7 ns)
+      -- Megamiga, October 2026 (branch cpu040): the AP68040's own clock, 1135 MHz / 30 =
+      -- 37.833333 MHz from the native MMCM (CLKOUT2), unrelated in phase to the core clock
+      -- for the design (it is 113.5 / 3, MinimigAGA_TC64's CPU rate). Builds cpu040-d/-e:
+      -- 47.29 MHz missed by 1.5 ns without the speed-ups, 42.04 MHz by 1.8 ns with them.
       -- for the design: cpu_wrapper's ap040_island crosses to it with synchronizers
       cpu_clk_o       : out std_logic
    );
@@ -135,7 +136,7 @@ begin
          CLKOUT1_PHASE        => 0.000,
          CLKOUT1_DUTY_CYCLE   => 0.500,
          CLKOUT1_USE_FINE_PS  => FALSE,
-         CLKOUT2_DIVIDE       => 27,         -- Megamiga (cpu040): 42.037037 MHz, the AP68040
+         CLKOUT2_DIVIDE       => 30,         -- Megamiga (cpu040): 37.833333 MHz, the AP68040
          CLKOUT2_PHASE        => 0.000,
          CLKOUT2_DUTY_CYCLE   => 0.500,
          CLKOUT2_USE_FINE_PS  => FALSE
