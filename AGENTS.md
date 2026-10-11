@@ -85,8 +85,10 @@ Megamiga fork (johansmolinski):
   port `fp_*` into sdram_ctrl, `C_CPU040_OPTS` 311 = store-path speed-ups +
   copyback), chosen per profile by the CPU radio (68000 / 68020 / 68040; the
   68040 line replaced the blank line after the radio, no renumbering), RTG
-  card also an autoconfig Z3 board for MMU systems. Licence of the AP68040
-  base (apolkosnik, GPLv2 without "or later") to clear before a release.
+  card also an autoconfig Z3 board for MMU systems. Licence: the AP68040
+  base is GPL-2.0-or-later (Adam Polkosnik confirmed to the user on
+  2026-10-11 and will update the terms in his repository), so it may ship
+  next to the GPLv3 code.
 - 0.5.1: RTG ID register `$4D01`, not MiSTer's `$5001` (AmigaVision took
   the core for a MiSTer and hung on the MiSTer shared-folder mailbox).
 - 0.5.2: 32K QNICE ROM (M2M exception 15 `rom-32k`, window at

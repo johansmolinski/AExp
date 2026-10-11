@@ -1743,6 +1743,9 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   cpu_cache_new is on with TG68K (its CACR) and off with the 040 (Fast RAM
   port). SIM: e2e040 and the board-address driver test with SEL040 = 0
   (TG68K, the CPU040=0 program) and 1 (the 68040, OPTS 311). Build k.
+  LICENCE (2026-10-11): apolkosnik confirmed to the user that AP68040 is
+  GPL-2.0-or-later (he will update the terms in his repository) - the open
+  question from step 1 is closed.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
