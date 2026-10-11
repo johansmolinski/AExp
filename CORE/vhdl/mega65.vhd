@@ -330,6 +330,15 @@ signal main_clk4x             : std_logic;               -- 113.5 MHz, SDRAM con
 signal main_clkcpu            : std_logic;               -- Megamiga (cpu040): 42.04 MHz, the AP68040
 signal main_fram_state        : std_logic_vector(1 downto 0);
 signal main_cpu_cacr          : std_logic_vector(3 downto 0);
+-- Megamiga (cpu040): the AP68040's Fast RAM port, main.vhd -> amiga_sdram.vhd
+signal main_fp_req            : std_logic;
+signal main_fp_we             : std_logic;
+signal main_fp_line           : std_logic;
+signal main_fp_addr           : std_logic_vector(24 downto 2);
+signal main_fp_be             : std_logic_vector(3 downto 0);
+signal main_fp_wdata          : std_logic_vector(31 downto 0);
+signal main_fp_rdata          : std_logic_vector(127 downto 0);
+signal main_fp_ack            : std_logic;
 signal main_c7m               : std_logic;
 signal qnice_kick_ce          : std_logic;
 signal qnice_kick_wait        : std_logic;
@@ -1443,6 +1452,14 @@ begin
          fram_ready_i         => main_fram_ready,
          fram_state_o         => main_fram_state,
          cpu_cacr_o           => main_cpu_cacr,
+         fp_req_o             => main_fp_req,
+         fp_we_o              => main_fp_we,
+         fp_line_o            => main_fp_line,
+         fp_addr_o            => main_fp_addr,
+         fp_be_o              => main_fp_be,
+         fp_data_o            => main_fp_wdata,
+         fp_data_i            => main_fp_rdata,
+         fp_ack_i             => main_fp_ack,
          fram_rtg_o           => main_fram_rtg,
          rtg_ena_o            => fb_ena_o,
          rtg_hsize_o          => fb_hsize_o,
@@ -1676,6 +1693,14 @@ begin
          fram_ready_o   => main_sdram_ready,
          cpu_reset_n_i  => not main_ide_rst,
          cpu_cacr_i     => main_cpu_cacr,
+         fp_req_i       => main_fp_req,
+         fp_we_i        => main_fp_we,
+         fp_line_i      => main_fp_line,
+         fp_addr_i      => main_fp_addr,
+         fp_be_i        => main_fp_be,
+         fp_data_i      => main_fp_wdata,
+         fp_data_o      => main_fp_rdata,
+         fp_ack_o       => main_fp_ack,
          scrub_i        => amiga_chip_scrub,
          scrub_addr_i   => amiga_chip_scrub_addr,
          qnice_clk_i    => qnice_clk_i,

@@ -158,6 +158,16 @@ entity main is
       fram_ready_i            : in  std_logic;
       fram_state_o            : out std_logic_vector(1 downto 0);   -- cpustate (sdram cache)
       cpu_cacr_o              : out std_logic_vector(3 downto 0);   -- 68k cache control
+      -- Megamiga (cpu040): the AP68040's Fast RAM port into the SDRAM controller (core clock,
+      -- toggle handshake; amiga_sdram.vhd fp_*)
+      fp_req_o                : out std_logic;
+      fp_we_o                 : out std_logic;
+      fp_line_o               : out std_logic;
+      fp_addr_o               : out std_logic_vector(24 downto 2);
+      fp_be_o                 : out std_logic_vector(3 downto 0);
+      fp_data_o               : out std_logic_vector(31 downto 0);
+      fp_data_i               : in  std_logic_vector(127 downto 0);
+      fp_ack_i                : in  std_logic;
       -- Megamiga: '1' while the fram_* cycle is for the RTG board memory ($02xxxxxx, 68020
       -- only); fram_addr_o(22 downto 1) is then the offset. The parent serves it from HyperRAM.
       fram_rtg_o              : out std_logic;
@@ -462,7 +472,8 @@ architecture synthesis of main is
    component cpu_wrapper is
       generic (
          CPU040         : integer := 0;
-         CPU040_FAST    : integer := 0
+         CPU040_FAST    : integer := 0;
+         CPU040_FASTRAM : integer := 0
       );
       port (
          reset          : in  std_logic;                       -- ACTIVE LOW
@@ -522,7 +533,16 @@ architecture synthesis of main is
          nmi_addr       : out std_logic_vector(31 downto 0);
 
          snoop_stb      : in  std_logic;
-         snoop_addr     : in  std_logic_vector(20 downto 1)
+         snoop_addr     : in  std_logic_vector(20 downto 1);
+         slowram_ena    : in  std_logic;
+         fp_req         : out std_logic;
+         fp_we          : out std_logic;
+         fp_line        : out std_logic;
+         fp_addr        : out std_logic_vector(24 downto 2);
+         fp_be          : out std_logic_vector(3 downto 0);
+         fp_wdata       : out std_logic_vector(31 downto 0);
+         fp_rdata       : in  std_logic_vector(127 downto 0);
+         fp_ack         : in  std_logic
       );
    end component cpu_wrapper;
 
@@ -534,6 +554,9 @@ architecture synthesis of main is
    -- (posted stores, store buffer, forwarding, return stack, ...; MinimigAGA_TC64's set
    -- without copyback) - those did not close timing (builds cpu040-e/-f)
    constant C_CPU040_FAST  : integer := 1;
+   -- C_CPU040 = 2 only: 1 = Fast RAM accesses and the AP68040's line fills go straight into
+   -- the SDRAM controller (32 bits, 16-byte lines) instead of over the 16-bit CPU bus
+   constant C_CPU040_FASTRAM : integer := 1;
    -- a chipset write to Chip RAM ($000000-$1FFFFF: banked ram_addr_o[22:21] = 00), for the
    -- AP68040's data cache, which caches Chip RAM
    signal cpu_snoop_stb    : std_logic;
@@ -848,7 +871,8 @@ begin
    i_cpu_wrapper : cpu_wrapper
       generic map (
          CPU040          => C_CPU040,
-         CPU040_FAST     => C_CPU040_FAST
+         CPU040_FAST     => C_CPU040_FAST,
+         CPU040_FASTRAM  => C_CPU040_FASTRAM
       )
       port map (
          reset           => cpu_reset_n,         -- active low, from minimig
@@ -909,7 +933,16 @@ begin
          nmi_addr        => cpu_nmi_addr,
 
          snoop_stb       => cpu_snoop_stb,
-         snoop_addr      => ram_addr_o(20 downto 1)
+         snoop_addr      => ram_addr_o(20 downto 1),
+         slowram_ena     => slow_ram_i,
+         fp_req          => fp_req_o,
+         fp_we           => fp_we_o,
+         fp_line         => fp_line_o,
+         fp_addr         => fp_addr_o,
+         fp_be           => fp_be_o,
+         fp_wdata        => fp_data_o,
+         fp_rdata        => fp_data_i,
+         fp_ack          => fp_ack_i
       ); -- i_cpu_wrapper
 
    ---------------------------------------------------------------------------

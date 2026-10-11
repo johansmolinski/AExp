@@ -81,6 +81,18 @@ entity amiga_sdram is
       cpu_reset_n_i  : in    std_logic;                      -- clears the CPU read cache
       cpu_cacr_i     : in    std_logic_vector(3 downto 0);
 
+      -- 68040 Fast RAM port (cpu040 branch): 32-bit accesses and 16-byte line reads straight
+      -- into the controller, toggle handshake on the core clock (see sdram_ctrl.v); fp_addr_i
+      -- is the SDRAM long address (bank 24:23, like fram_addr_i)
+      fp_req_i       : in    std_logic := '0';
+      fp_we_i        : in    std_logic := '0';
+      fp_line_i      : in    std_logic := '0';
+      fp_addr_i      : in    std_logic_vector(24 downto 2) := (others => '0');
+      fp_be_i        : in    std_logic_vector(3 downto 0) := (others => '0');
+      fp_data_i      : in    std_logic_vector(31 downto 0) := (others => '0');
+      fp_data_o      : out   std_logic_vector(127 downto 0);
+      fp_ack_o       : out   std_logic;
+
       -- cold-boot scrub (amiga_cold_boot.vhd, core clock)
       scrub_i        : in    std_logic;
       scrub_addr_i   : in    std_logic_vector(17 downto 0);  -- chip RAM word address
@@ -165,7 +177,15 @@ architecture synthesis of amiga_sdram is
          flpU           : in    std_logic;
          flpWR          : in    std_logic_vector(15 downto 0);
          flpRD          : out   std_logic_vector(15 downto 0);
-         flpAck         : out   std_logic
+         flpAck         : out   std_logic;
+         fpReq          : in    std_logic;
+         fpWE           : in    std_logic;
+         fpLine         : in    std_logic;
+         fpAddr         : in    std_logic_vector(24 downto 2);
+         fpBE           : in    std_logic_vector(3 downto 0);
+         fpWR           : in    std_logic_vector(31 downto 0);
+         fpRD           : out   std_logic_vector(127 downto 0);
+         fpAck          : out   std_logic
       );
    end component sdram_ctrl;
 
@@ -489,7 +509,15 @@ begin
          flpU           => not f_be(1),
          flpWR          => f_data,
          flpRD          => f_rd,
-         flpAck         => f_ack
+         flpAck         => f_ack,
+         fpReq          => fp_req_i,
+         fpWE           => fp_we_i,
+         fpLine         => fp_line_i,
+         fpAddr         => fp_addr_i,
+         fpBE           => fp_be_i,
+         fpWR           => fp_data_i,
+         fpRD           => fp_data_o,
+         fpAck          => fp_ack_o
       ); -- i_sdram_ctrl
 
 end architecture synthesis;

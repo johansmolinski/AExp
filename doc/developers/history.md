@@ -1585,6 +1585,35 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   WHS +0.036, main<->cpu_clk crossings +15.2 ns inside their 20 ns bound,
   76.4k LUTs, 93.5 BRAM. e2e040 and the driver test PASS in exactly this
   configuration (CPU clock 42.04 MHz in the TB). NOT hardware-tested.
+  HARDWARE (user, 2026-10-11): build g boots the user's OS3.1 HDF; RTG works
+  with the new MiSTer.card; SysInfo 19,446 Dhrystones = 1.06x A4000/040 with
+  Zorro II or Zorro III RAM (the same: Zorro III is cached), but 580
+  Dhrystones (1.06x A600) with Chip + Slow RAM only - the core cached neither
+  Slow RAM nor the ROM, and never code from Chip RAM.
+  STEP 3, FAST RAM PORT + MOTHERBOARD CACHING (build h, CPU040_FASTRAM = 1).
+  (a) compat: `cache_rom_ena` / `cache_slow_ena` make $F80000-$FFFFFF and the
+  512 KB Slow RAM ($C00000, main.vhd slow_ram_i) cacheable for both banks
+  (nothing but the CPU writes them; code from Chip RAM stays uncached, the
+  core's DMA rule); the fill channel keeps to the Zorro windows
+  (`cache_zwin`). (b) the core's fill channel (AP040_FILL_CHANNEL, off until
+  now) and every island entry for Zorro II/III RAM that fits one aligned long
+  go to a new sdram_ctrl port (fp_*, toggle handshake, 128-bit line answer)
+  instead of the 16-bit adapter: a line = two burst-4 read slots, a long write
+  = ONE slot (two WRITE commands into the open row, the first without auto
+  precharge; no mode-register change). Fills ride the island queue, so they
+  never overtake a buffered write; misaligned Fast RAM accesses keep the
+  adapter path, and cpu_wrapper switches cpu_cache_new off (the port bypasses
+  it). Priority in the controller: chipset, floppy, CPU write, the 040 port
+  (never while a refresh is due), CPU read. Bug found on the way: the port's
+  first-slot flag had no reset, so the first write after power-up lost its
+  high half (fixed: cleared during the SDRAM init).
+  BENCH (28 MHz clocks, Zorro II RAM, 42.04 MHz CPU): 16 KB copy TG68K
+  57,584 / build g 105,952 / port 49,556; 16 KB read TG68K 33,000 / g 75,444
+  / port 33,168 - build g streamed memory at half TG68K's speed, the port
+  more than doubles it. Load/mul/store loop 11,948 -> 9,168, register loop
+  unchanged (15,272): in-cache code is bound by the core without its
+  speed-ups. A line fill now costs ~32 bus clocks end to end (2 slots + the
+  island's queue and answer crossings), was ~75.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
