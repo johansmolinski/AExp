@@ -461,7 +461,8 @@ architecture synthesis of main is
 
    component cpu_wrapper is
       generic (
-         CPU040         : integer := 0
+         CPU040         : integer := 0;
+         CPU040_FAST    : integer := 0
       );
       port (
          reset          : in  std_logic;                       -- ACTIVE LOW
@@ -527,8 +528,11 @@ architecture synthesis of main is
 
    -- Megamiga, October 2026 (branch cpu040, EXPERIMENTAL): the AP68040 core in place of
    -- TG68K when the 68020 is selected (cpu_wrapper.v): 1 = on the core clock, 2 = on its
-   -- own clock (clk_cpu_i, 47.29 MHz, behind ap040_island); 0 = TG68K
+   -- own clock (clk_cpu_i, 42.04 MHz, behind ap040_island); 0 = TG68K
    constant C_CPU040       : integer := 2;
+   -- 1 = the AP68040's speed-ups (posted stores, store buffer, forwarding, return stack, ...;
+   -- MinimigAGA_TC64's set without copyback), C_CPU040 = 2 only
+   constant C_CPU040_FAST  : integer := 1;
    -- a chipset write to Chip RAM ($000000-$1FFFFF: banked ram_addr_o[22:21] = 00), for the
    -- AP68040's data cache, which caches Chip RAM
    signal cpu_snoop_stb    : std_logic;
@@ -842,7 +846,8 @@ begin
 
    i_cpu_wrapper : cpu_wrapper
       generic map (
-         CPU040          => C_CPU040
+         CPU040          => C_CPU040,
+         CPU040_FAST     => C_CPU040_FAST
       )
       port map (
          reset           => cpu_reset_n,         -- active low, from minimig
