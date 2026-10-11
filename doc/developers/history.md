@@ -1572,6 +1572,19 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   about as fast as TG68K here, the gain is the clock). NOTE the bench's
   bus-cycle counter counts state changes, so TG68K's back-to-back fetches
   read as a handful.
+  THE SPEED-UPS DO NOT CLOSE: build f (37.83 MHz, speed-ups + write buffer)
+  still missed cpu_clk by ~2.7 ns post-place in the branch-redirect paths
+  (u_if/u_id/u_eac -> u_bcu mem_addr), stopped. Bench with the write buffer
+  ONLY at 42.04 MHz: register loop 15,440 (1.44x TG68K), store loop 11,948
+  (1.24x) - as good as the speed-up build overall, so CPU040_FAST became
+  1 = write buffer, 2 = also the speed-ups, and main.vhd uses 1.
+  BUILD g (`~/aexp-builds/Megamiga-cpu040-g`, with Megamiga_RTG.adf):
+  island at 42.04 MHz (1135/27), write buffer, no core speed-ups: WNS
+  +0.020 (cpu_clk +0.020 after post-route phys_opt; the `_routed` report
+  before it says -0.157 - judge by `_postroute_physopted` / STATS.WNS),
+  WHS +0.036, main<->cpu_clk crossings +15.2 ns inside their 20 ns bound,
+  76.4k LUTs, 93.5 BRAM. e2e040 and the driver test PASS in exactly this
+  configuration (CPU clock 42.04 MHz in the TB). NOT hardware-tested.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
