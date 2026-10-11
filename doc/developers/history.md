@@ -1644,7 +1644,23 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   the cache-off reads push as well.)
   BUILD i (`~/aexp-builds/Megamiga-cpu040-i`): OPTS 311 (store path +
   copyback), 42.04 MHz, WNS +0.048. BUILD j (`Megamiga-cpu040-j`): OPTS 55
-  (store path, no copyback), WNS +0.018. Neither hardware-tested.
+  (store path, no copyback), WNS +0.018.
+  HARDWARE (user, 2026-10-11): SysInfo (Zorro III) build i 25,777, build j
+  25,779 - the same, 1.29x build h. A 15 MB partition copy on build i boots.
+  Simulation with the MMU on and 68040.library-style tables (4K pages,
+  `~/aexp-work/cpu060/dhry` loader MMU=1): copyback 45,964 vs write-through
+  52,300 clocks - so copyback works through the ATC path. On the board,
+  `mmuinfo` (`~/aexp-work/cpu060/mmuinfo`, ADF Megamiga_040.adf: TC/URP/SRP,
+  TTRs, CACR, PTESTR + MMUSR of a Fast RAM buffer, code, stack, ROM): TC
+  $8000, TTRs 0, CACR $80008000, Fast RAM/code/stack MMUSR CM = 01
+  (copyback), ROM CM = 00. `cbtest` (5.12 M long loads / stores on 1 KB of
+  Fast RAM): build i loads 17 / stores 32 ticks, build j 17 / 42 - copyback
+  works on the board (write-through = one SDRAM slot per store, ~164 ns).
+  SysInfo's Dhrystone simply gains nothing from it (no write-allocate: a
+  store miss writes through). The OS's CopyBack flag (CPU, SysInfo) cannot be
+  switched off on a 68040 (no CACR bit); 68040.library sets it per page.
+  The user's HDF copy runs at about 25 KB/s (15 MB in ~10 min); the user
+  thinks that is not new - to look at later.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
