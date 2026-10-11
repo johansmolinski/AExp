@@ -1722,6 +1722,27 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   switched off on a 68040 (no CACR bit); 68040.library sets it per page.
   The user's HDF copy runs at about 25 KB/s (15 MB in ~10 min); the user
   thinks that is not new - to look at later.
+  MERGE + CPU MENU (2026-10-11, the user: "call the 040 done for now", merge
+  to main with 0.5.2, a 68040 option in the CPU menu, the 68020 back). main
+  (0.5.2) merged into cpu040 (history.md conflict: both entries kept). The
+  profile's CPU radio is 68000 / 68020 / 68040: the BLANK LINE after the radio
+  (lines 21/35/49) became " CPU: 68040" in the same OPTM group, so no line
+  moved, OPTM_SIZE stays 211 and settings files stay compatible (the old
+  separator byte reads as "68040 off"); C_PROF_CPU_040 = 2. Menu heap: +33
+  characters, demand 3495 -> 3528 (formula of hard rule 11, reproduced
+  without check_osm_menu.py, which is not on this machine; it gives the
+  recorded 3495 for main), MENU_HEAP_SIZE 3520 -> 3552, release HEAP_SIZE
+  -32 (combined total unchanged); help page text reworded within its lines.
+  mega65.vhd: main_cpu_020 = 68020 OR 68040 (the 32-bit bus: cpucfg "11",
+  Zorro III, RTG, the sdram ram_cs rule), main_cpu_040 = the 68040 bit, into
+  main.vhd cpu_040_i -> cpu_wrapper cpu040_sel and into amiga_cold_boot (a
+  68020 <-> 68040 change cold-boots). cpu_wrapper with CPU040 != 0 now holds
+  BOTH cores: the 040 block's outputs became f_*, a TG68K instance t_*, and
+  the *_p wires are multiplexed by cpu040_sel; the unselected core is held in
+  reset; ram_hold only with the 040 (TG68K takes ramready unregistered).
+  cpu_cache_new is on with TG68K (its CACR) and off with the 040 (Fast RAM
+  port). SIM: e2e040 and the board-address driver test with SEL040 = 0
+  (TG68K, the CPU040=0 program) and 1 (the 68040, OPTS 311). Build k.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the

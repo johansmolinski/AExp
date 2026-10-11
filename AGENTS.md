@@ -80,8 +80,13 @@ Megamiga fork (johansmolinski):
   names at core start, PMOD serial port (0.4.2).
 - 0.5.0: network card (own Zorro II board, RMII MAC, SANA-II driver in
   `CORE/eth/`; design in `doc/developers/ethernet.md`).
-- `cpu040` (experiment, not merged): AP68040 pipelined core in place of
-  TG68K (`C_CPU040`), walker bridge + Chip RAM snoop in cpu_wrapper.
+- `cpu040` (merged after 0.5.2): AP68040 pipelined core next to TG68K
+  (`C_CPU040` = 2: `ap040_island.v` on its own 42.04 MHz clock, Fast RAM
+  port `fp_*` into sdram_ctrl, `C_CPU040_OPTS` 311 = store-path speed-ups +
+  copyback), chosen per profile by the CPU radio (68000 / 68020 / 68040; the
+  68040 line replaced the blank line after the radio, no renumbering), RTG
+  card also an autoconfig Z3 board for MMU systems. Licence of the AP68040
+  base (apolkosnik, GPLv2 without "or later") to clear before a release.
 - 0.5.1: RTG ID register `$4D01`, not MiSTer's `$5001` (AmigaVision took
   the core for a MiSTer and hung on the MiSTer shared-folder mailbox).
 - 0.5.2: 32K QNICE ROM (M2M exception 15 `rom-32k`, window at
@@ -95,8 +100,8 @@ mutant set.
 ## The emulated machine (current, Megamiga 0.5)
 
 - **Profiles** A500 (OCS) / A600 (ECS) / A1200 (AGA), each with CPU
-  (fx68k 68000 or TG68K 68020), chipset, Chip RAM 512K/1M/2M, Slow RAM,
-  Z2 Fast RAM (8 MB), Z3 RAM (16 MB, 020 only). `prof_decode` in
+  (fx68k 68000, TG68K 68020 or AP68040 68040), chipset, Chip RAM 512K/1M/2M, Slow RAM,
+  Z2 Fast RAM (8 MB), Z3 RAM (16 MB, 020/040 only). `prof_decode` in
   `mega65.vhd`; firmware `PROFILE_APPLY` loads `/amiga/a500.rom|a600.rom|
   a1200.rom` (fallback `kick.rom`, which is mandatory at boot) and
   `aNNN.hdf` / `aNNN-1.hdf`. Changes cold-boot via `amiga_cold_boot`.

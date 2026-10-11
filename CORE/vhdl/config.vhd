@@ -102,8 +102,8 @@ constant HELP_1 : string :=
    " A500:  68000, OCS, 512 KB + 512 KB Slow\n" &
    " A600:  68000, ECS, 1 MB Chip\n" &
    " A1200: 68020, AGA, 2 MB Chip\n" &
-   " CPU, chipset and RAM (also 8 MB Zorro\n" &
-   " II and 16 MB Zorro III Fast RAM) are in\n" &
+   " CPU (68000-68040), chipset, RAM (8 MB\n" &
+   " Zorro II, 16 MB Zorro III) are set in\n" &
    " Profile Settings. A profile loads its\n" &
    " Kickstart /amiga/a500.rom, a600.rom or\n" &
    " a1200.rom (else kick.rom) and its hard\n" &
@@ -579,6 +579,9 @@ constant OPTM_DY           : natural := 34;
 --            Kickstart 2.0 or newer (1.3 does not know Zorro III - leave it off there)
 --   lines 154/155: CPU radio (C_MENU_CPU_020 = 155): 68000 (fx68k, cycle-exact, default)
 --            or 68020 (TG68K, MiSTer's 68020 mode). Both changes cold-boot the Amiga.
+--            [Megamiga: superseded by the per-profile CPU radio, lines 19..21 / 33..35 /
+--            47..49: 68000 / 68020 / 68040; the 68040 line took the place of the blank
+--            line after the radio, so no line moved and OPTM_SIZE is unchanged.]
 --   lines 157..159: chipset radio (C_MENU_CHIPSET_OCS = 157, C_MENU_CHIPSET_AGA = 159):
 --            OCS / ECS (158, default) / AGA -> userio 0xF3 G/E bits (amiga_config.vhd);
 --            a change cold-boots the Amiga. AGA = Minimig-AGA with the chip48 wide read.
@@ -639,7 +642,7 @@ constant OPTM_ITEMS        : string :=
    "\n"                     &    --  18: Line
    " CPU: 68000\n"          &    --  19: A500: CPU 68000
    " CPU: 68020\n"          &    --  20: A500: CPU 68020
-   "\n"                     &    --  21: Line (this profile)
+   " CPU: 68040\n"          &    --  21: A500: CPU 68040 (was a Line)
    " Chipset: OCS\n"        &    --  22: A500: chipset OCS
    " Chipset: ECS\n"        &    --  23: A500: chipset ECS
    " Chipset: AGA\n"        &    --  24: A500: chipset AGA
@@ -653,7 +656,7 @@ constant OPTM_ITEMS        : string :=
    " Zorro III RAM (16 MB)\n" &    --  32: A500: Zorro III RAM toggle (68020)
    " CPU: 68000\n"          &    --  33: A600: CPU 68000
    " CPU: 68020\n"          &    --  34: A600: CPU 68020
-   "\n"                     &    --  35: Line (this profile)
+   " CPU: 68040\n"          &    --  35: A600: CPU 68040 (was a Line)
    " Chipset: OCS\n"        &    --  36: A600: chipset OCS
    " Chipset: ECS\n"        &    --  37: A600: chipset ECS
    " Chipset: AGA\n"        &    --  38: A600: chipset AGA
@@ -667,7 +670,7 @@ constant OPTM_ITEMS        : string :=
    " Zorro III RAM (16 MB)\n" &    --  46: A600: Zorro III RAM toggle (68020)
    " CPU: 68000\n"          &    --  47: A1200: CPU 68000
    " CPU: 68020\n"          &    --  48: A1200: CPU 68020
-   "\n"                     &    --  49: Line (this profile)
+   " CPU: 68040\n"          &    --  49: A1200: CPU 68040 (was a Line)
    " Chipset: OCS\n"        &    --  50: A1200: chipset OCS
    " Chipset: ECS\n"        &    --  51: A1200: chipset ECS
    " Chipset: AGA\n"        &    --  52: A1200: chipset AGA
@@ -863,19 +866,19 @@ constant OPTM_G_HDF        : integer := 24;  -- HDF master (unit 0) into the IDE
 constant OPTM_G_KICK       : integer := 25;  -- load a Kickstart ROM into C_DEV_AMIGA_KICK and cold-boot (manual CRT/ROM load 5)
 constant OPTM_G_SPINUP     : integer := 26;  -- Drive spin-up delay toggle; read in HDL (mega65.vhd -> main.vhd)
 constant OPTM_G_PROFILE    : integer := 30;  -- machine profile radio A500 / A600 / A1200 (main page); read in HDL, firmware loads the profile's Kickstart/HDF
-constant OPTM_G_P1CPU      : integer := 31;  -- A500 profile: CPU radio 68000 / 68020
+constant OPTM_G_P1CPU      : integer := 31;  -- A500 profile: CPU radio 68000 / 68020 / 68040
 constant OPTM_G_P1CS       : integer := 32;  -- A500 profile: chipset radio OCS / ECS / AGA
 constant OPTM_G_P1CHIP     : integer := 33;  -- A500 profile: chip RAM radio 512 KB / 1 MB / 2 MB
 constant OPTM_G_P1SLOW     : integer := 34;  -- A500 profile: Slow RAM toggle
 constant OPTM_G_P1FAST     : integer := 35;  -- A500 profile: Zorro II Fast RAM toggle
 constant OPTM_G_P1Z3       : integer := 36;  -- A500 profile: Zorro III RAM toggle
-constant OPTM_G_P2CPU      : integer := 37;  -- A600 profile: CPU radio 68000 / 68020
+constant OPTM_G_P2CPU      : integer := 37;  -- A600 profile: CPU radio 68000 / 68020 / 68040
 constant OPTM_G_P2CS       : integer := 38;  -- A600 profile: chipset radio OCS / ECS / AGA
 constant OPTM_G_P2CHIP     : integer := 39;  -- A600 profile: chip RAM radio 512 KB / 1 MB / 2 MB
 constant OPTM_G_P2SLOW     : integer := 40;  -- A600 profile: Slow RAM toggle
 constant OPTM_G_P2FAST     : integer := 41;  -- A600 profile: Zorro II Fast RAM toggle
 constant OPTM_G_P2Z3       : integer := 42;  -- A600 profile: Zorro III RAM toggle
-constant OPTM_G_P3CPU      : integer := 43;  -- A1200 profile: CPU radio 68000 / 68020
+constant OPTM_G_P3CPU      : integer := 43;  -- A1200 profile: CPU radio 68000 / 68020 / 68040
 constant OPTM_G_P3CS       : integer := 44;  -- A1200 profile: chipset radio OCS / ECS / AGA
 constant OPTM_G_P3CHIP     : integer := 45;  -- A1200 profile: chip RAM radio 512 KB / 1 MB / 2 MB
 constant OPTM_G_P3SLOW     : integer := 46;  -- A1200 profile: Slow RAM toggle
@@ -949,7 +952,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_LINE,                                              --  18: Line
                                               OPTM_G_P1CPU + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  19: A500: CPU 68000
                                               OPTM_G_P1CPU + OPTM_DEP(OPTM_G_PROFILE, 0),               --  20: A500: CPU 68020
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 0),                --  21: Line (this profile)
+                                              OPTM_G_P1CPU + OPTM_DEP(OPTM_G_PROFILE, 0),               --  21: A500: CPU 68040
                                               OPTM_G_P1CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  22: A500: chipset OCS
                                               OPTM_G_P1CS + OPTM_DEP(OPTM_G_PROFILE, 0),                --  23: A500: chipset ECS
                                               OPTM_G_P1CS + OPTM_DEP(OPTM_G_PROFILE, 0),                --  24: A500: chipset AGA
@@ -963,7 +966,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P1Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  32: A500: Zorro III RAM toggle (68020)
                                               OPTM_G_P2CPU + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  33: A600: CPU 68000
                                               OPTM_G_P2CPU + OPTM_DEP(OPTM_G_PROFILE, 1),               --  34: A600: CPU 68020
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 1),                --  35: Line (this profile)
+                                              OPTM_G_P2CPU + OPTM_DEP(OPTM_G_PROFILE, 1),               --  35: A600: CPU 68040
                                               OPTM_G_P2CS + OPTM_DEP(OPTM_G_PROFILE, 1),                --  36: A600: chipset OCS
                                               OPTM_G_P2CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  37: A600: chipset ECS
                                               OPTM_G_P2CS + OPTM_DEP(OPTM_G_PROFILE, 1),                --  38: A600: chipset AGA
@@ -977,7 +980,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P2Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  46: A600: Zorro III RAM toggle (68020)
                                               OPTM_G_P3CPU + OPTM_DEP(OPTM_G_PROFILE, 2),               --  47: A1200: CPU 68000
                                               OPTM_G_P3CPU + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  48: A1200: CPU 68020
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 2),                --  49: Line (this profile)
+                                              OPTM_G_P3CPU + OPTM_DEP(OPTM_G_PROFILE, 2),               --  49: A1200: CPU 68040
                                               OPTM_G_P3CS + OPTM_DEP(OPTM_G_PROFILE, 2),                --  50: A1200: chipset OCS
                                               OPTM_G_P3CS + OPTM_DEP(OPTM_G_PROFILE, 2),                --  51: A1200: chipset ECS
                                               OPTM_G_P3CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  52: A1200: chipset AGA

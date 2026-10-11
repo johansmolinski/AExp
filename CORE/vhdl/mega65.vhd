@@ -379,7 +379,8 @@ signal main_fastram_en        : std_logic;
 signal main_fram_sel          : std_logic;
 signal main_fram_we           : std_logic;
 signal main_fram_addr         : std_logic_vector(24 downto 1);   -- SDRAM word address
-signal main_cpu_020           : std_logic;                       -- Megamiga: 68020 (TG68K)
+signal main_cpu_020           : std_logic;                       -- Megamiga: a 32-bit CPU (68020 or 68040)
+signal main_cpu_040           : std_logic;                       -- Megamiga: the 68040 (AP68040), not TG68K
 signal main_z3_ram            : std_logic;                       -- Megamiga: 16 MB Zorro III board
 signal main_chipset           : std_logic_vector(1 downto 0);    -- Megamiga: 00 OCS, 01 ECS, 10 AGA
 signal main_chip_size         : std_logic_vector(1 downto 0);    -- Megamiga: 00 512K, 01 1M, 11 2M chip RAM
@@ -996,7 +997,8 @@ constant C_MENU_PROF_A600     : natural := 10;
 constant C_MENU_PROF_A1200    : natural := 11;
 constant C_MENU_PROF_BASE     : natural := 19;   -- first line of the A500 block
 constant C_MENU_PROF_STRIDE   : natural := 14;   -- lines per profile block
-constant C_PROF_CPU_020       : natural := 1;    -- CPU radio: 0 = 68000, 1 = 68020
+constant C_PROF_CPU_020       : natural := 1;    -- CPU radio: 0 = 68000, 1 = 68020, 2 = 68040
+constant C_PROF_CPU_040       : natural := 2;
 constant C_PROF_CS_OCS        : natural := 3;    -- chipset radio: 3 OCS, 4 ECS, 5 AGA
 constant C_PROF_CS_AGA        : natural := 5;
 constant C_PROF_CHIP_1M       : natural := 8;    -- chip RAM radio: 7 512 KB, 8 1 MB, 9 2 MB
@@ -1291,8 +1293,13 @@ begin
       end if;
 
       -- the CPU (68000 fx68k / 68020 TG68K) and the 16 MB Zorro III board (68020 only)
-      main_cpu_020 <= main_osm_control_i(v_base + C_PROF_CPU_020);
-      main_z3_ram  <= main_osm_control_i(v_base + C_PROF_Z3) and main_osm_control_i(v_base + C_PROF_CPU_020);
+      -- the 68040 takes the 68020's bus (cpucfg "11", Zorro III, RTG): main_cpu_020 is set for both
+      --main_cpu_020 <= main_osm_control_i(v_base + C_PROF_CPU_020);
+      --main_z3_ram  <= main_osm_control_i(v_base + C_PROF_Z3) and main_osm_control_i(v_base + C_PROF_CPU_020);
+      main_cpu_020 <= main_osm_control_i(v_base + C_PROF_CPU_020) or main_osm_control_i(v_base + C_PROF_CPU_040);
+      main_cpu_040 <= main_osm_control_i(v_base + C_PROF_CPU_040);
+      main_z3_ram  <= main_osm_control_i(v_base + C_PROF_Z3) and
+                      (main_osm_control_i(v_base + C_PROF_CPU_020) or main_osm_control_i(v_base + C_PROF_CPU_040));
       main_slow_ram <= main_osm_control_i(v_base + C_PROF_SLOW);
       if C_HAS_SDRAM then
          main_fastram_en <= main_osm_control_i(v_base + C_PROF_FAST);
@@ -1325,6 +1332,7 @@ begin
          slow_ram_i        => main_slow_ram,
          fast_ram_i        => main_fastram_en,
          cpu_020_i         => main_cpu_020,
+         cpu_040_i         => main_cpu_040,
          z3_ram_i          => main_z3_ram,
          chipset_i         => main_chipset,
          chip_size_i       => main_chip_size,
@@ -1439,6 +1447,7 @@ begin
          -- Fast RAM bus, served by fastram_sdram below
          fast_ram_i           => main_fastram_en,
          cpu_020_i            => main_cpu_020,
+         cpu_040_i            => main_cpu_040,
          z3_ram_i             => main_z3_ram,
          chipset_i            => main_chipset,
          chip_size_i          => main_chip_size,

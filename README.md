@@ -34,6 +34,10 @@ Credits
   by many others over the years.
 * The CPU is [fx68k](https://github.com/ijor/fx68k) by Jorge Cwik, a cycle
   accurate implementation of the 68000.
+* The 68040 is the pipelined AP68040
+  ([ranzbak/AP68040-pipelined](https://github.com/ranzbak/AP68040-pipelined),
+  as in MinimigAGA_TC64), based on Adam Polkosnik's
+  [AP68040](https://github.com/apolkosnik/AP68040).
 * [sy2002](http://www.sy2002.de) ported the core to the MEGA65 in 2026.
 * The core uses the [MiSTer2MEGA65](https://github.com/sy2002/MiSTer2MEGA65)
   framework and [QNICE-FPGA](https://github.com/sy2002/QNICE-FPGA) for
@@ -51,11 +55,12 @@ Features
   an A1200-class machine (256 colours, HAM8, the AGA fetch modes,
   SuperHires; the 31 kHz modes are not displayed yet)
 * Cycle accurate 68000 CPU, or a 68020 (the TG68K core that MiSTer's
-  Minimig uses for its 68020 mode; no FPU, no MMU)
+  Minimig uses for its 68020 mode; no FPU, no MMU), or a 68040 with MMU,
+  FPU and caches at 42 MHz (see 68040 below)
 * 512 KB, 1 MB or 2 MB Chip RAM, optional 512 KB Slow RAM (trapdoor
   expansion)
 * Optional 8 MB Zorro II Fast RAM, switched off by default
-* Optional 16 MB Zorro III Fast RAM with the 68020 (off by default; needs
+* Optional 16 MB Zorro III Fast RAM with the 68020 or 68040 (off by default; needs
   Kickstart 2.0 or newer - Kickstart 1.3 does not know Zorro III boards, so
   leave it off there)
 * MEGA65 R4, R5 and R6 only: all Amiga memory lives in the board SDRAM
@@ -64,7 +69,7 @@ Features
   disk images via the on-screen-menu, read and write — and hand one of the
   drives to the MEGA65's own internal 3.5" drive to read and write genuine
   Amiga disks, copy-protected originals included
-* A Picasso96 graphics card (RTG) for the 68020, on HDMI: 8/16/24/32-bit
+* A Picasso96 graphics card (RTG) for the 68020 and 68040, on HDMI: 8/16/24/32-bit
   screens in 4 MB of board memory
 * Two IDE hard disks (master and slave): `*.hdf` images on the SD card, read
   and write, that Kickstart boots from (needs the free lide.device boot ROM)
@@ -103,7 +108,8 @@ core starts with it.
 
 **Profile Settings** shows the details of the selected profile, and you can
 change each of them: CPU, chipset, Chip RAM, Slow RAM, 8 MB Zorro II Fast RAM
-and 16 MB Zorro III Fast RAM (68020 only). Every profile keeps its own
+and 16 MB Zorro III Fast RAM (68020 and 68040 only). The CPU is 68000, 68020
+or 68040. Every profile keeps its own
 settings. The hard disk lines (**HDF 0** = master, **HDF 1** = slave) and the
 **Kickstart** line there load any other file for the running session.
 
@@ -210,6 +216,31 @@ menu with <kbd>Help</kbd>, go to **Profile Settings** and select
 **Fast RAM (8 MB)**: the Amiga automatically reboots with the new memory
 configuration, and the setting is remembered. The MEGA65 R3 has no SDRAM;
 there the menu item has no effect.
+
+### 68040
+
+Each profile can run a 68040 instead of the 68000 or 68020: select
+**CPU: 68040** in **Profile Settings** (the Amiga restarts). It is the
+pipelined AP68040 core with the 68040's MMU, its FPU (the 68040's own subset
+of 68881/68882 instructions) and 4 KB instruction and data caches, clocked at
+42 MHz - on its own clock, next to the 28 MHz Amiga bus. Zorro II and Zorro
+III Fast RAM is read and written straight from the SDRAM controller, 32 bits
+and whole cache lines at a time.
+
+* **Software.** Like a real A4000/040, AmigaOS needs `68040.library` in
+  `LIBS:` (Commodore's from the Workbench 3.1 Install disk, version 37.30, is
+  tested). SetPatch loads it and switches the MMU on; Fast RAM then runs in
+  copyback mode, Chip RAM uncached. SysInfo shows a 68040 with FPU.
+* **Speed.** SysInfo: about 25,800 Dhrystones with Zorro III Fast RAM, about
+  1.4x an A4000/040 at 25 MHz. Chip and Slow RAM
+  stay as slow as on a real Amiga, and code in Chip RAM is never cached
+  (chipset DMA can change it).
+* **RTG** needs the `MiSTer.card` from `Megamiga_RTG.adf`: with the MMU on,
+  only that driver finds the graphics card (see the RTG section).
+* **Known limits.** Ctrl-Amiga-Amiga resets at once, so data the data cache
+  has not written back yet is lost (the OS flushes before its own reboots);
+  this matters only for things meant to survive a reset, such as `RAD:`.
+  Some old games and demos do not run on any 68040, as on a real A4000/040.
 
 ### Floppy disks
 
@@ -398,8 +429,8 @@ when it starts.
 
 ### Graphics card (RTG, Picasso96)
 
-Profiles with the 68020 (the A1200 profile, or any profile switched to the
-68020 in **Profile Settings**) have a graphics card for Picasso96: Workbench
+Profiles with the 68020 or 68040 (the A1200 profile, or any profile switched
+to one of them in **Profile Settings**) have a graphics card for Picasso96: Workbench
 and RTG programs can open screens in 256 colours, 16 bit (65536 colours) or
 24/32 bit, which the MEGA65 shows on its **HDMI** output. The 4 MB of board
 memory hold for example 1024 x 768 in 32 bit or 1280 x 1024 in 16 bit.
@@ -819,7 +850,8 @@ Version 1 is feature complete, so — among other things — the following known
 gaps remain in this release:
 
 * One hard disk only, no CD-ROM
-* PAL only, no NTSC; the 68020 has no FPU and no MMU, and there is no 68030
+* PAL only, no NTSC; the 68020 has no FPU and no MMU (the 68040 has both),
+  and there is no 68030 or 68060
 * AGA: no SuperHires (1280 pixels) and no 31 kHz modes (DblPAL, Multiscan,
   Productivity) yet
 * No ECS SuperHires and Productivity modes (the video path takes at most a

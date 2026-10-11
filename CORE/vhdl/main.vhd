@@ -141,6 +141,7 @@ entity main is
       -- Megamiga: the 68020 (TG68K, '1') instead of the 68000 (fx68k, '0'), and the
       -- 16 MB Zorro III board (68020 only). Static OSM bits; a change cold-boots.
       cpu_020_i               : in  std_logic;
+      cpu_040_i               : in  std_logic;   -- Megamiga: the AP68040 instead of TG68K (cpu_020_i too)
       z3_ram_i                : in  std_logic;
       -- Megamiga: chipset "00" OCS, "01" ECS, "10" AGA (userio 0xF3, static OSM bits)
       chipset_i               : in  std_logic_vector(1 downto 0);
@@ -536,6 +537,7 @@ architecture synthesis of main is
          snoop_stb      : in  std_logic;
          snoop_addr     : in  std_logic_vector(20 downto 1);
          slowram_ena    : in  std_logic;
+         cpu040_sel     : in  std_logic;
          fp_req         : out std_logic;
          fp_we          : out std_logic;
          fp_line        : out std_logic;
@@ -942,6 +944,7 @@ begin
          snoop_stb       => cpu_snoop_stb,
          snoop_addr      => ram_addr_o(20 downto 1),
          slowram_ena     => slow_ram_i,
+         cpu040_sel      => cpu_040_i,
          fp_req          => fp_req_o,
          fp_we           => fp_we_o,
          fp_line         => fp_line_o,

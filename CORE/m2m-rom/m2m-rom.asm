@@ -4861,7 +4861,10 @@ RTC_LAST_MIN    .BLOCK 1                        ; last internal minute seen by
 ; MENU_HEAP_SIZE 3456, headroom 11, both HEAP_SIZE -32.
 ; Megamiga serial port on PMOD (Settings > Ports): 211 items, demand 3495,
 ; MENU_HEAP_SIZE 3520, headroom 25, both HEAP_SIZE -64.
-MENU_HEAP_SIZE  .EQU 3520
+; Megamiga 68040: the blank line after each profile's CPU radio became " CPU: 68040"
+; (+33 characters, still 211 items), demand 3528, MENU_HEAP_SIZE 3552, headroom 24,
+; release HEAP_SIZE -32 (the combined total and the stack margin are unchanged).
+MENU_HEAP_SIZE  .EQU 3552
 
 #ifndef RELEASE
 
@@ -4896,7 +4899,7 @@ HEAP            .BLOCK 1
 ; Megamiga, M2M-UPSTREAM rom-32k: the device window moved into the RAM
 ; (0x8000-0x8FFF), so the variables start at 0x9000 and the combined total is
 ; 4096 words smaller: 25056 (the stack margin stays the same).
-HEAP_SIZE       .EQU 21536                      ; 25056 - 3520 = 21536
+HEAP_SIZE       .EQU 21504                      ; 25056 - 3552 = 21504
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract
