@@ -1523,6 +1523,55 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   0.4 driver test (BOARD variant: the RIs and bases at $41000000) on both
   CPUs. The driver test needs about 41 minutes and more than 2M clocks
   (MAXCYC 20M).
+  RESULT: all four driver runs PASS (tests 1..$18); build cpu040-c WNS
+  +0.129 WHS +0.036 (`~/aexp-builds/Megamiga-cpu040-c`, with the new
+  `Megamiga_RTG.adf`); not hardware-tested yet.
+- **68040 EXPERIMENT, step 2: the core on its own clock (branch `cpu040`,
+  2026-10-11, C_CPU040 = 2, NOT hardware-tested).** `rtl/ap040_island.v`:
+  the core free-running on clk_cpu (clk.vhd CLKOUT2 of the main MMCM, own
+  BUFG) with its 32-bit master port (BUS16 = 0); the master port and the
+  MMU walker share ONE request channel (fields in registers + a toggle,
+  2-FF synchronized; answer toggle + held data back; walker first when
+  both ask; no new request in the clock of an answer, whose requester only
+  drops its request at the consuming edge). The bus side runs
+  ap040_bus16_adapter on the 28 MHz clock, completed by the same clock
+  enable as before, so everything downstream (registered RAM answer,
+  ram_hold, chip FSM, IDE/network, fastchip) is unchanged; the walker
+  bridge is gone. Snoop: one toggle per chipset write (the strobe is a
+  level for the whole write; an even number of toggles is invisible) -
+  writes are 4 bus clocks apart, the CPU takes a toggle within 3 of its
+  clocks (the e2e DMA model now writes 4 clocks apart like the chipset).
+  ipl, reset, windows, CACR/VBR/nresetout/CINV: 2-FF levels. CORE.xdc:
+  `create_generated_clock -name cpu_clk` on CLKOUT2 and a datapath-only
+  20 ns max delay both ways. cpu_wrapper CPU040_FAST passes the TC64 speed-
+  up set (POST_STORES, STORE_BUF, FWD, RAS, PRECISE, SB_MMU, BTFN, LDX; no
+  COPYBACK). SIM: e2e040 at 47.29 MHz, speed-ups off and on - PASS; snoop
+  mutant -> $BAA9; driver test at the board addresses, off and on - PASS.
+  BENCH (`~/aexp-work/cpu060/bench`, 500 iterations of a load/mul/store loop
+  in Zorro II RAM, caches on, 28 MHz clocks): TG68K 14,764; 040 on the bus
+  clock 17,788; island 47 MHz 17,432; island + speed-ups 12,184 (47 MHz) /
+  12,460 (42 MHz) = 1.18x TG68K. The 040's caches work (fetches 1003 -> 38,
+  reads = the 64 line fills); every long store is still two 16-bit bus
+  writes of about 12 bus clocks each, so this loop is bus-bound - the next
+  big step is a faster memory path (32-bit, fewer handshake clocks), not a
+  faster CPU clock. Build cpu040-d at 47.29 MHz: cpu_clk WNS about -1.5 ns
+  post-route (the core's bus unit, ~22.7 ns), stopped; build e at 42.04 MHz
+  (1135/27) with the speed-ups: cpu_clk about -1.8 ns post-place (the
+  speed-ups lengthen the paths to ~25.5 ns), stopped. Build f: 37.83 MHz
+  (1135/30 = 113.5/3, TC64's rate).
+  WRITE BUFFER (ap040_island WRITE_BUF, on with CPU040_FAST): the request
+  channel became an asynchronous FIFO (8 entries, Gray pointers, entry
+  written before the pointer moves); a write is acknowledged to the core
+  when queued, the bus side runs the queue back to back, reads wait behind
+  earlier writes (order kept; this bus never answers with an error). The
+  trace showed 8-10 idle bus clocks per access before (the toggle round
+  trip). e2e040 and the driver test (board addresses) PASS with it.
+  BENCH at 37.83 MHz, speed-ups + write buffer, 28 MHz clocks: store loop
+  11,396 (TG68K 14,764: 1.30x); register-only loop (2000 x 8 instructions,
+  all from cache) 17,032 (TG68K 22,240: 1.31x - per CPU clock the 040 is
+  about as fast as TG68K here, the gain is the clock). NOTE the bench's
+  bus-cycle counter counts state changes, so TG68K's back-to-back fetches
+  read as a handful.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
