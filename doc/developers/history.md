@@ -2383,6 +2383,31 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       as the Gayle -> $BA90, both killed on both CPUs.
   - R6 build `~/aexp-builds/Megamiga-gayle-a`: WNS +0.017, WHS +0.017,
     85.9k LUTs (0.6.0 85.8k). NOT hardware-tested yet.
+  - HW round 1 (2026-10-12): HDToolBox found the Gayle drive but called it
+    "Unknown", existing RDBs were not seen, "Save Changes to Drive" gave
+    error -3. Cause: the scsi.device of Kickstart 3.1 (and older) addresses
+    CHS (DEVH bit 6 clear), which the firmware aborted (lide.device always
+    sends LBA). FIX (firmware only): IDE_TF_LBA converts CHS with the drive's
+    geometry like MiSTer ide.cpp, LBA = (C x heads + H) x spt + S - 1 (head <
+    heads, 1 <= S <= spt, else IDNF); per-drive HDF_HEADS/HDF_SPT in the
+    swapped drive block (HDF_BLK_WORDS 281), default 16/63 at mount; INITIALIZE
+    DEVICE PARAMETERS (0x91) sets them (count 0 = 256 sectors, heads = DEVH
+    3..0 + 1); IDENTIFY words 54..58 report the current geometry and capacity.
+    fw-ide2: CHS reads at the default geometry, after 0x91 15/32 and 1/256
+    (cylinder > 255, LBA > 65535), a CHS write read back by LBA, three IDNF
+    cases; 13 CHS mutants killed; case_p's old "CHS -> ABRT" records became
+    0x91 16/63. Firmware 29148 words. Delivered as a patched bitstream
+    (`Megamiga-gayle-b`, see below), NOT yet HW-tested.
+- **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
+  save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
+  `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
+  verifies that the 16 QNICE ROM block RAMs (32K x 1 each, `ram_slice_begin` =
+  bit) hold exactly the saved image, sets the new INIT_xx (computed by
+  `patch_firmware.py`) and runs write_bitstream: about 2.5 minutes. An
+  identity patch reproduced the build's .bit byte for byte except the header
+  date. The read-only data (m2m-rodata) was a 700-cell LUT ROM; `i_rodata` now
+  has RAM_STYLE_SELECT "block" so builds from now on can patch it too (older
+  builds refuse a rodata change). Menu/help texts are in config.vhd = HDL.
 
 - **RTG native resolution (branch `rtg-native` from fastdisk `a627e12`,
   2026-10-15, M2M exception 19 `rtg-native-modes`).** The user: RTG screens

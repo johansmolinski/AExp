@@ -3386,6 +3386,10 @@ _HDFP_SKD       CMP     0, R9
                 MOVE    HDF_DGEN, R1
                 ADD     R6, R1
                 MOVE    R8, @R1
+                MOVE    HDF_HEADS, R8           ; the default CHS geometry
+                MOVE    IDE_DEF_HEADS, @R8      ; (until INITIALIZE DEVICE
+                MOVE    HDF_SPT, R8             ; PARAMETERS changes it)
+                MOVE    IDE_DEF_SPT, @R8
                 MOVE    R6, R8                  ; mounted: bit 0 or 1
                 ADD     1, R8
                 MOVE    HDF_UNITS, R1
@@ -3981,8 +3985,24 @@ IDE_CMD_START   INCRB
                 CMP     IDE_CMD_WRITE_NR, R0
                 RBRA    _ICS_WR, Z
 
+                CMP     IDE_CMD_INITDP, R0      ; the CHS geometry for the
+                RBRA    _ICS_OKN, !Z            ; Gayle's scsi.device: sectors
+                MOVE    IDE_TF_COUNT, R1        ; per track = count (0 = 256),
+                MOVE    @R1, R1                 ; heads = DEVH 3..0 + 1
+                AND     0x00FF, R1
+                RBRA    _ICS_IDP1, !Z
+                MOVE    256, R1
+_ICS_IDP1       MOVE    HDF_SPT, R2
+                MOVE    R1, @R2
+                MOVE    IDE_TF_DEVH, R1
+                MOVE    @R1, R1
+                AND     0x000F, R1
+                ADD     1, R1
+                MOVE    HDF_HEADS, R2
+                MOVE    R1, @R2
+
                 ; commands that need no data and nothing from us: OK
-                MOVE    IDE_CMD_OK_TAB, R1
+_ICS_OKN        MOVE    IDE_CMD_OK_TAB, R1
 _ICS_OKL        CMP     0xFFFF, @R1
                 RBRA    _ICS_ABRT, Z
                 CMP     @R1++, R0
@@ -4028,16 +4048,21 @@ _ICS_RET        DECRB
 
 ; IDE_TF_LBA: LBA28 and sector count of a READ/WRITE from the task file
 ;
+; CHS addressing (Megamiga 0.7: the scsi.device of Kickstart 3.1 and older uses
+; it on the Gayle; lide.device always uses LBA) is converted with the geometry
+; of the drive, HDF_HEADS / HDF_SPT, like ide.cpp of MiSTer:
+; LBA = (cylinder x heads + head) x sectors per track + sector - 1.
+;
 ; Output: C=0: IDE_LBA_LO/HI and IDE_LEFT are set up
-;         C=1: the command was finished with an error (CHS addressing: ABRT,
-;              out of range: IDNF)
+;         C=1: the command was finished with an error (out of range or an
+;              invalid CHS address: IDNF)
 ;         R8..R12 clobbered
 IDE_TF_LBA      INCRB
                 MOVE    IDE_TF_DEVH, R0
                 MOVE    @R0, R0                 ; R0: device/head
                 MOVE    R0, R1
                 AND     IDE_DEVH_LBA, R1
-                RBRA    _ITL_ABRT, Z            ; CHS: not supported
+                RBRA    _ITL_CHS, Z             ; CHS: convert
 
                 MOVE    IDE_TF_LBA1, R1         ; LBA 15:0
                 MOVE    @R1, R1
@@ -4056,7 +4081,7 @@ IDE_TF_LBA      INCRB
                 MOVE    @R3, R3
                 AND     0x00FF, R3
                 OR      R3, R2                  ; R2: LBA high word
-                MOVE    IDE_TF_COUNT, R3
+_ITL_COUNT      MOVE    IDE_TF_COUNT, R3
                 MOVE    @R3, R3
                 AND     0x00FF, R3              ; R3: count, 0 means 256
                 RBRA    _ITL_CNT, !Z
@@ -4086,8 +4111,50 @@ _ITL_OK         MOVE    IDE_LBA_LO, R6
                 AND     0xFFFB, SR              ; C=0
                 RBRA    _ITL_RET, 1
 
-_ITL_ABRT       MOVE    IDE_ERR_ABRT, R9
-                RBRA    _ITL_ERR, 1
+                ; CHS: cylinder = LBA2:LBA1, head = DEVH 3..0, sector = LBA0
+_ITL_CHS        MOVE    R0, R4                  ; R4: head, below the heads
+                AND     0x000F, R4
+                MOVE    HDF_HEADS, R5
+                MOVE    @R5, R5                 ; R5: heads
+                CMP     R5, R4                  ; heads > head?
+                RBRA    _ITL_IDNF, !N
+                MOVE    IDE_TF_LBA0, R6         ; R6: sector, 1..spt
+                MOVE    @R6, R6
+                AND     0x00FF, R6
+                RBRA    _ITL_IDNF, Z
+                MOVE    HDF_SPT, R7
+                MOVE    @R7, R7                 ; R7: sectors per track
+                CMP     R6, R7                  ; sector > spt?
+                RBRA    _ITL_IDNF, N
+                MOVE    IDE_TF_LBA2, R8         ; R8: cylinder
+                MOVE    @R8, R8
+                AND     0x00FF, R8
+                AND     0xFFFD, SR
+                SHL     8, R8
+                MOVE    IDE_TF_LBA1, R9
+                MOVE    @R9, R9
+                AND     0x00FF, R9
+                OR      R9, R8
+                MOVE    R5, R9
+                SYSCALL(mulu, 1)                ; R11|R10 = cylinder x heads
+                ADD     R4, R10                 ; + head
+                ADDC    0, R11
+                MOVE    R11, R2                 ; (the high word, R2)
+                MOVE    R10, R8                 ; x sectors per track: the
+                MOVE    R7, R9                  ; low word ...
+                SYSCALL(mulu, 1)
+                MOVE    R10, R1                 ; R1: LBA low word
+                MOVE    R11, R3                 ; R3: its carry into the high
+                MOVE    R2, R8                  ; ... and the high word (the
+                MOVE    R7, R9                  ; product fits 32 bits: at most
+                SYSCALL(mulu, 1)                ; 2^20 x 256)
+                MOVE    R10, R2
+                ADD     R3, R2                  ; R2: LBA high word
+                SUB     1, R6                   ; + sector - 1
+                ADD     R6, R1
+                ADDC    0, R2
+                RBRA    _ITL_COUNT, 1
+
 _ITL_IDNF       MOVE    IDE_ERR_IDNF, R9
 _ITL_ERR        RSUB    IDE_ERROR, 1
                 OR      0x0004, SR              ; C=1
@@ -4547,7 +4614,37 @@ _IID_S          MOVE    IDE_ID_SERIAL, R8       ; strings (read-only data
 _IID_CMAX       MOVE    IDE_MAX_CYL, R8
 _IID_CYL        MOVE    IDE_IDW_CYL, R9
                 RSUB    IDE_ID_PUT, 1
-                MOVE    IDE_IDW_CUR_CYL, R9
+
+                MOVE    HDF_HEADS, R8           ; the current CHS geometry
+                MOVE    @R8, R8                 ; (words 54..58)
+                MOVE    R8, R2                  ; R2: heads
+                MOVE    IDE_IDW_CUR_HDS, R9
+                RSUB    IDE_ID_PUT, 1
+                MOVE    HDF_SPT, R8
+                MOVE    @R8, R8
+                MOVE    IDE_IDW_CUR_SPT, R9
+                RSUB    IDE_ID_PUT, 1
+                MOVE    R2, R9                  ; R3: sectors per cylinder
+                SYSCALL(mulu, 1)
+                MOVE    R10, R3
+                MOVE    HDF_SECT_LO, R8         ; cylinders, at most 65535
+                MOVE    @R8, R8
+                MOVE    HDF_SECT_HI, R9
+                MOVE    @R9, R9
+                XOR     R11, R11
+                SYSCALL(divu32, 1)
+                CMP     0, R9
+                RBRA    _IID_CC, Z
+                MOVE    0xFFFF, R8
+_IID_CC         MOVE    IDE_IDW_CUR_CYL, R9
+                RSUB    IDE_ID_PUT, 1
+                MOVE    R3, R9                  ; capacity = cylinders x
+                SYSCALL(mulu, 1)                ; heads x sectors
+                MOVE    R10, R8
+                MOVE    IDE_IDW_CUR_CAP, R9
+                RSUB    IDE_ID_PUT, 1
+                MOVE    R11, R8
+                ADD     1, R9
                 RSUB    IDE_ID_PUT, 1
 
                 DECRB
@@ -5229,12 +5326,18 @@ IDE_CMD_READ_NR .EQU    0x0021
 IDE_CMD_WRITE   .EQU    0x0030
 IDE_CMD_WRITE_NR .EQU   0x0031
 IDE_SECT_PER_CYL .EQU   1008                ; 16 heads x 63 sectors
+IDE_DEF_HEADS   .EQU    16                  ; the default CHS geometry
+IDE_DEF_SPT     .EQU    63
+IDE_CMD_INITDP  .EQU    0x0091              ; INITIALIZE DEVICE PARAMETERS
 IDE_MAX_CYL     .EQU    16383               ; CHS maximum
 IDE_IDW_CYL     .EQU    1                   ; IDENTIFY word indexes
 IDE_IDW_SERIAL  .EQU    10
 IDE_IDW_FWREV   .EQU    23
 IDE_IDW_MODEL   .EQU    27
 IDE_IDW_CUR_CYL .EQU    54
+IDE_IDW_CUR_HDS .EQU    55
+IDE_IDW_CUR_SPT .EQU    56
+IDE_IDW_CUR_CAP .EQU    57                  ; 57/58: current capacity
 IDE_IDW_LBA_LO  .EQU    60
 IDE_IDW_LBA_HI  .EQU    61
 IDE_ACK_LOOPS   .EQU    20000               ; a commit is acknowledged in ~2 us
@@ -5243,8 +5346,8 @@ IDE_LIDE_AUTO_ID .EQU   1                   ; lide.rom = auto-load ROM 1
 IDE_ASCII_SPACE .EQU    0x0020
 HDF_MIN_SIZE_HI .EQU    1                   ; at least 64 KB
 HDF_MAP_WORDS   .EQU    257                 ; extent map: 64 extents
-HDF_BLK_WORDS   .EQU    282                 ; FDH (15 since the FAT32 write
-                                            ; layer) + 10 + HDF_MAP_WORDS
+HDF_BLK_WORDS   .EQU    284                 ; FDH (15 since the FAT32 write
+                                            ; layer) + 12 + HDF_MAP_WORDS
 
 ; commands that need no data and no action: answered with DRDY right away
 ; (INITIALIZE DEVICE PARAMETERS, SET FEATURES, RECALIBRATE, READ VERIFY,
@@ -5261,8 +5364,6 @@ IDE_ID_TAB      .DW     0, 0x0040           ; fixed disk
                 .DW     49, 0x0200          ; LBA supported
                 .DW     51, 0x0200          ; PIO mode 2 timing
                 .DW     53, 0x0001          ; words 54..58 valid
-                .DW     55, 16              ; current heads
-                .DW     56, 63              ; current sectors per track
                 .DW     80, 0x001E          ; ATA-1..ATA-4
                 .DW     0xFFFF
 ; (the IDENTIFY strings IDE_ID_SERIAL / _FWREV / _MODEL are in m2m-rodata.asm)
@@ -8718,6 +8819,8 @@ HDF_PART        .BLOCK 1                        ; 0: an HDF file; 1..4: the SD
                                                 ; card partition of a link file
 HDF_PST_LO      .BLOCK 1                        ; ... and its first block
 HDF_PST_HI      .BLOCK 1
+HDF_HEADS       .BLOCK 1                        ; CHS geometry (INITIALIZE DEVICE
+HDF_SPT         .BLOCK 1                        ; PARAMETERS), see IDE_TF_LBA
 HDF_MAP         .BLOCK HDF_MAP_WORDS            ; FAT32$FILE_MAP extent map
 HDF_SAVE        .BLOCK HDF_BLK_WORDS            ; the other drive
 HDF_SAVE_END    .BLOCK 1
