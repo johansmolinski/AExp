@@ -3112,14 +3112,27 @@ _IDI_Z          MOVE    0, @R0++                ; device pointer: HDF_SELECT
                 RET
 
 ; IDE_LIDE_OK: was /amiga/lide.rom loaded at startup (optional auto-load ROM 1)?
+; Megamiga 0.7: always yes while the board is the Gayle (the scsi.device of the Kickstart
+; drives it, no boot ROM needed).
 ; Output: C=1 if loaded, C=0 if not; all registers preserved
 ; (results travel in C: the RET is a MOVE and may change Z and N)
 IDE_LIDE_OK     INCRB
+                MOVE    M2M$RAMROM_DEV, R0      ; Gayle mode? (keep the selection)
+                MOVE    @R0, R1
+                MOVE    M2M$RAMROM_4KWIN, R2
+                MOVE    @R2, R3
+                RSUB    IDE_SEL, 1
+                MOVE    IDE_GAYLE, R4
+                MOVE    @R4, R4
+                MOVE    R1, @R0
+                MOVE    R3, @R2
+                AND     1, R4
+                RBRA    _ILO_YES, !Z
                 MOVE    CRTROM_AUT_LDF, R0
                 ADD     IDE_LIDE_AUTO_ID, R0
                 CMP     0, @R0
                 RBRA    _ILO_NO, Z
-                OR      0x0004, SR              ; C=1
+_ILO_YES        OR      0x0004, SR              ; C=1
                 DECRB
                 RET
 _ILO_NO         AND     0xFFFB, SR              ; C=0
@@ -3762,8 +3775,17 @@ _IRA_W          SUB     1, R1
 ; The board applies the commit only while BSY is set (so a late commit after
 ; an Amiga reset can never raise DRQ), but acknowledges every commit.
 ;
-; Input:  R8: status, R9: error register, R10: flags (bit 0: the data phase is
-;         CPU -> buffer); the IDE device must be selected
+; Input:  R8: status, R9: error register, R10: flags (IDE_FL_*: bit 0 the data
+;         phase is CPU -> buffer, bit 2 raise INTRQ, bit 3 the buffer -> CPU block
+;         ends the command); the IDE device must be selected
+;
+; INTRQ (Megamiga 0.7, Gayle mode; the board ignores it as RIPPLE) follows ide.cpp
+; of MiSTer, the drive behind the Minimig Gayle that the A600/A1200 scsi.device
+; runs against: every commit that ends BSY raises it - a completed command, an error, each
+; buffer -> CPU block, each further CPU -> buffer block - except the first DRQ of a
+; WRITE. The last block of a READ and IDENTIFY carries IDE_FL_END: the drive is ready
+; as soon as the CPU has its 256th word (ATA_STATUS_END in ide.cpp), so those commands
+; end without a commit of their own - one sent then could hit the next command.
 ; Output: none; all registers preserved
 IDE_COMMIT      INCRB
                 MOVE    IDE_NSTAT, R0
@@ -3855,6 +3877,10 @@ _IDS_NORST      MOVE    R1, R4
                 AND     IDE_EV_CMD, R4
                 RBRA    _IDS_NOCMD, Z
                 XOR     IDE_EV_CMD, @R2
+                MOVE    @R0, R4                 ; a buffer event of the previous
+                XOR     @R2, R4                 ; command (its last block ended
+                AND     IDE_EV_BUF, R4          ; it, IDE_FL_END) is done with
+                XOR     R4, @R2
                 RSUB    IDE_CMD_START, 1
                 RBRA    _IDS_RET, 1
 
@@ -3870,14 +3896,14 @@ _IDS_NOCMD      MOVE    @R3, R4                 ; R4: state
                 CMP     IDE_ST_WRWAIT, R4
                 RBRA    _IDS_WRDONE, Z
                 CMP     IDE_ST_IDWAIT, R4
-                RBRA    _IDS_FIN, Z
+                RBRA    _IDS_IDLE, Z            ; (IDE_FL_END: already ready)
                 RBRA    _IDS_RET, 1             ; stray buffer event
 
 _IDS_RDPREP     RSUB    IDE_READ_SECT, 1        ; next sector into the buffer
                 RBRA    _IDS_RET, 1
 
 _IDS_RDDONE     RSUB    IDE_NEXT, 1             ; the CPU has read a sector
-                RBRA    _IDS_FIN, C
+                RBRA    _IDS_IDLE, C            ; (IDE_FL_END: already ready)
                 MOVE    IDE_ST_RDPREP, @R3
                 RBRA    _IDS_RET, 1
 
@@ -3887,15 +3913,15 @@ _IDS_WRDONE     RSUB    IDE_WRITE_SECT, 1       ; the CPU has written a sector
                 RBRA    _IDS_FIN, C
                 MOVE    IDE_ST_DRQ, R8          ; next sector: DRQ again
                 XOR     R9, R9
-                MOVE    IDE_FL_WRITE, R10
+                MOVE    IDE_FL_WRIRQ, R10
                 RSUB    IDE_COMMIT, 1
                 RBRA    _IDS_RET, 1
 
-_IDS_FIN        MOVE    IDE_ST_READY, R8        ; command complete
+_IDS_FIN        MOVE    IDE_ST_READY, R8        ; WRITE complete
                 XOR     R9, R9
-                XOR     R10, R10
+                MOVE    IDE_FL_IRQ, R10
                 RSUB    IDE_COMMIT, 1
-                MOVE    IDE_STATE, R3
+_IDS_IDLE       MOVE    IDE_STATE, R3
                 MOVE    IDE_ST_IDLE, @R3
 
 _IDS_RET        DECRB
@@ -3923,7 +3949,7 @@ _INX_DONE       OR      0x0004, SR              ; C=1: done
 ; Output: none; R8..R10 clobbered
 IDE_ERROR       INCRB
                 MOVE    IDE_ST_ERROR, R8
-                XOR     R10, R10
+                MOVE    IDE_FL_IRQ, R10
                 RSUB    IDE_COMMIT, 1
                 MOVE    IDE_STATE, R0
                 MOVE    IDE_ST_IDLE, @R0
@@ -3963,7 +3989,7 @@ _ICS_OKL        CMP     0xFFFF, @R1
                 RBRA    _ICS_OKL, !Z
                 MOVE    IDE_ST_READY, R8
                 XOR     R9, R9
-                XOR     R10, R10
+                MOVE    IDE_FL_IRQ, R10
                 RSUB    IDE_COMMIT, 1
                 MOVE    IDE_STATE, R1
                 MOVE    IDE_ST_IDLE, @R1
@@ -3976,7 +4002,7 @@ _ICS_ABRT       MOVE    IDE_ERR_ABRT, R9        ; everything else: aborted
 _ICS_ID         RSUB    IDE_IDENTIFY, 1
                 MOVE    IDE_ST_DRQ, R8
                 XOR     R9, R9
-                XOR     R10, R10
+                MOVE    IDE_FL_ENDIRQ, R10
                 RSUB    IDE_COMMIT, 1
                 MOVE    IDE_STATE, R1
                 MOVE    IDE_ST_IDWAIT, @R1
@@ -3992,7 +4018,7 @@ _ICS_WR         RSUB    IDE_TF_LBA, 1
                 RBRA    _ICS_RET, C
                 MOVE    IDE_ST_DRQ, R8          ; DRQ: the CPU fills the buffer
                 XOR     R9, R9
-                MOVE    IDE_FL_WRITE, R10
+                MOVE    IDE_FL_WRITE, R10       ; (the first block: no INTRQ)
                 RSUB    IDE_COMMIT, 1
                 MOVE    IDE_STATE, R1
                 MOVE    IDE_ST_WRWAIT, @R1
@@ -4129,8 +4155,12 @@ _IRS_L          MOVE    R2, R8                  ; high byte = byte 2i
 
 _IRS_DONE       MOVE    IDE_ST_DRQ, R8          ; the CPU may read now
                 XOR     R9, R9
-                XOR     R10, R10
-                RSUB    IDE_COMMIT, 1
+                MOVE    IDE_FL_IRQ, R10
+                MOVE    IDE_LEFT, R0            ; the last sector ends the command
+                CMP     1, @R0
+                RBRA    _IRS_COMMIT, !Z
+                MOVE    IDE_FL_ENDIRQ, R10
+_IRS_COMMIT     RSUB    IDE_COMMIT, 1
                 MOVE    IDE_STATE, R0
                 MOVE    IDE_ST_RDWAIT, @R0
                 RBRA    _IRS_RET, 1
@@ -5183,6 +5213,11 @@ IDE_ST_READY    .EQU    0x0050              ; DRDY | DSC
 IDE_ST_DRQ      .EQU    0x0058              ; DRDY | DSC | DRQ
 IDE_ST_ERROR    .EQU    0x0051              ; DRDY | DSC | ERR
 IDE_FL_WRITE    .EQU    0x0001
+IDE_FL_IRQ      .EQU    0x0004              ; raise INTRQ (Gayle mode, the rules of ide.cpp)
+IDE_FL_END      .EQU    0x0008              ; the last buffer -> CPU block ends the command
+IDE_FL_WRIRQ    .EQU    0x0005              ; IDE_FL_WRITE | IDE_FL_IRQ
+IDE_FL_ENDIRQ   .EQU    0x000C              ; IDE_FL_END | IDE_FL_IRQ
+IDE_GAYLE       .EQU    0x8119              ; bit 0: the board is the Gayle (read only)
 IDE_ERR_ABRT    .EQU    0x0004              ; command aborted
 IDE_ERR_IDNF    .EQU    0x0010              ; sector not found (out of range)
 IDE_ERR_UNC     .EQU    0x0040              ; uncorrectable (SD card error)
@@ -8843,7 +8878,11 @@ SHR_RNOBJ       .BLOCK 8                        ; RENAME: the object
 ; the HDMI submenu became the "RTG native resolution" toggle (+22 characters,
 ; 229 items): demand 3889, MENU_HEAP_SIZE 3904, headroom 15, release HEAP_SIZE
 ; -32 (the combined total is unchanged).
-MENU_HEAP_SIZE  .EQU 3904
+;MENU_HEAP_SIZE  .EQU 3904
+; Megamiga 0.7: the blank line after the chipset radio of each profile became the
+; Gayle IDE controller toggle (+63 characters, still 229 items): demand 3952,
+; MENU_HEAP_SIZE 3968, headroom 16, release HEAP_SIZE -64 (combined total unchanged).
+MENU_HEAP_SIZE  .EQU 3968
 
 #ifndef RELEASE
 
@@ -8899,7 +8938,8 @@ HEAP            .BLOCK 1
 ;HEAP_SIZE       .EQU 14944                      ; 18560 - 3616 = 14944
 ;HEAP_SIZE       .EQU 14912                      ; 18528 - 3616 = 14912
 ;HEAP_SIZE       .EQU 14656                      ; 18528 - 3872 = 14656
-HEAP_SIZE       .EQU 14624                      ; 18528 - 3904 = 14624
+;HEAP_SIZE       .EQU 14624                      ; 18528 - 3904 = 14624
+HEAP_SIZE       .EQU 14560                      ; 18528 - 3968 = 14560
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

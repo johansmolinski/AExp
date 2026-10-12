@@ -38,9 +38,15 @@
 --   0x111        R/W: error register to apply on commit
 --   0x112        R/W: bit 0: the data phase started by a commit with DRQ is CPU -> buffer
 --                     bit 1: also apply the task file values 0x113-0x117
+--                     bit 2: raise INTRQ with this commit (Gayle mode only, see below)
+--                     bit 3: the data phase started by this commit is the last one of a
+--                            buffer -> CPU command: its 256th word ends the command (status
+--                            DRDY|DSC instead of BSY, MiSTer's ATA_STATUS_END); the buffer
+--                            event is raised as usual, the commit that follows is ignored
 --   0x113-0x117  R/W: sector count, LBA 7:0, 15:8, 23:16, device/head to apply on commit
 --   0x118        R/W: bit 0: master (unit 0) present, bit 1: board enabled (in the autoconfig
 --                     chain), bit 2: slave (unit 1) present (Megamiga 0.3.1)
+--   0x119        R:   bit 0: Gayle mode (gayle_i, Megamiga 0.7)
 --   0x11F        W: commit (any value)
 --   0x120-0x125  R/W: sector engine, unit 0: mode (bits 1..0: 0 off, 1 file, 2 partition; bit 2:
 --                     the SD slot, 0 = bottom tray, 1 = back), sectors lo/hi,
@@ -64,6 +70,27 @@
 --                READY right away.
 --
 -- All registers above are in window 0; the firmware selects it before accessing them.
+--
+-- Gayle mode (Megamiga 0.7, gayle_i = 1, the profile's "Gayle IDE controller" toggle): the
+-- same drive, but on the A600/A1200 Gayle registers instead of the RIPPLE board, for the
+-- scsi.device in the A600/A1200 Kickstarts (and Linux's pata_gayle). cpu_wrapper then
+-- leaves the board out of the autoconfig chain and selects this module (sel_i) for
+-- $DA0000-$DAFFFF and $DE1000-$DE1FFF instead, both while board_ena_o is set (a disk is
+-- mounted), so without a disk the machine has no Gayle IDE at all, as before. The decode
+-- follows the real Gayle and Minimig's gayle.v (addr_i(18) tells $DE from $DA):
+--   $DA0000/$DA2000  CS1, the command block, register n at +4n (A4..A2; A1 ignored, so a
+--                    long access to the data register is two data words)
+--   $DA1000/$DA3000  CS2, the control block: +$18 = device control / alternate status
+--   $DA8000          card status: bit 15 = IDE interrupt (or cs_mask bit 5), then the
+--                    written cs_mask/cs bits as in gayle.v (no PCMCIA card, ever)
+--   $DA9000          interrupt request: bit 15 = INTRQ (writes ignored, as in gayle.v)
+--   $DAA000          interrupt enable: bit 15
+--   $DAB000          config: bits 15..12, read back
+--   $DE1000          Gayle ID: bit 15 reads 1, 1, 0, 1 (a write restarts the sequence)
+-- INTRQ follows ATA and MiSTer's ide.cpp: a commit with flag bit 2 sets it (unless nIEN,
+-- device control bit 1, is set), reading the status register or writing the command
+-- register clears it, and irq_o = INTRQ and the enable bit goes to INT2. In RIPPLE mode
+-- irq_o stays 0 (lide.device polls).
 --
 -- A commit is applied a few core clocks after its toggle crossed over (the payload was
 -- written before it, so it has settled) and only while BSY is set: a late commit after an
@@ -93,12 +120,14 @@ entity ide_board is
       rw_i                   : in  std_logic;        -- '1' = read
       uds_n_i                : in  std_logic;
       lds_n_i                : in  std_logic;
-      addr_i                 : in  std_logic_vector(16 downto 1);  -- offset within the board
+      gayle_i                : in  std_logic;        -- Gayle mode (see header), static
+      addr_i                 : in  std_logic_vector(18 downto 1);  -- offset within the board
       data_i                 : in  std_logic_vector(15 downto 0);
       data_o                 : out std_logic_vector(15 downto 0);
       ready_o                : out std_logic;        -- -> DTACK
       board_ena_o            : out std_logic;        -- -> cpu_wrapper ide_ena
       activity_o             : out std_logic;        -- a command runs (BSY or DRQ): drive LED
+      irq_o                  : out std_logic;        -- Gayle mode: the IDE interrupt (INT2)
 
       -- core clock domain: reading lide.rom from HyperRAM (via avm_fifo)
       rom_avm_read_o         : out std_logic;
@@ -169,7 +198,7 @@ architecture synthesis of ide_board is
    signal ready       : std_logic := '0';
    signal ack_rw      : std_logic := '1';
    signal rdata       : std_logic_vector(15 downto 0) := (others => '1');
-   signal lat_addr    : std_logic_vector(16 downto 1) := (others => '0');
+   signal lat_addr    : std_logic_vector(18 downto 1) := (others => '0');
 
    signal ide_enabled : std_logic := '0';
 
@@ -186,6 +215,17 @@ architecture synthesis of ide_board is
    signal srst        : std_logic := '0';
    signal phase_wr    : std_logic := '0';
    signal ptr         : unsigned(7 downto 0) := (others => '0');
+   signal last_blk    : std_logic := '0';      -- the data phase ends the command (flag bit 3)
+
+   -- Gayle mode
+   signal intrq       : std_logic := '0';      -- ATA INTRQ
+   signal nien        : std_logic := '0';      -- device control bit 1
+   signal g_intena    : std_logic := '0';      -- $DAA000 bit 15
+   signal g_cs_mask   : std_logic_vector(5 downto 0) := (others => '0');
+   signal g_cs        : std_logic_vector(1 downto 0) := (others => '0');
+   signal g_cfg       : std_logic_vector(3 downto 0) := (others => '0');
+   signal g_id_cnt    : unsigned(1 downto 0) := (others => '0');
+   signal q_gayle_s0, q_gayle : std_logic := '0';
 
    -- events to the firmware (toggles, raised C_EVT_DELAY clocks late)
    signal evt_cmd, evt_buf, evt_rst, evt_ack : std_logic := '0';
@@ -290,6 +330,7 @@ begin
    data_o      <= rdata;
    board_ena_o <= m_board_ena;
    activity_o  <= status(C_BSY) or status(C_DRQ);
+   irq_o       <= gayle_i and intrq and g_intena;
 
    rom_avm_read_o    <= rom_read;
    rom_avm_address_o <= std_logic_vector(resize(unsigned(G_ROM_BASE) + unsigned(lat_addr(15 downto 2)), 32));
@@ -299,10 +340,12 @@ begin
    ---------------------------------------------------------------------------------------
 
    bus_proc : process (clk_i)
-      variable a         : std_logic_vector(16 downto 1);
+      variable a         : std_logic_vector(18 downto 1);
       variable is_rom    : boolean;
       variable is_tf     : boolean;   -- channel 0 command block
       variable is_ctl    : boolean;   -- channel 0 control block
+      variable is_gid    : boolean;   -- Gayle mode: the Gayle ID ($DE1000)
+      variable is_greg   : boolean;   -- Gayle mode: $DA8000-$DABFFF
       variable reg       : natural range 0 to 7;
       variable present   : boolean;
       variable byte      : std_logic_vector(7 downto 0);
@@ -318,6 +361,8 @@ begin
       procedure device_reset is
       begin
          status   <= C_ST_READY;
+         intrq    <= '0';
+         last_blk <= '0';
          error    <= x"01";                   -- diagnostic code: no error
          tf_devh  <= x"A0";
          ptr      <= (others => '0');
@@ -367,6 +412,9 @@ begin
                if status(C_BSY) = '1' then
                   status <= m_nstat;
                   error  <= m_nerr;
+                  if m_nflags(2) = '1' and nien = '0' then
+                     intrq <= '1';
+                  end if;
                   if m_nflags(1) = '1' then
                      tf_scnt <= m_nscnt;
                      tf_lba0 <= m_nlba0;
@@ -377,6 +425,7 @@ begin
                   if m_nstat(C_DRQ) = '1' then
                      ptr      <= (others => '0');
                      phase_wr <= m_nflags(0);
+                     last_blk <= m_nflags(3);
                   end if;
                end if;
                dly_ack <= C_EVT_DELAY;
@@ -394,10 +443,21 @@ begin
                   a        := addr_i;
                   lat_addr <= addr_i;
                   ack_rw   <= rw_i;
-                  is_rom   := ide_enabled = '0' or a(16) = '1' or a(13) = a(12);
-                  is_tf    := ide_enabled = '1' and a(16 downto 12) = "00001";
-                  is_ctl   := ide_enabled = '1' and a(16 downto 12) = "00101";
-                  reg      := to_integer(unsigned(a(11 downto 9)));
+                  if gayle_i = '1' then
+                     is_rom  := false;
+                     is_gid  := a(18) = '1';
+                     is_tf   := a(18) = '0' and a(15 downto 14) = "00" and a(12) = '0';
+                     is_ctl  := a(18) = '0' and a(15 downto 14) = "00" and a(12) = '1';
+                     is_greg := a(18) = '0' and a(15 downto 14) = "10";
+                     reg     := to_integer(unsigned(a(4 downto 2)));
+                  else
+                     is_gid  := false;
+                     is_greg := false;
+                     is_rom  := ide_enabled = '0' or a(16) = '1' or a(13) = a(12);
+                     is_tf   := ide_enabled = '1' and a(16 downto 12) = "00001";
+                     is_ctl  := ide_enabled = '1' and a(16 downto 12) = "00101";
+                     reg     := to_integer(unsigned(a(11 downto 9)));
+                  end if;
                   byte     := data_i(15 downto 8);
                   rdata    <= (others => '1');
 
@@ -414,6 +474,21 @@ begin
                            bus_state <= B_ROM_REQ;
                         end if;
                      else
+                        if is_gid then
+                           -- 1, 1, 0, 1 on bit 15, one step per read (gayle.v)
+                           rdata     <= (others => '0');
+                           rdata(15) <= not g_id_cnt(1) or g_id_cnt(0);
+                           g_id_cnt  <= g_id_cnt + 1;
+                        elsif is_greg then
+                           rdata <= (others => '0');
+                           case a(13 downto 12) is
+                              when "00"   => rdata <= (g_cs_mask(5) or intrq) & g_cs_mask(4 downto 0) &
+                                                      g_cs & x"00";
+                              when "01"   => rdata(15) <= intrq;
+                              when "10"   => rdata(15) <= g_intena;
+                              when others => rdata(15 downto 12) <= g_cfg;
+                           end case;
+                        end if;
                         if (is_tf or is_ctl) and present then
                            if is_ctl then
                               if reg = 6 then rdata <= rd8(status); end if;   -- alternate status
@@ -430,7 +505,12 @@ begin
                                        rdata <= rd_buf(to_integer(ptr));
                                        ptr   <= ptr + 1;
                                        if ptr = 255 then
-                                          buffer_done;
+                                          if last_blk = '1' then   -- the command ends here
+                                             status  <= C_ST_READY;
+                                             dly_buf <= C_EVT_DELAY;
+                                          else
+                                             buffer_done;
+                                          end if;
                                        end if;
                                     else
                                        rdata <= (others => '0');
@@ -441,7 +521,9 @@ begin
                                  when 4 => rdata <= rd8(tf_lba1);
                                  when 5 => rdata <= rd8(tf_lba2);
                                  when 6 => rdata <= rd8(tf_devh);
-                                 when others => rdata <= rd8(status);
+                                 when others =>
+                                    rdata <= rd8(status);
+                                    intrq <= '0';            -- reading the status clears INTRQ
                               end case;
                            end if;
                         end if;
@@ -452,6 +534,17 @@ begin
                      -------------------------------------------------------------- writes
                      if uds_n_i = '0' then
                         ide_enabled <= '1';          -- RIPPLE: the first write maps the IDE in
+                     end if;
+                     if is_gid then
+                        g_id_cnt <= (others => '0');
+                     elsif is_greg then
+                        case a(13 downto 12) is
+                           when "00"   => g_cs_mask <= data_i(15 downto 10);
+                                          g_cs      <= data_i(9 downto 8);
+                           when "10"   => g_intena  <= data_i(15);
+                           when "11"   => g_cfg     <= data_i(15 downto 12);
+                           when others => null;      -- $DA9000: writes ignored (gayle.v)
+                        end case;
                      end if;
                      if is_tf then
                         case reg is
@@ -476,6 +569,7 @@ begin
                            when 7 =>
                               if present and status(C_BSY) = '0' then
                                  tf_cmd  <= byte;
+                                 intrq   <= '0';
                                  status  <= C_ST_BUSY;
                                  error   <= x"00";
                                  dly_cmd <= C_EVT_DELAY;
@@ -492,8 +586,9 @@ begin
                                  end case;
                               end if;
                         end case;
-                     elsif is_ctl and reg = 6 then   -- device control: SRST is bit 2
+                     elsif is_ctl and reg = 6 then   -- device control: SRST bit 2, nIEN bit 1
                         srst <= byte(2);
+                        nien <= byte(1);
                         if byte(2) = '1' then
                            status <= C_ST_BUSY;
                         elsif srst = '1' then
@@ -614,6 +709,12 @@ begin
             rom_c_valid <= '0';
             ide_enabled <= '0';
             srst        <= '0';
+            nien        <= '0';
+            g_intena    <= '0';
+            g_cs_mask   <= (others => '0');
+            g_cs        <= (others => '0');
+            g_cfg       <= (others => '0');
+            g_id_cnt    <= (others => '0');
             tf_feat <= (others => '0'); tf_scnt <= (others => '0'); tf_lba0 <= (others => '0');
             tf_lba1 <= (others => '0'); tf_lba2 <= (others => '0'); tf_cmd  <= (others => '0');
             device_reset;
@@ -919,6 +1020,15 @@ begin
    -- the following rising edge, no wait states): the QNICE device data path into the
    -- CPU only sees one flip-flop - the pattern of physical_fdd_diag (WIP-V2-A5), which
    -- keeps the half-period qnice_dev_data_o cone short.
+   -- gayle_i is static (a profile change cold-boots the Amiga): two flip-flops suffice
+   q_gayle_proc : process (qnice_clk_i)
+   begin
+      if rising_edge(qnice_clk_i) then
+         q_gayle_s0 <= gayle_i;
+         q_gayle    <= q_gayle_s0;
+      end if;
+   end process q_gayle_proc;
+
    qnice_read_proc : process (qnice_clk_i)
       variable d : std_logic_vector(15 downto 0);
    begin
@@ -945,6 +1055,7 @@ begin
                when x"16" => d(7 downto 0) := q_nlba2;
                when x"17" => d(7 downto 0) := q_ndevh;
                when x"18" => d(2 downto 0) := q_ctrl;
+               when x"19" => d(0) := q_gayle;
                when x"20" => d(2 downto 0) := q_mode0;
                when x"21" => d := q_sects0(15 downto 0);
                when x"22" => d := q_sects0(31 downto 16);

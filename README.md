@@ -84,9 +84,10 @@ Features
   screens in 4 MB of board memory; HDMI switches to the screen's own
   resolution (640x480 up to 1920x1080)
 * Two IDE hard disks (master and slave): `*.hdf` images or whole Amiga
-  partitions of an SD card, read and write, that Kickstart boots from (needs
-  the free lide.device boot ROM); the FPGA reads and writes their sectors
-  itself, on the SD card's native 4-bit bus where the card allows it
+  partitions of an SD card, read and write, that Kickstart boots from - on
+  the A600/A1200's own Gayle IDE port, or on a Zorro II IDE board with the
+  free lide.device boot ROM; the FPGA reads and writes their sectors itself,
+  on the SD card's native 4-bit bus where the card allows it
 * A network card on the MEGA65's Ethernet port (R4/R5/R6, 100 Mbit/s) with a
   SANA-II driver: Roadshow, AmiTCP, Miami and the like
 * A shared folder: the `/amiga` folder of the external SD card as the Amiga
@@ -129,7 +130,9 @@ you pick for it in **Profile Settings**. The profile is remembered, and at
 power-on the core starts with it.
 
 **Profile Settings** shows the details of the selected profile, and you can
-change each of them: CPU, chipset, Chip RAM, Slow RAM, 8 MB Zorro II Fast RAM
+change each of them: CPU, chipset, the hard disk controller (**Gayle IDE
+controller**: on = the A600/A1200's built-in IDE port, off = a Zorro II IDE
+board, see Hard disks below), Chip RAM, Slow RAM, 8 MB Zorro II Fast RAM
 and 16 MB Zorro III Fast RAM (68020 and 68040 only). The CPU is 68000, 68020
 or 68040. Every profile keeps its own
 settings. The hard disk lines (**HDF 0** = master, **HDF 1** = slave) and the
@@ -329,20 +332,36 @@ media.
 
 ### Hard disks (HDF images)
 
-The Amiga can have two hard disks, master and slave on one IDE channel, as on
-an A600 or A1200: `*.hdf` image files on your SD card, served
-through an emulated Zorro II IDE controller that behaves exactly like LIV2's
-open-source [RIPPLE](https://github.com/LIV2/RIPPLE-IDE) board. Its driver
-and boot ROM is [lide.device](https://github.com/LIV2/lide.device) (GPL-2.0),
-so Kickstart 1.3 finds the disk on its own and boots from it; Workbench sees
-the partitions as `DH0:`, `DH1:` and so on. Reads and writes go straight to
-the file on the SD card - there is no copy in memory and nothing to wait for
-before a reset.
+The Amiga can have two hard disks, master and slave on one IDE channel:
+`*.hdf` image files on your SD card. Reads and writes go straight to the file
+on the SD card - there is no copy in memory and nothing to wait for before a
+reset. Each machine profile picks the controller the disks are on, with the
+**Gayle IDE controller** line in **Profile Settings**:
 
-1. Copy the `lide.rom` from the core's release package to `/amiga/lide.rom`.
-   Without it the core works as before, just without the hard disk. The
-   release ships lide.device 40.12 with one fix for Workbench 1.3's Format
-   (source: branch `aexp-td-format-fix` of
+* **Gayle IDE** (on by default in the A600 and A1200 profiles): the IDE port
+  built into the real A600 and A1200, at the same addresses. Their Kickstarts
+  (2.05 and newer) bring its driver, `scsi.device`, and boot from it, so no
+  boot ROM file is needed, HDToolBox and the AmigaOS installers find the
+  drives without further settings, and the `scsi.device` updates of AmigaOS
+  3.1.4 and 3.2 (disks over 4 GB, for example) apply. It needs an A600 or
+  A1200 Kickstart: the A500 ones (1.3, 2.04) have no driver for it, and with
+  such a ROM the Amiga simply finds no hard disk.
+* **Zorro II IDE board** (Gayle IDE off; the default in the A500 profile): an
+  emulated expansion board that behaves exactly like LIV2's open-source
+  [RIPPLE](https://github.com/LIV2/RIPPLE-IDE). Its driver and boot ROM is
+  [lide.device](https://github.com/LIV2/lide.device) (GPL-2.0), which works
+  with every Kickstart, 1.3 included.
+
+The partition table is inside the image, so a disk works with either
+controller; only things that name the driver need changing (a mount entry or
+a tool type with `lide.device` instead of `scsi.device`, or the other way
+round). Workbench sees the partitions as `DH0:`, `DH1:` and so on, in the
+order of the drives, with either controller.
+
+1. For the Zorro II board only: copy the `lide.rom` from the core's release
+   package to `/amiga/lide.rom`. Without it that profile works as before,
+   just without the hard disk. The release ships lide.device 40.12 with one
+   fix for Workbench 1.3's Format (source: branch `aexp-td-format-fix` of
    [johansmolinski/lide.device](https://github.com/johansmolinski/lide.device/tree/aexp-td-format-fix));
    the official `lide.rom` of a
    [lide.device release](https://github.com/LIV2/lide.device/releases) works
@@ -357,15 +376,13 @@ before a reset.
 4. To eject a disk, highlight its **HDF 0:** or **HDF 1:** line and press
    <kbd>Space</kbd> - on an empty line the same key opens the file browser.
    The profile forgets the disk, and the Amiga restarts, because it only
-   looks for its drives at a restart; with neither drive left, the IDE board
-   leaves the Amiga's expansion list.
+   looks for its drives at a restart; with neither drive left, the controller
+   disappears from the Amiga.
 
-lide.device finds both drives on its own; HDToolBox lists them as units 0 and
-1 of `lide.device`, and their partitions appear as `DH0:`, `DH1:` and so on
-in the order of the drives.
-
-HDToolBox looks at `scsi.device` unless told otherwise. Select its icon,
-choose **Icons > Information** in Workbench, add the tool type
+HDToolBox lists the drives as units 0 and 1 of `scsi.device` (Gayle) or
+`lide.device` (Zorro II board). HDToolBox looks at `scsi.device` unless told
+otherwise, so for the Zorro II board select its icon, choose **Icons >
+Information** in Workbench, add the tool type
 `SCSI_DEVICE_NAME=lide.device` and save: from then on it opens with the
 Megamiga drives. From a Shell, `HDToolBox lide.device` does the same once.
 Installers that ask for the hard disk's device (the AmigaOS 3.2 one, for
@@ -396,6 +413,9 @@ A hard disk can also be a partition of the SD card itself instead of a file,
 which lifts FAT32's 4 GB limit (up to 128 GB per disk). Partitions of type
 `7F` (hex) are Amiga disks; Megamiga only ever uses partitions of exactly
 that type: the FAT32 partition, an empty entry or any other type is refused.
+On the Gayle, the part of a disk beyond 4 GB needs the `scsi.device` of
+AmigaOS 3.1.4 or 3.2: the one in the Kickstart 3.1 ROM only reaches the
+first 4 GB.
 The card with the core's files keeps its FAT32 partition first and has room
 for up to three more. A card that only holds Amiga disks, for example the
 internal one next to an external card with the core's files, needs no FAT32
@@ -420,7 +440,8 @@ its partitions in the list of the cards; it has no folders to browse.
    side of the same card: an `.hdf` file with one line of text,
    `MEGAMIGA-PARTITION 2` for partition 2 (the release has `part2.hdf`,
    `part3.hdf` and `part4.hdf`), and pick that like any other HDF.
-3. Partition the new disk on the Amiga with HDToolBox (`lide.device`), or
+3. Partition the new disk on the Amiga with HDToolBox (`scsi.device` on
+   the Gayle, `lide.device` on the Zorro II board), or
    copy an existing HDF image into the partition on a PC (`dd`); either way
    the partition holds a whole disk with its own RDB.
 

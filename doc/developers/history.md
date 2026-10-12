@@ -2309,6 +2309,80 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   QNICE unchanged (75873a2). Settings file 229 bytes; a 0.6.1 file must not
   be renamed (items inserted mid-menu). Package README.txt and notes062.md in
   `~/aexp-builds/release/`.
+- **Megamiga 0.7.0-dev, GAYLE IDE (branch `gayle`, Minimig branch `gayle`,
+  2026-10-12).** The HDF drives can sit on the A600/A1200 Gayle instead of the
+  RIPPLE board, per profile: "Gayle IDE controller" toggle on lines 25 / 39 /
+  53 (the blank line after the chipset radio, again no renumbering, OPTM_SIZE
+  211, `C_PROF_GAYLE` 6, groups `OPTM_G_P1..3GAYLE` 51..53), default ON for
+  A600 and A1200, OFF for A500 (Kickstart 1.3/2.04 have no scsi.device). Old
+  0.6 settings files have 0 in those bytes = Gayle off everywhere.
+  Design: the SAME drive backend (ide_board.vhd + the firmware ATA server),
+  only a second register decode in front of it - not Minimig's gayle.v/ide.v,
+  whose HPS protocol the firmware does not speak.
+  - cpu_wrapper.v: `gayle_ena` input; at reset `gayle_on <= ide_ena &
+    gayle_ena`, `ac_ide <= ide_ena & ~gayle_ena` (the board is either
+    autoconfig'd or the Gayle); `sel_gayle` = $DA0000-$DAFFFF and
+    $DE1000-$DE1FFF -> ext_sel (and the chipreq/ext_done exclusion), so Gayle
+    cycles never touch the chip bus (Minimig's own gayle stays disabled,
+    hdc_ena = 0). Without a mounted disk (board_ena 0) there is no Gayle at
+    all, as there was no RIPPLE board.
+  - ide_board.vhd: `gayle_i` (static), `addr_i` widened to 18:1 (bit 18 tells
+    $DE from $DA), `irq_o`. Decode as the real Gayle / gayle.v: CS1 at
+    $DA0000 and $DA2000 (register = A4..A2, A1 ignored: a long access is two
+    data words), CS2 at $DA1000/$DA3000 (+$18 = device control / alternate
+    status, other CS2 registers float), $DA8000 card status (bit 15 = IDE irq
+    | cs_mask 5, the written cs_mask/cs), $DA9000 bit 15 = INTRQ (writes
+    ignored, as gayle.v), $DAA000 enable bit 15, $DAB000 config 15..12, Gayle
+    ID 1,1,0,1 on bit 15 (a write restarts). ATA INTRQ: set by a commit with
+    flag bit 2 unless nIEN (control bit 1), cleared by a status read or a
+    command write, by SRST and reset; irq_o = gayle_i & INTRQ & enable,
+    OR'ed into minimig's eth_irq input in main.vhd (INT2). New commit flag
+    bit 3 (END): the 256th word of the last buffer->CPU block ends the
+    command (DRDY|DSC instead of BSY, MiSTer ide.cpp's ATA_STATUS_END); 0x119
+    reads the mode for the firmware.
+  - Firmware: commit flags follow MiSTer ide.cpp (the drive the A600/A1200
+    scsi.device is proven against): IRQ on every commit that ends BSY except
+    the first DRQ of a WRITE; the last READ sector and IDENTIFY carry END and
+    finish WITHOUT a commit (a late READY commit could land on the host's next
+    command - the race END would otherwise open); at a command event a
+    pending buffer event of the previous command is consumed. IDE_LIDE_OK is
+    true in Gayle mode (no lide.rom needed). RIPPLE mode also gets END (lide
+    polls; ready slightly earlier); irq_o stays 0 there.
+    MENU_HEAP_SIZE 3552 -> 3616 (demand 3591), release HEAP_SIZE 21440;
+    ROM 29012/32768 words.
+  - amiga_cold_boot: a Gayle toggle change cold-boots like the CPU radio.
+  - Tests (all out of repo):
+    - `~/aexp-work/ide/tb_ide_board.vhd` (`run_tb.sh`): RIPPLE PASS (and
+      irq_o never set) + `-gG_GAYLE=true` PASS (ID sequence, registers, irq
+      per ide.cpp rules, alt status does not clear, nIEN, enable, END,
+      command-write clear, reset). `mut.py`: 30 mutants (12 old + 18 Gayle)
+      all killed.
+    - `~/aexp-work/fw-ide2` (real firmware in the QNICE emulator): harness
+      checks the flags of every commit (T_DRQFL: read 04 / last 0C, write
+      01 then 05; final 04), no commit after END (stepped on even records,
+      left pending into the next command on odd ones), Gayle PREP without
+      lide.rom (lide field 2). 5 cases PASS (case_s64 regenerated without
+      the partition part: the emulator seeks with 32-bit byte offsets and
+      the 64-sectors-per-cluster image puts it past 4 GiB - an emulator
+      limit, old firmware fails it the same way). Mutants: 12 new all
+      killed; old `sel_swap_short` survives as before (all4.log).
+    - `~/aexp-work/gayle/e2e` (Verilator: real fx68k + cpu_wrapper + the
+      ghdl-converted ide_board + firmware model): RIPPLE prog PASS (0 irqs),
+      `prog_gayle.S` PASS (Gayle ID through $DE1000, no IDE board in the
+      autoconfig chain, IDENTIFY by MOVE.L, READ via $DA0000/$DA2000, WRITE
+      without irq on the first DRQ, nIEN, ABRT, RESET instruction; 6 irqs,
+      no Gayle cycle on the chip bus). Its TG68K variant fails at the first
+      autoconfig step in RIPPLE mode too (the old bench's bus models), so
+      the 32-bit CPUs are covered by e2e040 instead.
+    - `~/aexp-work/cpu060/e2e040/run_gayle.sh`: the release configuration
+      (C_CPU040 2, OPTS 311, both cores) with GAYLE 0/1 x TG68K/AP68040
+      (prog.S `.if GAYLE`: no IDE board in the chain, MOVEM bursts on
+      $DA2000, $DE1010 and a long on $DA9010 go to the board).
+      All four PASS (32 / 38 board accesses). Mutants (`mut_gayle.sh`):
+      `sel_gayle` without $DE1 -> $BA17, the IDE board still autoconfig'd
+      as the Gayle -> $BA90, both killed on both CPUs.
+  - R6 build `~/aexp-builds/Megamiga-gayle-a`: WNS +0.017, WHS +0.017,
+    85.9k LUTs (0.6.0 85.8k). NOT hardware-tested yet.
 
 - **RTG native resolution (branch `rtg-native` from fastdisk `a627e12`,
   2026-10-15, M2M exception 19 `rtg-native-modes`).** The user: RTG screens

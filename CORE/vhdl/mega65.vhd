@@ -391,6 +391,8 @@ signal main_fram_addr         : std_logic_vector(24 downto 1);   -- SDRAM word a
 signal main_cpu_020           : std_logic;                       -- Megamiga: a 32-bit CPU (68020 or 68040)
 signal main_cpu_040           : std_logic;                       -- Megamiga: the 68040 (AP68040), not TG68K
 signal main_z3_ram            : std_logic;                       -- Megamiga: 16 MB Zorro III board
+signal main_gayle             : std_logic;                       -- Megamiga 0.7: IDE as the Gayle
+signal main_ide_irq           : std_logic;                       -- Megamiga 0.7: Gayle IDE interrupt
 signal main_chipset           : std_logic_vector(1 downto 0);    -- Megamiga: 00 OCS, 01 ECS, 10 AGA
 signal main_chip_size         : std_logic_vector(1 downto 0);    -- Megamiga: 00 512K, 01 1M, 11 2M chip RAM
 
@@ -1046,6 +1048,7 @@ constant C_PROF_CPU_020       : natural := 1;    -- CPU radio: 0 = 68000, 1 = 68
 constant C_PROF_CPU_040       : natural := 2;
 constant C_PROF_CS_OCS        : natural := 3;    -- chipset radio: 3 OCS, 4 ECS, 5 AGA
 constant C_PROF_CS_AGA        : natural := 5;
+constant C_PROF_GAYLE         : natural := 6;    -- Gayle IDE controller toggle (Megamiga 0.7)
 constant C_PROF_CHIP_1M       : natural := 8;    -- chip RAM radio: 7 512 KB, 8 1 MB, 9 2 MB
 constant C_PROF_CHIP_2M       : natural := 9;
 constant C_PROF_SLOW          : natural := 11;   -- Slow RAM (512 KB) toggle
@@ -1371,6 +1374,8 @@ begin
       main_z3_ram  <= main_osm_control_i(v_base + C_PROF_Z3) and
                       (main_osm_control_i(v_base + C_PROF_CPU_020) or main_osm_control_i(v_base + C_PROF_CPU_040));
       main_slow_ram <= main_osm_control_i(v_base + C_PROF_SLOW);
+      -- Megamiga 0.7: the HDFs on the A600/A1200 Gayle instead of the RIPPLE board
+      main_gayle    <= main_osm_control_i(v_base + C_PROF_GAYLE);
       if C_HAS_SDRAM then
          main_fastram_en <= main_osm_control_i(v_base + C_PROF_FAST);
       else
@@ -1425,6 +1430,7 @@ begin
          cpu_020_i         => main_cpu_020,
          cpu_040_i         => main_cpu_040,
          z3_ram_i          => main_z3_ram,
+         gayle_i           => main_gayle,
          chipset_i         => main_chipset,
          chip_size_i       => main_chip_size,
          drv_map_i         => main_drv_map,
@@ -1582,6 +1588,8 @@ begin
          blt_dout_i           => main_blt_dout,
          c7m_o                => main_c7m,
          ide_ena_i            => main_ide_ena,
+         gayle_ena_i          => main_gayle,
+         ide_irq_i            => main_ide_irq,
          ide_sel_o            => main_ide_sel,
          ide_data_i           => main_ide_rddata,
          ide_ready_i          => main_ide_ready,
@@ -1898,12 +1906,14 @@ begin
          rw_i                    => not main_fram_we,
          uds_n_i                 => main_fram_uds_n,
          lds_n_i                 => main_fram_lds_n,
-         addr_i                  => main_fram_addr(16 downto 1),
+         gayle_i                 => main_gayle,
+         addr_i                  => main_fram_addr(18 downto 1),
          data_i                  => main_fram_wrdata,
          data_o                  => main_ide_rddata,
          ready_o                 => main_ide_ready,
          board_ena_o             => main_ide_ena,
          activity_o              => main_ide_activity,
+         irq_o                   => main_ide_irq,
 
          rom_avm_read_o          => main_iderom_avm_read,
          rom_avm_address_o       => main_iderom_avm_address,

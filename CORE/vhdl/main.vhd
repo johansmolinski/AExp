@@ -201,7 +201,12 @@ entity main is
       -- direction, strobes and write data are the fram_* outputs above: cpu_wrapper
       -- drives them from the CPU for every bus cycle. ide_rst_o = Amiga reset or the
       -- CPU's RESET instruction (the Zorro reset line: it also un-configures the board).
+      -- Megamiga 0.7: gayle_ena_i makes it the A600/A1200 Gayle instead (not autoconfig'd,
+      -- selected at $DA0000-$DAFFFF and $DE1000-$DE1FFF, fram_addr_o(18 downto 1) = the
+      -- offset, latched with ide_ena_i); ide_irq_i is its interrupt (INT2).
       ide_ena_i               : in  std_logic;
+      gayle_ena_i             : in  std_logic;
+      ide_irq_i               : in  std_logic;
       ide_sel_o               : out std_logic;
       ide_data_i              : in  std_logic_vector(15 downto 0);
       ide_ready_i             : in  std_logic;
@@ -544,6 +549,7 @@ architecture synthesis of main is
          ramshared      : out std_logic;
 
          ide_ena        : in  std_logic;
+         gayle_ena      : in  std_logic;
          z3ena          : in  std_logic;
          eth_ena        : in  std_logic;
          ext_eth        : out std_logic;
@@ -970,6 +976,7 @@ begin
          ramshared       => open,
 
          ide_ena         => ide_ena_i,           -- IDE board in the autoconfig chain
+         gayle_ena       => gayle_ena_i,         -- ... or as the Gayle
          z3ena           => z3_ram_i,            -- 16 MB Zorro III board (68020 only)
          eth_ena         => eth_ena_i,           -- network card in the autoconfig chain
          ext_eth         => cpu_ext_eth,
@@ -1455,7 +1462,9 @@ begin
          txd            => uart_txd_o,
          cts_n          => uart_cts_n_i,
          rts_n          => uart_rts_n_o,
-         eth_irq        => eth_irq_i,
+         -- Megamiga 0.7: + the Gayle IDE interrupt (INT2 as well)
+         --eth_irq        => eth_irq_i,
+         eth_irq        => eth_irq_i or ide_irq_i,
          cart_hrtmon    => cart_hrtmon_i,
          cart_ar3       => cart_ar3_i,
          cart_freeze    => cart_freeze,
