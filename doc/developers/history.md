@@ -1383,9 +1383,9 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   (templates 8/16/32 bit, registers kept, defaults, three templates back to
   back with a 400-line one, masked template/fill/copy over a background).
 
-- **Megamiga 0.4.2, SERIAL PORT ON PMOD1 (2026-10-09, R4/R5/R6). Built, NOT
-  hardware-tested (the user has no PMOD module; released for outside
-  testers).** Paula's UART (Minimig `rxd/txd`) and CIA-B /CTS /RTS reach the
+- **Megamiga 0.4.2, SERIAL PORT ON PMOD1 (2026-10-09, R4/R5/R6). Built
+  without a PMOD module here, released for outside testers; HARDWARE-CONFIRMED
+  by a tester with an RS-232 module on 2026-10-12.** Paula's UART (Minimig `rxd/txd`) and CIA-B /CTS /RTS reach the
   PMOD1 header through the new M2M exception 13 `pmod-pins`; MegaST pin
   layout (lo: CTS in, TXD out, RXD in, RTS out; hi: MIDI OUT = TXD, MIDI IN
   ANDed into RXD), inputs through a 2-FF ASYNC_REG synchronizer, pull-ups in
@@ -1720,8 +1720,9 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   SysInfo's Dhrystone simply gains nothing from it (no write-allocate: a
   store miss writes through). The OS's CopyBack flag (CPU, SysInfo) cannot be
   switched off on a 68040 (no CACR bit); 68040.library sets it per page.
-  The user's HDF copy runs at about 25 KB/s (15 MB in ~10 min); the user
-  thinks that is not new - to look at later.
+  The user's HDF copy seemed slow (a rough, untimed impression of about
+  25 KB/s); the user thinks that is not new - to measure properly later. The
+  figure was taken out of the 0.6.0 release notes on 2026-10-12.
   MERGE + CPU MENU (2026-10-11, the user: "call the 040 done for now", merge
   to main with 0.5.2, a 68040 option in the CPU menu, the 68020 back). main
   (0.5.2) merged into cpu040 (history.md conflict: both entries kept). The
@@ -2397,7 +2398,11 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     (cylinder > 255, LBA > 65535), a CHS write read back by LBA, three IDNF
     cases; 13 CHS mutants killed; case_p's old "CHS -> ABRT" records became
     0x91 16/63. Firmware 29148 words. Delivered as a patched bitstream
-    (`Megamiga-gayle-b`, see below), NOT yet HW-tested.
+    (`Megamiga-gayle-b`, see below).
+  - HW round 2 (2026-10-12, gayle-b, A1200 profile with Gayle on):
+    HARDWARE-CONFIRMED - the existing drives are recognized, and a new HDF
+    was partitioned in HDToolBox (Save Changes to Drive works) and its
+    partitions formatted.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

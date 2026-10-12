@@ -139,7 +139,7 @@ Megamiga fork (johansmolinski):
   (ide_board.vhd + firmware) answers at the A600/A1200 Gayle addresses
   ($DA0000-$DAFFFF, $DE1000) instead of the RIPPLE board, with ATA INTRQ on
   INT2 (commit flags IRQ/END, ide.cpp rules), for the Kickstart's own
-  scsi.device; no lide.rom needed there.
+  scsi.device; no lide.rom needed there. HW-confirmed (gayle-b, 2026-10-12).
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
