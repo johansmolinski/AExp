@@ -2399,10 +2399,11 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     cases; 13 CHS mutants killed; case_p's old "CHS -> ABRT" records became
     0x91 16/63. Firmware 29148 words. Delivered as a patched bitstream
     (`Megamiga-gayle-b`, see below).
-  - HW round 2 (2026-10-12, gayle-b, A1200 profile with Gayle on):
-    HARDWARE-CONFIRMED - the existing drives are recognized, and a new HDF
-    was partitioned in HDToolBox (Save Changes to Drive works) and its
-    partitions formatted.
+  - HW round 2 (2026-10-12, gayle-b, tested on the 68040 only):
+    HARDWARE-CONFIRMED - with Gayle on, the existing drives are recognized,
+    and a new HDF was partitioned in HDToolBox (Save Changes to Drive works)
+    and its partitions formatted; with Gayle off, the Zorro board with
+    lide.device still works. Not yet tested: 68000/68020, A600 + KS 2.05.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

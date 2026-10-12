@@ -134,12 +134,14 @@ Megamiga fork (johansmolinski):
   (~160 MB/s) caps 24 bit at 1024x768 and 32 bit at 800x600; ascal's 5-bit
   burst counter (31 x 128 bytes per line) is left as is because no wider line
   that needs it fits the bandwidth anyway (user decision for 0.6.3).
-- 0.7.0-dev (branch `dev-0.7.0`, rebased onto 0.6.3): Gayle IDE - per-profile "Gayle IDE controller"
+- 0.7.0-dev (branch `dev-0.7.0`, rebased onto 0.6.3 on 2026-10-16; 0.7.0 = the Linux release, with every fix
+  Linux on the 68040 needs). Gayle IDE: per-profile "Gayle IDE controller"
   toggle (lines 28/46/64, default on for A600/A1200): the same drive
   (ide_board.vhd + firmware) answers at the A600/A1200 Gayle addresses
   ($DA0000-$DAFFFF, $DE1000) instead of the RIPPLE board, with ATA INTRQ on
   INT2 (commit flags IRQ/END, ide.cpp rules), for the Kickstart's own
-  scsi.device; no lide.rom needed there. HW-confirmed (gayle-b, 2026-10-12).
+  scsi.device; no lide.rom needed there. HW-confirmed on the 68040 (gayle-b,
+  2026-10-12), the RIPPLE board with Gayle off too.
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
