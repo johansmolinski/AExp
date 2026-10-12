@@ -1768,6 +1768,52 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   driver rename, HDToolBox tool type SCSI_DEVICE_NAME=lide.device. Settings
   file unchanged (211 bytes).
 
+- **Megamiga 0.6.1-dev, SHARED FOLDER (branch `share` from main, 2026-10-12;
+  Minimig `share` 39b2d9c).** The user: mount `/amiga` as a removable AmigaOS
+  volume without a reboot; steps 1-3 (read-only first) for a 0.6.1 release
+  without Gayle. Design: MiSTer's shared-folder protocol (MiSTerFileSystem in
+  the Minimig repo `extra/`, host side Main_MiSTer
+  `support/minimig/minimig_share.cpp`): request flag `$DD4000` ((n+77)<<8 | n,
+  then `$DD4002` = 0xA55A until answered), request/response from `$DD4004`
+  (MiSTer's `miminig_fs_messages.h` layouts), data `$DD5000` (4 KB). HDL:
+  `share_buf.vhd` (4K x 16 dual-clock byte-enable BRAM, CPU port = ext_* of
+  cpu_wrapper with the new `ext_shr`, DTACK 2 clocks after the strobe; QNICE
+  device 0x010B falling edge, window 1 word 0 = gray-coded Amiga reset
+  counter); cpu_wrapper's `sel_shr` replaces the chip-bus always-ack of the
+  range. Firmware `SHARE_*`/`SHR_*` (2.3K words, ROM 31280/32768; 966 words of
+  variables, release HEAP_SIZE 21504 -> 20512, stack margin 300): own device
+  handle SHARE_DEV, root = `/amiga` via FAT32$CD; `SHR_TAKE_BUF` flushes and
+  releases HANDLE_DEV's and CONFIG_DEVH's sector-buffer ownership before a
+  request, `SHR_GIVE_BUF` its own after it; locks = (type, cluster, index) in
+  64 slots, key = generation:slot (stale generation -> 218); 8 open files;
+  directory cursor (ExNext continues, O(n)); parent via the `..` entry; READ
+  seeks per sector and copies from IO$SD_DATA (76k instructions per 4 KB, the
+  byte API took 487k); everything that writes -> 214. Media: card-detect
+  edges of the active slot (CSR bits 9/10), slot switch and SD_CHANGED rising
+  take the volume down, a remount follows after ~1 s (IO$CYC_MID); edges, not
+  levels, so a slot without card-detect still mounts at start. QNICE gotcha
+  found: RET is a MOVE and rewrites Z/N - results across RET only in C.
+  Amiga side `CORE/share/MegamigaFS.c` (vbcc, BCPL module like a314fs, linked
+  with `-Rstd` so 1.3's LoadSeg reads it - MiSTer's binary has RELOC32SHORT):
+  volume `SDCard:` only while the firmware status (`$DD4FF8` 'MS', bit 15 up,
+  generation) says so, checked per packet and every second (timer.device),
+  retired volumes kept while locked, IECLASS_DISKINSERTED/REMOVED, fixes
+  (failed READ replies, FH_FROM_LOCK, IS_FILESYSTEM, CURRENT_VOLUME); DOSDriver
+  `SD`, 1.3 MountList, `dummy.device` (= MiSTer's), `Megamiga_Share.adf`.
+  Tests: `~/aexp-work/share/fw` (real SHARE section in the QNICE emulator on
+  generated FAT32 images, spc 1/8/64, 520 records incl. 64 KB crossings,
+  leap/2104 dates, events reset/card out/in/SD_CHANGED/slot, buffer ownership
+  checked after every request; `mut.py` 49 mutants, 46 killed, 3 equivalent:
+  seek_neg/seek_past (the library refuses), dotdot_name). `~/aexp-work/share/
+  e2e` (tb020 0.6.0 + ghdl-synth share_buf + firmware model: TG68K PASS) and
+  `e2e68k` (fx68k Verilator: PASS; `mut.sh` 7 HDL mutants, 6 killed,
+  sb_rstcnt equivalent); the e2e TB also PASSES with the AP68040 (run_s1).
+  R6 build share-a (commit 11dcf29): WNS +0.006, WHS +0.012, BRAM 95.5/365,
+  LUTs 64%; saved with `patch_firmware.sh save` in
+  `~/aexp-builds/Megamiga-share-a`. Hardware test pending. Also on this branch: patch_firmware.* from `gayle`
+  with the rodata RAM in block RAM; CORE_VERSION 0.6.1 (settings file
+  megamiga-0.6.1.cfg, layout unchanged).
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).

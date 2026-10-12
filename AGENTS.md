@@ -95,6 +95,10 @@ Megamiga fork (johansmolinski):
 - 0.5.2: 32K QNICE ROM (M2M exception 15 `rom-32k`, window at
   `0x8000`; HW-confirmed) + hard disks on SD card partitions through HDF
   link files (`MEGAMIGA-PARTITION n`, MBR type `0x7F`, `HDF_LINK`).
+- 0.6.1-dev (branch `share`, from main without Gayle): shared folder - `/amiga`
+  of the SD card as the read-only volume `SDCard:` (MiSTer's shared-folder
+  protocol at `$DD4000`, `share_buf.vhd`, QNICE device 0x010B, firmware
+  `SHARE_STEP`, Amiga handler `CORE/share/MegamigaFS`, removable volume).
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
@@ -431,6 +435,13 @@ the dated facts.
   `impl_1/*_utilization_placed.rpt`, `impl_1/*_timing_summary_routed.rpt`,
   `impl_1/*_route_status.rpt`. Per-module BRAM: ask for
   `report_utilization -hierarchical`.
+- **Firmware-only changes need no synthesis** (Megamiga, 2026-10-12): after a
+  full build run `CORE/patch_firmware.sh save <dir>` (keeps the routed
+  checkpoint + the firmware images of that build); later
+  `CORE/patch_firmware.sh patch <dir> [out.bit]` assembles the current
+  firmware and writes that build's bitstream with it in ~2.5 minutes (it
+  first verifies the checkpoint holds the saved images). HDL changes,
+  config.vhd included (menu, help texts, version), still need a build.
 - **QNICE firmware**: the Vivado pre-synth hook rebuilds it inside the
   VM on every build — the VM works directly in this (mounted) folder,
   which is why `M2M/QNICE/assembler/qasm`/`qasm2rom` are Linux ELF
