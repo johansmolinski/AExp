@@ -621,6 +621,8 @@ signal qnice_ide_ce           : std_logic;
 signal qnice_ide_data         : std_logic_vector(15 downto 0);
 signal qnice_ide_wait         : std_logic;
 signal qnice_ide1_ce          : std_logic;   -- the slave HDF line: CSR only
+signal qnice_shr_ce           : std_logic;   -- the shared folder memory
+signal qnice_shr_data         : std_logic_vector(15 downto 0);
 signal qnice_ide1_data        : std_logic_vector(15 downto 0);
 signal qnice_ide1_wait        : std_logic;
 signal qnice_ide1_req_status  : std_logic_vector(3 downto 0);
@@ -1009,6 +1011,10 @@ constant C_PROF_Z3            : natural := 13;   -- Zorro III RAM (16 MB) toggle
 
 -- Network card (eth_card.vhd): CPU side on main_clk, MAC side on eth_clk50
 signal main_eth_sel           : std_logic;
+-- Megamiga 0.6.1: the shared folder memory (share_buf.vhd)
+signal main_shr_sel           : std_logic;
+signal main_shr_rddata        : std_logic_vector(15 downto 0);
+signal main_shr_ready         : std_logic;
 signal main_eth_rddata        : std_logic_vector(15 downto 0);
 signal main_eth_ready         : std_logic;
 signal main_eth_irq           : std_logic;
@@ -1496,6 +1502,9 @@ begin
          eth_data_i           => main_eth_rddata,
          eth_ready_i          => main_eth_ready,
          eth_irq_i            => main_eth_irq,
+         shr_sel_o            => main_shr_sel,
+         shr_data_i           => main_shr_rddata,
+         shr_ready_i          => main_shr_ready,
 
          -- Floppy configuration, plus the Hardware Floppy CIA-B taps,
          -- conditioned real drive status and reconstructed word stream
@@ -1622,6 +1631,32 @@ begin
       ); -- i_eth_card
 
    eth_clock_o <= eth_clk50;
+
+   ---------------------------------------------------------------------------------------------
+   -- Megamiga 0.6.1: the shared folder. $DD4000-$DD5FFF is the memory MiSTerFileSystem (and
+   -- Megamiga's MegamigaFS) talks through; the firmware answers its requests from the /amiga
+   -- folder of the SD card through device C_DEV_AMIGA_SHARE (see share_buf.vhd).
+   ---------------------------------------------------------------------------------------------
+
+   i_share_buf : entity work.share_buf
+      port map (
+         clk_i          => main_clk,
+         rst_i          => main_ide_rst,               -- Amiga reset or RESET instruction
+         sel_i          => main_shr_sel,
+         rw_i           => not main_fram_we,
+         uds_n_i        => main_fram_uds_n,
+         lds_n_i        => main_fram_lds_n,
+         addr_i         => main_fram_addr(12 downto 1),
+         data_i         => main_fram_wrdata,
+         data_o         => main_shr_rddata,
+         ready_o        => main_shr_ready,
+         qnice_clk_i    => qnice_clk_i,
+         qnice_addr_i   => qnice_dev_addr_i,
+         qnice_data_i   => qnice_dev_data_i,
+         qnice_ce_i     => qnice_shr_ce,
+         qnice_we_i     => qnice_dev_we_i,
+         qnice_data_o   => qnice_shr_data
+      ); -- i_share_buf
    eth_mdio_io <= eth_mdio_out when eth_mdio_oe = '1' else 'Z';
    eth_led2_o  <= '0';
 
@@ -1861,6 +1896,7 @@ begin
    --   0x0108  C_DEV_AMIGA_IDEROM  IDE board: boot ROM loader into HyperRAM
    --   0x0109  C_DEV_AMIGA_RODATA  read-only data of the firmware (m2m-rodata.asm)
    --   0x010A  C_DEV_AMIGA_IDE1    IDE board: CSR of the slave HDF line (i_ide1_csr)
+   --   0x010B  C_DEV_AMIGA_SHARE   the shared folder memory $DD4000-$DD5FFF (share_buf.vhd)
    -- Chip and Slow RAM have no QNICE access for timing reasons (see the
    -- signal declarations above); their device IDs stay reserved in globals.vhd.
    ---------------------------------------------------------------------------------------------
@@ -1928,6 +1964,9 @@ begin
          DATA_WIDTH   => 16,
          ROM_PRELOAD  => true,
          ROM_FILE     => QNICE_RODATA_M2M,
+         -- Megamiga: block RAM, not the LUT ROM Vivado picks by itself: patch_firmware.sh
+         -- can then put new read-only data into a built bitstream without synthesis
+         RAM_STYLE_SELECT => "block",
          FALLING_A    => true
       )
       port map (
@@ -1974,6 +2013,7 @@ begin
       qnice_ide_ce     <= '0';
       qnice_ide1_ce    <= '0';
       qnice_iderom_ce  <= '0';
+      qnice_shr_ce     <= '0';
 
       case qnice_dev_id_i is
 
@@ -2020,6 +2060,11 @@ begin
             qnice_iderom_ce  <= qnice_dev_ce_i;
             qnice_dev_data_o <= qnice_iderom_data;
             qnice_dev_wait_o <= qnice_iderom_wait;
+
+         -- the shared folder memory: registered readout (falling edge), zero wait states
+         when C_DEV_AMIGA_SHARE =>
+            qnice_shr_ce     <= qnice_dev_ce_i;
+            qnice_dev_data_o <= qnice_shr_data;
 
          -- read-only data of the firmware (window 0; the block RAM reads on the falling edge)
          when C_DEV_AMIGA_RODATA =>

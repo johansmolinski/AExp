@@ -217,6 +217,10 @@ constant C_DEV_AMIGA_IDE1     : std_logic_vector(15 downto 0) := x"010A";
 -- from QNICE_RODATA_M2M, read-only, window 0 only (see mega65.vhd)
 constant C_DEV_AMIGA_RODATA   : std_logic_vector(15 downto 0) := x"0109";
 
+-- Megamiga 0.6.1: the shared folder memory $DD4000-$DD5FFF (share_buf.vhd): window 0 = the
+-- 4K words the Amiga sees, window 1 word 0 = the Amiga reset counter
+constant C_DEV_AMIGA_SHARE    : std_logic_vector(15 downto 0) := x"010B";
+
 ----------------------------------------------------------------------------------------------------------
 -- Virtual Drive Management System
 ----------------------------------------------------------------------------------------------------------

@@ -60,6 +60,7 @@ START_FIRMWARE  RSUB    ADF_WB_INIT, 1
                 RSUB    RTC_INIT, 1
                 RSUB    HWF_OSM_INIT, 1
                 RSUB    IDE_INIT, 1
+                RSUB    SHARE_INIT, 1           ; Megamiga 0.6.1: shared folder
                 RBRA    START_SHELL, 1
 
 ; ----------------------------------------------------------------------------
@@ -1616,6 +1617,7 @@ _HCIO_FLK       MOVE    R5, @R4
                 ; framework RTC read once per minute so the Minimig $DC0000 clock
                 ; advances instead of freezing after the boot seed
 _HCIO_RTC       RSUB    IDE_STEP, 1             ; the IDE board (HDF image)
+                RSUB    SHARE_STEP, 1           ; the shared folder
                 RSUB    RTC_STEP, 1
 
                 ; live Hardware Floppy status line in the main menu. Four RAM
@@ -2520,6 +2522,1690 @@ _DEG_N          ADD     1, R4
                 MOVE    R1, @R0                 ; restore RAMROM selection
                 MOVE    R3, @R2
                 SYSCALL(leave, 1)
+                RET
+
+; ----------------------------------------------------------------------------
+; Shared folder (Megamiga 0.6.1)
+;
+; The folder /amiga of the SD card as an AmigaOS volume, read-only. On the
+; Amiga, the handler MegamigaFS (CORE/share) turns every DOS packet into a
+; request in the shared memory at $DD4000 (share_buf.vhd, QNICE device
+; AEXP_DEV_SHARE) and waits; SHARE_STEP answers it from the SD card. The
+; protocol is the one of MiSTer's MiSTerFileSystem (request layouts of MiSTer's
+; miminig_fs_messages.h), so MiSTer's own handler works too:
+;
+;   word 0x000  request number, written last by the Amiga: (n + 77) << 8 | n
+;   word 0x001  0xA55A while the request is pending; the firmware writes the
+;               request number there once the response is complete
+;   word 0x002  the request, then the response: 32-bit fields, big-endian,
+;               field n at words 2 + 2n (n = 0 is a size), names as BSTRs
+;   word 0x7FC  Megamiga status for MegamigaFS: 0x4D53 ('MS'), then bit 15 =
+;               volume present and bits 14..0 = the generation, then the
+;               protocol version. The generation changes whenever the volume
+;               goes away or comes back: MegamigaFS shows that as a disk change.
+;   word 0x800  the data buffer (4 KB) of READ
+;
+; Volume: /amiga is mounted on the device handle SHARE_DEV of its own (the
+; Shell keeps the current directory of HANDLE_DEV for its file browser) about
+; a second after the core starts, after a card is inserted (card-detect rising
+; edge), after a switch of the active SD slot and after a card change the
+; Shell noticed (SD_CHANGED). A card-detect falling edge takes the volume down.
+; Edges, not levels: a slot whose card-detect does not work still gets its
+; volume at start.
+;
+; Locks and files: a lock is an object - the root (/amiga), a directory (its
+; first cluster) or a file (the first cluster of its directory and its index
+; in that directory) - in one of SHR_LOCKS_N slots. Its key is the generation
+; (high word) and the slot + 1 (low word), so a lock from before a card change
+; is refused (ERROR_DEVICE_NOT_MOUNTED) instead of meaning something else.
+; Key 0 is the root. Open files are FAT32 handles in SHR_FILES_N slots, keyed
+; the same way. An Amiga reset (the reset counter of share_buf.vhd) frees all.
+;
+; The one SD sector buffer: SHARE_DEV is a third device handle on the same
+; controller as HANDLE_DEV and CONFIG_DEVH, and every device handle tracks the
+; owner of the buffer itself. So a request first flushes and releases the
+; buffer of the other two (SHR_TAKE_BUF) and finally releases its own
+; (SHR_GIVE_BUF): between two time slices nobody claims the buffer, and every
+; handle re-reads its sector on its next access.
+; ----------------------------------------------------------------------------
+
+SHR_W_FLAG      .EQU    0x8000                  ; the shared memory (window 0):
+SHR_W_ACK       .EQU    0x8001                  ; request flag, answer flag,
+SHR_W_REQ       .EQU    0x8002                  ; request/response,
+SHR_W_STAT      .EQU    0x87FC                  ; status words,
+SHR_W_DATA      .EQU    0x8800                  ; data buffer
+SHR_W_RSTC      .EQU    0x8000                  ; window 1: the reset counter
+SHR_W_BYTES     .EQU    0x8000                  ; byte 0 of the shared memory
+SHR_ST_UP       .EQU    0x8000                  ; status: volume present
+SHR_LOCKS_N     .EQU    64                      ; lock slots
+SHR_LOCK_SZ     .EQU    4                       ; type, cluster lo/hi, index
+SHR_FILES_N     .EQU    8                       ; open files
+SHR_FILE_SZ     .EQU    16                      ; FDH (12), cluster lo/hi,
+SHR_F_CLUS      .EQU    12                      ; index, used
+SHR_F_IDX       .EQU    14
+SHR_F_USED      .EQU    15
+SHR_DEBOUNCE    .EQU    768                     ; IO$CYC_MID ticks: ~1 s
+SHR_PROTO       .EQU    1                       ; protocol version
+SHR_MAXNAME     .EQU    106                     ; fib_FileName: 108 bytes
+
+SHR_T_ROOT      .EQU    1                       ; object types
+SHR_T_DIR       .EQU    2
+SHR_T_FILE      .EQU    3
+
+; AmigaOS DOS packet types
+SHR_A_LOCATE    .EQU    8
+SHR_A_FREELOCK  .EQU    15
+SHR_A_DELETE    .EQU    16
+SHR_A_RENAME    .EQU    17
+SHR_A_COPYDIR   .EQU    19
+SHR_A_SETPROT   .EQU    21
+SHR_A_CREATEDIR .EQU    22
+SHR_A_EXAMINE   .EQU    23
+SHR_A_EXNEXT    .EQU    24
+SHR_A_DISKINFO  .EQU    25
+SHR_A_INFO      .EQU    26
+SHR_A_SETCOMM   .EQU    28
+SHR_A_PARENT    .EQU    29
+SHR_A_SETDATE   .EQU    34
+SHR_A_SAMELOCK  .EQU    40
+SHR_A_READ      .EQU    82                      ; 'R'
+SHR_A_WRITE     .EQU    87                      ; 'W'
+SHR_A_FINDUPD   .EQU    1004
+SHR_A_FINDIN    .EQU    1005
+SHR_A_FINDOUT   .EQU    1006
+SHR_A_END       .EQU    1007
+SHR_A_SEEK      .EQU    1008
+SHR_A_TRUNCATE  .EQU    1022
+SHR_A_EXFH      .EQU    1034
+
+; AmigaOS DOS error codes
+SHR_E_NOMEM     .EQU    103                     ; ERROR_NO_FREE_STORE
+SHR_E_NOTFOUND  .EQU    205                     ; ERROR_OBJECT_NOT_FOUND
+SHR_E_UNKNOWN   .EQU    209                     ; ERROR_ACTION_NOT_KNOWN
+SHR_E_LOCK      .EQU    211                     ; ERROR_INVALID_LOCK
+SHR_E_TYPE      .EQU    212                     ; ERROR_OBJECT_WRONG_TYPE
+SHR_E_WPROT     .EQU    214                     ; ERROR_DISK_WRITE_PROTECTED
+SHR_E_NOTMNT    .EQU    218                     ; ERROR_DEVICE_NOT_MOUNTED
+SHR_E_SEEK      .EQU    219                     ; ERROR_SEEK_ERROR
+SHR_E_NODISK    .EQU    226                     ; ERROR_NO_DISK
+SHR_E_NOMORE    .EQU    232                     ; ERROR_NO_MORE_ENTRIES
+
+SHR_DIRNAME     .ASCII_W "/amiga"
+SHR_VOLNAME     .ASCII_W "SDCard"
+
+; the packet types and their handlers; each handler returns the DOS error
+; code in R8 (0 = success) and may clobber R8..R12
+SHR_ACTIONS     .DW     SHR_A_LOCATE,    SHR_DO_LOCATE
+                .DW     SHR_A_FREELOCK,  SHR_DO_FREELOCK
+                .DW     SHR_A_COPYDIR,   SHR_DO_COPYDIR
+                .DW     SHR_A_PARENT,    SHR_DO_PARENT
+                .DW     SHR_A_EXAMINE,   SHR_DO_EXAMINE
+                .DW     SHR_A_EXNEXT,    SHR_DO_EXNEXT
+                .DW     SHR_A_EXFH,      SHR_DO_EXFH
+                .DW     SHR_A_FINDIN,    SHR_DO_FINDIN
+                .DW     SHR_A_READ,      SHR_DO_READ
+                .DW     SHR_A_SEEK,      SHR_DO_SEEK
+                .DW     SHR_A_END,       SHR_DO_END
+                .DW     SHR_A_SAMELOCK,  SHR_DO_SAMELOCK
+                .DW     SHR_A_INFO,      SHR_DO_INFO
+                .DW     SHR_A_DISKINFO,  SHR_DO_INFO
+                .DW     SHR_A_FINDOUT,   SHR_DO_WPROT
+                .DW     SHR_A_FINDUPD,   SHR_DO_WPROT
+                .DW     SHR_A_WRITE,     SHR_DO_WPROT
+                .DW     SHR_A_DELETE,    SHR_DO_WPROT
+                .DW     SHR_A_RENAME,    SHR_DO_WPROT
+                .DW     SHR_A_CREATEDIR, SHR_DO_WPROT
+                .DW     SHR_A_SETPROT,   SHR_DO_WPROT
+                .DW     SHR_A_SETCOMM,   SHR_DO_WPROT
+                .DW     SHR_A_SETDATE,   SHR_DO_WPROT
+                .DW     SHR_A_TRUNCATE,  SHR_DO_WPROT
+                .DW     0xFFFF
+
+; days before the month (no leap day)
+SHR_MDAYS       .DW     0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334
+
+; SHARE_INIT: called once from START_FIRMWARE. No volume yet; the first mount
+; follows after the debounce time. Requests already in the memory are ignored.
+SHARE_INIT      INCRB
+                MOVE    SHARE_DEV, R0           ; nothing mounted
+                MOVE    0, @R0
+                MOVE    SHR_UP, R0
+                MOVE    0, @R0
+                MOVE    SHR_GEN, R0
+                MOVE    1, @R0
+                RSUB    SHR_CLOSE_ALL, 1
+                RSUB    SHR_SEL, 1
+                MOVE    SHR_W_FLAG, R0
+                MOVE    SHR_LASTREQ, R1
+                MOVE    @R0, @R1
+                MOVE    M2M$RAMROM_4KWIN, R0    ; window 1: the reset counter
+                MOVE    1, @R0
+                MOVE    SHR_W_RSTC, R1
+                MOVE    SHR_RSTSEEN, R2
+                MOVE    @R1, @R2
+                MOVE    0, @R0
+                RSUB    SHR_CARD, 1             ; R8: slot, R9: card detected
+                MOVE    SHR_SLOT, R0
+                MOVE    R8, @R0
+                MOVE    SHR_DET, R0
+                MOVE    R9, @R0
+                MOVE    SHR_SDCH, R0
+                MOVE    0, @R0
+                RSUB    SHR_PEND, 1             ; mount in about a second
+                RSUB    SHR_STATUS, 1
+                DECRB
+                RET
+
+; SHARE_STEP: called from HANDLE_CORE_IO. Follows the card, then answers a
+; pending request. Leaves the device AEXP_DEV_SHARE selected; all registers
+; preserved.
+SHARE_STEP      SYSCALL(enter, 1)
+                RSUB    SHR_SEL, 1
+                MOVE    M2M$RAMROM_4KWIN, R0    ; window 1: the reset counter
+                MOVE    1, @R0
+                MOVE    SHR_W_RSTC, R1
+                MOVE    @R1, R1
+                MOVE    0, @R0
+                MOVE    SHR_RSTSEEN, R2
+                CMP     @R2, R1
+                RBRA    _SHS_MEDIA, Z
+                MOVE    R1, @R2                 ; the Amiga was reset: its
+                RSUB    SHR_CLOSE_ALL, 1        ; locks and files are gone
+
+_SHS_MEDIA      RSUB    SHR_MEDIA, 1
+
+                RSUB    SHR_SEL, 1              ; a new request?
+                MOVE    SHR_W_FLAG, R0
+                MOVE    @R0, R1                 ; R1: request number
+                MOVE    SHR_LASTREQ, R2
+                CMP     @R2, R1
+                RBRA    _SHS_RET, Z
+                MOVE    R1, @R2
+                MOVE    SHR_W_ACK, R0
+                CMP     0xA55A, @R0
+                RBRA    _SHS_RET, !Z
+                MOVE    R1, R2                  ; high byte - 77 = low byte
+                SWAP    R2, R2
+                SUB     77, R2
+                AND     0x00FF, R2
+                MOVE    R1, R3
+                AND     0x00FF, R3
+                CMP     R2, R3
+                RBRA    _SHS_RET, !Z
+                RSUB    SHR_REQUEST, 1
+                RSUB    SHR_SEL, 1
+                MOVE    SHR_W_ACK, R0           ; answered
+                MOVE    R1, @R0
+_SHS_RET        SYSCALL(leave, 1)
+                RET
+
+; SHR_SEL: select window 0 of the shared memory. All registers preserved.
+SHR_SEL         INCRB
+                MOVE    M2M$RAMROM_DEV, R0
+                MOVE    AEXP_DEV_SHARE, @R0
+                MOVE    M2M$RAMROM_4KWIN, R0
+                MOVE    0, @R0
+                DECRB
+                RET
+
+; SHR_CARD: R8 = the active SD slot (M2M$CSR_SD_ACTIVE bit), R9 = 1 if its
+; card-detect reports a card. Other registers preserved.
+SHR_CARD        INCRB
+                MOVE    M2M$CSR, R0
+                MOVE    @R0, R0
+                MOVE    R0, R8
+                AND     M2M$CSR_SD_ACTIVE, R8
+                MOVE    M2M$CSR_SD_DET_INT, R1
+                CMP     0, R8
+                RBRA    _SHC_D, Z
+                MOVE    M2M$CSR_SD_DET_EXT, R1
+_SHC_D          XOR     R9, R9
+                AND     R0, R1
+                RBRA    _SHC_RET, Z
+                MOVE    1, R9
+_SHC_RET        DECRB
+                RET
+
+; SHR_PEND: (re)mount after the debounce time. All registers preserved.
+SHR_PEND        INCRB
+                MOVE    SHR_MNT_PEND, R0
+                MOVE    1, @R0
+                MOVE    IO$CYC_MID, R0
+                MOVE    SHR_MNT_T, R1
+                MOVE    @R0, @R1
+                DECRB
+                RET
+
+; SHR_MEDIA: follow the SD card (see the header). All registers preserved.
+SHR_MEDIA       SYSCALL(enter, 1)
+                RSUB    SHR_CARD, 1
+                XOR     R2, R2                  ; R2: 1 = remount
+                MOVE    SHR_SLOT, R0            ; another slot active?
+                CMP     @R0, R8
+                RBRA    _SHM_DET, Z
+                MOVE    R8, @R0
+                MOVE    1, R2
+_SHM_DET        MOVE    SHR_DET, R0             ; card-detect edge?
+                CMP     @R0, R9
+                RBRA    _SHM_SDC, Z
+                MOVE    R9, @R0
+                CMP     0, R9
+                RBRA    _SHM_INS, !Z
+                RSUB    SHR_DOWN, 1             ; removed: down until a card
+                MOVE    SHR_MNT_PEND, R0        ; is inserted
+                MOVE    0, @R0
+                XOR     R2, R2
+                RBRA    _SHM_SDC, 1
+_SHM_INS        MOVE    1, R2                   ; inserted
+_SHM_SDC        MOVE    SD_CHANGED, R0          ; the Shell saw a card change
+                MOVE    @R0, R0
+                MOVE    SHR_SDCH, R1
+                CMP     @R1, R0
+                RBRA    _SHM_ACT, Z
+                MOVE    R0, @R1
+                CMP     0, R0
+                RBRA    _SHM_ACT, Z
+                MOVE    1, R2
+_SHM_ACT        CMP     0, R2
+                RBRA    _SHM_PND, Z
+                RSUB    SHR_DOWN, 1
+                RSUB    SHR_PEND, 1
+_SHM_PND        MOVE    SHR_MNT_PEND, R0        ; mount when the time is up
+                CMP     0, @R0
+                RBRA    _SHM_RET, Z
+                MOVE    IO$CYC_MID, R1
+                MOVE    @R1, R1
+                MOVE    SHR_MNT_T, R3
+                SUB     @R3, R1
+                CMP     SHR_DEBOUNCE, R1
+                RBRA    _SHM_RET, N             ; (SHR_DEBOUNCE > R1)
+                MOVE    0, @R0
+                RSUB    SHR_MOUNT, 1
+_SHM_RET        SYSCALL(leave, 1)
+                RET
+
+; SHR_DOWN: the volume goes away (if it was there). All registers preserved.
+SHR_DOWN        INCRB
+                MOVE    SHR_UP, R0
+                CMP     0, @R0
+                RBRA    _SHD_RET, Z
+                MOVE    0, @R0
+                MOVE    SHARE_DEV, R0
+                MOVE    0, @R0
+                RSUB    SHR_CLOSE_ALL, 1
+                RSUB    SHR_NEWGEN, 1
+                RSUB    SHR_STATUS, 1
+_SHD_RET        DECRB
+                RET
+
+; SHR_NEWGEN: next generation, 1..0x7FFF. All registers preserved.
+SHR_NEWGEN      INCRB
+                MOVE    SHR_GEN, R0
+                MOVE    @R0, R1
+                ADD     1, R1
+                AND     0x7FFF, R1
+                RBRA    _SHN_W, !Z
+                MOVE    1, R1
+_SHN_W          MOVE    R1, @R0
+                DECRB
+                RET
+
+; SHR_STATUS: publish the status words. All registers preserved.
+SHR_STATUS      INCRB
+                RSUB    SHR_SEL, 1
+                MOVE    SHR_W_STAT, R0
+                MOVE    0x4D53, @R0++
+                MOVE    SHR_GEN, R1
+                MOVE    @R1, R1
+                MOVE    SHR_UP, R2
+                CMP     0, @R2
+                RBRA    _SST_W, Z
+                OR      SHR_ST_UP, R1
+_SST_W          MOVE    R1, @R0++
+                MOVE    SHR_PROTO, @R0
+                DECRB
+                RET
+
+; SHR_CLOSE_ALL: free every lock and file, forget the directory cursor.
+; All registers preserved.
+SHR_CLOSE_ALL   INCRB
+                MOVE    SHR_LOCKS, R0
+                MOVE    SHR_LOCKS_N, R1
+_SCA_L          MOVE    0, @R0
+                ADD     SHR_LOCK_SZ, R0
+                SUB     1, R1
+                RBRA    _SCA_L, !Z
+                MOVE    SHR_FILES, R0
+                ADD     SHR_F_USED, R0
+                MOVE    SHR_FILES_N, R1
+_SCA_F          MOVE    0, @R0
+                ADD     SHR_FILE_SZ, R0
+                SUB     1, R1
+                RBRA    _SCA_F, !Z
+                MOVE    SHR_CVAL, R0
+                MOVE    0, @R0
+                DECRB
+                RET
+
+; SHR_TAKE_BUF: flush and release the SD sector buffer of the Shell's device
+; handles (see the header). All registers preserved.
+SHR_TAKE_BUF    SYSCALL(enter, 1)
+                MOVE    HANDLE_DEV, R8
+                RSUB    _SHR_RELDEV, 1
+                MOVE    CONFIG_DEVH, R8
+                RSUB    _SHR_RELDEV, 1
+                SYSCALL(leave, 1)
+                RET
+
+; SHR_GIVE_BUF: release the buffer of SHARE_DEV. All registers preserved.
+SHR_GIVE_BUF    SYSCALL(enter, 1)
+                MOVE    SHARE_DEV, R8
+                RSUB    _SHR_RELDEV, 1
+                SYSCALL(leave, 1)
+                RET
+
+; _SHR_RELDEV: device handle R8, if mounted: flush the owner of the buffer,
+; then nobody owns it. R8..R12 clobbered.
+_SHR_RELDEV     CMP     0, @R8
+                RBRA    _SRD_RET, Z
+                RSUB    FAT32$FLUSH_OWNER, 1
+                ADD     FAT32$DEV_BUFFERED_FDH, R8
+                MOVE    0, @R8
+_SRD_RET        RET
+
+; SHR_MOUNT: mount the volume: the SD card on SHARE_DEV, /amiga as the root.
+; All registers preserved.
+SHR_MOUNT       SYSCALL(enter, 1)
+                RSUB    SHR_TAKE_BUF, 1
+                MOVE    SHARE_DEV, R8
+                MOVE    0, @R8
+                MOVE    1, R9                   ; partition #1
+                SYSCALL(f32_mnt_sd, 1)
+                CMP     0, R9
+                RBRA    _SMT_ERR, !Z
+                MOVE    SHARE_DEV, R8           ; the root: /amiga
+                MOVE    SHR_DIRNAME, R9
+                XOR     R10, R10
+                RSUB    FAT32$CD, 1
+                CMP     0, R9
+                RBRA    _SMT_ERR, !Z
+                MOVE    SHARE_DEV, R0
+                ADD     FAT32$DEV_AD_1STCLUS_LO, R0
+                MOVE    SHR_ROOTLOCK, R1        ; the lock of key 0
+                MOVE    SHR_T_ROOT, @R1++
+                MOVE    @R0++, @R1++            ; (AD_1STCLUS_HI follows LO)
+                MOVE    @R0, @R1++
+                MOVE    0, @R1
+                RSUB    SHR_CLOSE_ALL, 1
+                RSUB    SHR_SPACE, 1
+                MOVE    SHR_UP, R0
+                MOVE    1, @R0
+                RSUB    SHR_NEWGEN, 1
+                RSUB    SHR_STATUS, 1
+                RBRA    _SMT_RET, 1
+_SMT_ERR        MOVE    SHARE_DEV, R8           ; no volume until the next
+                MOVE    0, @R8                  ; card event
+_SMT_RET        RSUB    SHR_GIVE_BUF, 1
+                SYSCALL(leave, 1)
+                RET
+
+; SHR_SPACE: SHR_TOTAL and SHR_USED in 512-byte blocks, from the boot sector
+; (total sectors) and the FSInfo sector (free clusters) of the volume. Without
+; a valid free count, the volume counts as full. R8..R12 clobbered.
+SHR_SPACE       INCRB
+                MOVE    SHR_TOTAL, R0           ; defaults: 0 blocks
+                MOVE    0, @R0++
+                MOVE    0, @R0
+                MOVE    SHR_USED, R0
+                MOVE    0, @R0++
+                MOVE    0, @R0
+                MOVE    SHARE_DEV, R0
+                ADD     FAT32$DEV_FS_LO, R0
+                MOVE    @R0++, R4               ; R5:R4: the boot sector
+                MOVE    @R0, R5
+                MOVE    R4, R8
+                MOVE    R5, R9
+                RSUB    SHR_BLOCK, 1
+                RBRA    _SSP_RET, C
+                MOVE    0x0020, R8              ; total sectors (32 bit)
+                RSUB    SHR_SDDW, 1
+                MOVE    SHR_TOTAL, R0
+                MOVE    R8, @R0++
+                MOVE    R9, @R0
+                MOVE    R8, R6                  ; R7:R6: total
+                MOVE    R9, R7
+                MOVE    SHR_USED, R0            ; full until proven otherwise
+                MOVE    R8, @R0++
+                MOVE    R9, @R0
+                MOVE    0x0030, R8              ; the FSInfo sector
+                RSUB    _SHR_SDW, 1
+                ADD     R8, R4
+                ADDC    0, R5
+                MOVE    R4, R8
+                MOVE    R5, R9
+                RSUB    SHR_BLOCK, 1
+                RBRA    _SSP_RET, C
+                MOVE    0x01E8, R8              ; free clusters
+                RSUB    SHR_SDDW, 1
+                CMP     0xFFFF, R9              ; unknown (0xFFFFFFFF)
+                RBRA    _SSP_RET, Z
+                MOVE    SHARE_DEV, R0           ; blocks = clusters x
+                ADD     FAT32$DEV_SECT_PER_CLUS, R0
+                MOVE    @R0, R0                 ; sectors per cluster
+_SSP_MUL        CMP     R0, 1
+                RBRA    _SSP_SUB, !N            ; (R0 <= 1)
+                ADD     R8, R8
+                ADDC    R9, R9
+                AND     0xFFFB, SR              ; (shift right: clear C)
+                SHR     1, R0
+                AND     0x7FFF, R0
+                RBRA    _SSP_MUL, 1
+_SSP_SUB        CMP     R9, R7                  ; free > total: full
+                RBRA    _SSP_RET, N             ; (R9 > R7, unsigned)
+                RBRA    _SSP_S1, !Z
+                CMP     R8, R6
+                RBRA    _SSP_RET, N             ; (R8 > R6, unsigned)
+_SSP_S1         SUB     R8, R6                  ; used = total - free
+                SUBC    R9, R7
+                MOVE    SHR_USED, R0
+                MOVE    R6, @R0++
+                MOVE    R7, @R0
+_SSP_RET        DECRB
+                RET
+
+; SHR_BLOCK: read the SD block R9:R8 into the sector buffer of the controller.
+; C=1 on an error. R8..R12 clobbered.
+SHR_BLOCK       MOVE    FAT32$DEV_BLOCK_READ, R10
+                MOVE    SHARE_DEV, R11
+                RSUB    FAT32$CALL_DEV, 1
+                CMP     0, R8
+                RBRA    _SBL_ERR, !Z
+                AND     0xFFFB, SR              ; C=0
+                RET
+_SBL_ERR        OR      0x0004, SR              ; C=1
+                RET
+
+; _SHR_SDB: byte R8 of the sector buffer -> R8. _SHR_SDW: little-endian word
+; at R8 -> R8. SHR_SDDW: little-endian double word at R8 -> R9:R8.
+; R9 clobbered (SDB, SDW), R10 clobbered (SDDW).
+_SHR_SDB        MOVE    IO$SD_DATA_POS, R9
+                MOVE    R8, @R9
+                MOVE    IO$SD_DATA, R9
+                MOVE    @R9, R8
+                AND     0x00FF, R8
+                RET
+_SHR_SDW        MOVE    R8, @--SP
+                ADD     1, R8                   ; high byte
+                RSUB    _SHR_SDB, 1
+                SWAP    R8, R9
+                MOVE    @SP++, R8               ; low byte
+                MOVE    R9, @--SP
+                RSUB    _SHR_SDB, 1
+                OR      @SP++, R8
+                RET
+SHR_SDDW        MOVE    R8, R10
+                ADD     2, R8
+                RSUB    _SHR_SDW, 1
+                MOVE    R8, @--SP               ; the high word
+                MOVE    R10, R8
+                RSUB    _SHR_SDW, 1
+                MOVE    @SP++, R9
+                RET
+
+; ----------------------------------------------------------------------------
+; Shared folder: requests
+; ----------------------------------------------------------------------------
+
+; SHR_REQUEST: answer the request in the shared memory. All registers
+; preserved; the shared memory is selected on return.
+SHR_REQUEST     SYSCALL(enter, 1)
+                MOVE    SHR_UP, R0              ; no volume: no disk
+                CMP     0, @R0
+                RBRA    _SRQ_UP, !Z
+                MOVE    SHR_E_NODISK, R8
+                RBRA    _SRQ_ANS, 1
+_SRQ_UP         RSUB    SHR_TAKE_BUF, 1
+                RSUB    SHR_SEL, 1
+                MOVE    1, R8                   ; the packet type
+                RSUB    SHR_RL, 1
+                MOVE    SHR_ACTIONS, R0
+_SRQ_L          MOVE    @R0++, R1
+                CMP     0xFFFF, R1
+                RBRA    _SRQ_UNK, Z
+                MOVE    @R0++, R2
+                CMP     R1, R10
+                RBRA    _SRQ_L, !Z
+                CMP     0, R9
+                RBRA    _SRQ_L, !Z
+                ASUB    R2, 1                   ; R8: error code
+                RBRA    _SRQ_GIVE, 1
+_SRQ_UNK        MOVE    SHR_E_UNKNOWN, R8
+_SRQ_GIVE       RSUB    SHR_GIVE_BUF, 1
+
+_SRQ_ANS        RSUB    SHR_SEL, 1              ; success and error code
+                MOVE    R8, R10
+                XOR     R9, R9
+                CMP     0, R10
+                RBRA    _SRQ_A1, !V             ; (negative: -1 etc.)
+                MOVE    0xFFFF, R9
+_SRQ_A1         MOVE    2, R8
+                RSUB    SHR_WL, 1
+                XOR     R9, R9
+                XOR     R11, R11
+                CMP     0, R10
+                RBRA    _SRQ_A2, !Z
+                MOVE    1, R11
+_SRQ_A2         MOVE    R11, R10
+                MOVE    1, R8
+                RSUB    SHR_WL, 1
+                SYSCALL(leave, 1)
+                RET
+
+; SHR_RL: field R8 of the request -> R9 (high), R10 (low). SHR_WL: R9:R10 ->
+; field R8 of the response. Expect the shared memory selected. R8 preserved.
+SHR_RL          MOVE    R8, R10
+                ADD     R10, R10
+                ADD     SHR_W_REQ, R10
+                MOVE    @R10++, R9
+                MOVE    @R10, R10
+                RET
+SHR_WL          MOVE    R8, @--SP
+                ADD     R8, R8
+                ADD     SHR_W_REQ, R8
+                MOVE    R9, @R8++
+                MOVE    R10, @R8
+                MOVE    @SP++, R8
+                RET
+
+; SHR_GETB: byte R8 of the shared memory -> R9. SHR_PUTB: R9 -> byte R8.
+; Expect the shared memory selected. R8 preserved; R10 clobbered (PUTB: R9).
+SHR_GETB        MOVE    R8, R10
+                AND     0xFFFB, SR              ; (shift right: clear C)
+                SHR     1, R10
+                ADD     SHR_W_BYTES, R10
+                MOVE    @R10, R9
+                MOVE    R8, R10
+                AND     1, R10
+                RBRA    _SGB_LO, !Z
+                SWAP    R9, R9
+_SGB_LO         AND     0x00FF, R9
+                RET
+SHR_PUTB        MOVE    R11, @--SP
+                MOVE    R8, R10
+                AND     0xFFFB, SR
+                SHR     1, R10
+                ADD     SHR_W_BYTES, R10
+                MOVE    @R10, R11
+                AND     0x00FF, R9
+                MOVE    R8, @--SP
+                AND     1, R8
+                RBRA    _SPB_LO, !Z
+                AND     0x00FF, R11             ; even byte: bits 15:8
+                SWAP    R9, R9
+                RBRA    _SPB_W, 1
+_SPB_LO         AND     0xFF00, R11             ; odd byte: bits 7:0
+_SPB_W          OR      R9, R11
+                MOVE    R11, @R10
+                MOVE    @SP++, R8
+                MOVE    @SP++, R11
+                RET
+
+; SHR_GETNAME: the BSTR at byte R8 of the shared memory -> SHR_PATH (one
+; character per word), SHR_PATH_LEN. R8..R12 clobbered.
+SHR_GETNAME     INCRB
+                MOVE    R8, R0
+                RSUB    SHR_GETB, 1
+                MOVE    R9, R1                  ; R1: length
+                MOVE    SHR_PATH_LEN, R2
+                MOVE    R1, @R2
+                MOVE    SHR_PATH, R2
+_SGN_L          CMP     0, R1
+                RBRA    _SGN_RET, Z
+                ADD     1, R0
+                MOVE    R0, R8
+                RSUB    SHR_GETB, 1
+                MOVE    R9, @R2++
+                SUB     1, R1
+                RBRA    _SGN_L, 1
+_SGN_RET        DECRB
+                RET
+
+; SHR_PUTNAME: the zero-terminated name R8 (one character per word) as the
+; BSTR at byte 44 of the shared memory (the file_name of the Examine
+; responses), at most SHR_MAXNAME characters. R8..R12 clobbered.
+SHR_PUTNAME     INCRB
+                MOVE    R8, R0
+                XOR     R1, R1                  ; R1: length
+_SPN_L          CMP     0, @R0
+                RBRA    _SPN_E, Z
+                CMP     SHR_MAXNAME, R1
+                RBRA    _SPN_E, Z
+                MOVE    @R0++, R9
+                MOVE    45, R8
+                ADD     R1, R8
+                RSUB    SHR_PUTB, 1
+                ADD     1, R1
+                RBRA    _SPN_L, 1
+_SPN_E          MOVE    44, R8
+                MOVE    R1, R9
+                RSUB    SHR_PUTB, 1
+                DECRB
+                RET
+
+; SHR_KEY: field R8 of the request (a key) -> R8 (high), R9 (low).
+; R10 clobbered.
+SHR_KEY         RSUB    SHR_RL, 1
+                MOVE    R9, R8
+                MOVE    R10, R9
+                RET
+
+; SHR_LOCK_GET: the lock of key R8 (high):R9 (low) -> R8 = pointer to its slot
+; (key 0: SHR_ROOTLOCK), C=0; or C=1 and R8 = error code. R9, R10 clobbered.
+SHR_LOCK_GET    MOVE    R8, R10
+                OR      R9, R10
+                RBRA    _SLG_KEY, !Z
+                MOVE    SHR_ROOTLOCK, R8
+                RBRA    _SLG_OK, 1
+_SLG_KEY        MOVE    SHR_GEN, R10
+                CMP     @R10, R8
+                RBRA    _SLG_SLOT, Z
+                MOVE    SHR_E_NOTMNT, R8        ; a lock of another volume
+                RBRA    _SLG_ERR, 1
+_SLG_SLOT       SUB     1, R9
+                CMP     SHR_LOCKS_N, R9
+                RBRA    _SLG_INV, !N            ; (SHR_LOCKS_N <= R9 unsigned)
+                MOVE    R9, R8
+                AND     0xFFFD, SR              ; (x 4: clear X)
+                SHL     2, R8
+                ADD     SHR_LOCKS, R8
+                CMP     0, @R8
+                RBRA    _SLG_OK, !Z
+_SLG_INV        MOVE    SHR_E_LOCK, R8
+_SLG_ERR        OR      0x0004, SR              ; C=1
+                RET
+_SLG_OK         AND     0xFFFB, SR              ; C=0
+                RET
+
+; SHR_LOCK_NEW: a new lock of the object SHR_OT -> R9 (high), R10 (low) = its
+; key, C=0; or C=1 and R8 = error code (no free slot). R11 clobbered.
+SHR_LOCK_NEW    MOVE    SHR_LOCKS, R11
+                XOR     R10, R10
+_SLN_L          CMP     0, @R11
+                RBRA    _SLN_F, Z
+                ADD     SHR_LOCK_SZ, R11
+                ADD     1, R10
+                CMP     SHR_LOCKS_N, R10
+                RBRA    _SLN_L, !Z
+                MOVE    SHR_E_NOMEM, R8
+                OR      0x0004, SR              ; C=1
+                RET
+_SLN_F          MOVE    R8, @--SP
+                MOVE    SHR_OT, R8
+                MOVE    @R8++, @R11++
+                MOVE    @R8++, @R11++
+                MOVE    @R8++, @R11++
+                MOVE    @R8, @R11
+                MOVE    @SP++, R8
+                ADD     1, R10
+                MOVE    SHR_GEN, R9
+                MOVE    @R9, R9
+                AND     0xFFFB, SR              ; C=0
+                RET
+
+; SHR_OBJ_LOAD: the object of the lock slot R8 -> SHR_OT. R8 clobbered.
+SHR_OBJ_LOAD    MOVE    R9, @--SP
+                MOVE    SHR_OT, R9
+                MOVE    @R8++, @R9++
+                MOVE    @R8++, @R9++
+                MOVE    @R8++, @R9++
+                MOVE    @R8, @R9
+                MOVE    @SP++, R9
+                RET
+
+; SHR_OBJ_DIR: SHR_OT := the directory with the first cluster R9:R8 (the
+; root if that is /amiga). All registers preserved.
+SHR_OBJ_DIR     INCRB
+                MOVE    SHR_OT, R0
+                MOVE    SHR_T_DIR, @R0++
+                MOVE    R8, @R0++
+                MOVE    R9, @R0++
+                MOVE    0, @R0
+                MOVE    SHR_ROOTLOCK, R0
+                ADD     1, R0
+                CMP     @R0++, R8
+                RBRA    _SOD_RET, !Z
+                CMP     @R0, R9
+                RBRA    _SOD_RET, !Z
+                MOVE    SHR_OT, R0
+                MOVE    SHR_T_ROOT, @R0
+_SOD_RET        DECRB
+                RET
+
+; SHR_KEY_OBJ: SHR_OT := the object of the key in field R8 of the request.
+; C=1 and R8 = error code if the key is not valid. R8..R10 clobbered.
+SHR_KEY_OBJ     RSUB    SHR_KEY, 1
+                RSUB    SHR_LOCK_GET, 1
+                RBRA    _SKO_RET, C
+                RSUB    SHR_OBJ_LOAD, 1
+                AND     0xFFFB, SR              ; C=0
+_SKO_RET        RET
+
+; ----------------------------------------------------------------------------
+; Shared folder: directories and names
+; ----------------------------------------------------------------------------
+
+; SHR_DIR_AT: position the directory cursor so that the next SHR_DIR_NEXT
+; returns entry R10 (counting from 0, without "." and "..") of the directory
+; with the first cluster R9:R8. Continues from the cursor where it can.
+; C=1 on a FAT32 error. R8..R12 clobbered.
+SHR_DIR_AT      INCRB
+                MOVE    R8, R0
+                MOVE    R9, R1
+                MOVE    R10, R2
+                MOVE    SHR_CVAL, R3
+                CMP     0, @R3
+                RBRA    _SDA_OPEN, Z
+                MOVE    SHR_CCLO, R3            ; (SHR_CCHI follows)
+                CMP     @R3++, R0
+                RBRA    _SDA_OPEN, !Z
+                CMP     @R3, R1
+                RBRA    _SDA_OPEN, !Z
+                MOVE    SHR_CIDX, R3
+                CMP     @R3, R2
+                RBRA    _SDA_SKIP, !N           ; (SHR_CIDX <= R2)
+_SDA_OPEN       MOVE    SHARE_DEV, R8           ; the directory becomes the
+                MOVE    R8, R3                  ; current one of SHARE_DEV
+                ADD     FAT32$DEV_AD_1STCLUS_LO, R3
+                MOVE    R0, @R3++               ; (AD_1STCLUS_HI follows)
+                MOVE    R1, @R3
+                MOVE    SHR_CFDH, R9
+                RSUB    FAT32$DIR_OPEN, 1
+                CMP     0, R9
+                RBRA    _SDA_ERR, !Z
+                MOVE    SHR_CCLO, R3
+                MOVE    R0, @R3++
+                MOVE    R1, @R3
+                MOVE    SHR_CIDX, R3
+                MOVE    0, @R3
+                MOVE    SHR_CVAL, R3
+                MOVE    1, @R3
+_SDA_SKIP       MOVE    SHR_CIDX, R3
+                CMP     @R3, R2
+                RBRA    _SDA_OK, Z
+                RSUB    SHR_DIR_NEXT, 1
+                RBRA    _SDA_ERR, C
+                CMP     0, R8
+                RBRA    _SDA_SKIP, !Z           ; (at the end: stay there)
+_SDA_OK         AND     0xFFFB, SR              ; C=0
+                DECRB
+                RET
+_SDA_ERR        MOVE    SHR_CVAL, R3
+                MOVE    0, @R3
+                OR      0x0004, SR              ; C=1
+                DECRB
+                RET
+
+; SHR_DIR_NEXT: the next entry of the directory cursor (hidden entries and
+; "." and ".." skipped) -> SHR_DE, R8 = 1; R8 = 0 at the end. C=1 on a
+; FAT32 error. R9..R12 clobbered.
+SHR_DIR_NEXT    INCRB
+_SDN_L          MOVE    SHR_CFDH, R8
+                MOVE    SHR_DE, R9
+                MOVE    FAT32$FA_DEFAULT, R10
+                RSUB    FAT32$DIR_LIST, 1
+                CMP     0, R11
+                RBRA    _SDN_ERR, !Z
+                CMP     0, R10
+                RBRA    _SDN_END, Z
+                RSUB    SHR_ISDOT, 1
+                RBRA    _SDN_L, C
+                MOVE    SHR_CIDX, R0
+                ADD     1, @R0
+                MOVE    1, R8
+                AND     0xFFFB, SR              ; C=0
+                DECRB
+                RET
+_SDN_END        XOR     R8, R8
+                AND     0xFFFB, SR              ; C=0
+                DECRB
+                RET
+_SDN_ERR        MOVE    SHR_CVAL, R0
+                MOVE    0, @R0
+                OR      0x0004, SR              ; C=1
+                DECRB
+                RET
+
+; SHR_ISDOT: C=1 if SHR_DE is "." or "..". R9 clobbered.
+; (Results come back in C: RET is a MOVE, which changes Z and N.)
+SHR_ISDOT       MOVE    SHR_DE, R9
+                CMP     0x002E, @R9++
+                RBRA    _SID_NO, !Z
+                CMP     0, @R9                  ; "."
+                RBRA    _SID_YES, Z
+                CMP     0x002E, @R9++
+                RBRA    _SID_NO, !Z
+                CMP     0, @R9                  ; ".."
+                RBRA    _SID_YES, Z
+_SID_NO         AND     0xFFFB, SR              ; C=0
+                RET
+_SID_YES        OR      0x0004, SR              ; C=1
+                RET
+
+; SHR_DOTDOT: the first cluster of the parent of the directory R9:R8 (its
+; ".." entry) -> R9:R8. C=1 on an error. The cursor is lost. R10..R12
+; clobbered.
+SHR_DOTDOT      INCRB
+                MOVE    SHR_CVAL, R0
+                MOVE    0, @R0
+                MOVE    SHARE_DEV, R0
+                ADD     FAT32$DEV_AD_1STCLUS_LO, R0
+                MOVE    R8, @R0++
+                MOVE    R9, @R0
+                MOVE    SHARE_DEV, R8
+                MOVE    SHR_CFDH, R9
+                RSUB    FAT32$DIR_OPEN, 1
+                CMP     0, R9
+                RBRA    _SDD_ERR, !Z
+_SDD_L          MOVE    SHR_CFDH, R8
+                MOVE    SHR_DE, R9
+                MOVE    FAT32$FA_DEFAULT, R10
+                RSUB    FAT32$DIR_LIST, 1
+                CMP     0, R11
+                RBRA    _SDD_ERR, !Z
+                CMP     0, R10
+                RBRA    _SDD_ERR, Z             ; no ".."
+                MOVE    SHR_DE, R9
+                CMP     0x002E, @R9++
+                RBRA    _SDD_L, !Z
+                CMP     0x002E, @R9++
+                RBRA    _SDD_L, !Z
+                CMP     0, @R9
+                RBRA    _SDD_L, !Z
+                MOVE    SHR_DE, R0
+                ADD     FAT32$DE_CLUS_LO, R0
+                MOVE    @R0++, R8               ; (DE_CLUS_HI follows)
+                MOVE    @R0, R9
+                AND     0xFFFB, SR              ; C=0
+                DECRB
+                RET
+_SDD_ERR        OR      0x0004, SR              ; C=1
+                DECRB
+                RET
+
+; SHR_UPC: R8 in upper case (ASCII and ISO 8859-1). Other registers kept.
+SHR_UPC         CMP     0x0061, R8
+                RBRA    _SUC_RET, N             ; (R8 < 'a')
+                CMP     R8, 0x007A
+                RBRA    _SUC_UP, !N             ; (R8 <= 'z')
+                CMP     0x00E0, R8
+                RBRA    _SUC_RET, N             ; (R8 < 0xE0)
+                CMP     R8, 0x00FE
+                RBRA    _SUC_RET, N             ; (R8 > 0xFE)
+                CMP     0x00F7, R8              ; (division sign)
+                RBRA    _SUC_RET, Z
+_SUC_UP         SUB     0x0020, R8
+_SUC_RET        RET
+
+; SHR_NAMEEQ: C=1 if the name in SHR_DE equals the path component SHR_CPOS,
+; SHR_CLEN of SHR_PATH, ignoring case. R8..R12 clobbered.
+SHR_NAMEEQ      INCRB
+                MOVE    SHR_DE, R0
+                MOVE    SHR_CPOS, R1
+                MOVE    @R1, R1
+                ADD     SHR_PATH, R1
+                MOVE    SHR_CLEN, R2
+                MOVE    @R2, R2
+_SNE_L          CMP     0, R2
+                RBRA    _SNE_END, Z
+                MOVE    @R0++, R8
+                CMP     0, R8
+                RBRA    _SNE_NO, Z
+                RSUB    SHR_UPC, 1
+                MOVE    R8, R3
+                MOVE    @R1++, R8
+                RSUB    SHR_UPC, 1
+                CMP     R3, R8
+                RBRA    _SNE_NO, !Z
+                SUB     1, R2
+                RBRA    _SNE_L, 1
+_SNE_END        CMP     0, @R0                  ; the names end together?
+                RBRA    _SNE_NO, !Z
+                OR      0x0004, SR              ; C=1
+                DECRB
+                RET
+_SNE_NO         AND     0xFFFB, SR              ; C=0
+                DECRB
+                RET
+
+; SHR_FIND: look up the component SHR_CPOS, SHR_CLEN in the directory R9:R8.
+; Found: C=0, SHR_DE = its entry, R8 = its index. Else C=1, R8 = error code.
+; R9..R12 clobbered.
+SHR_FIND        INCRB
+                XOR     R10, R10
+                RSUB    SHR_DIR_AT, 1
+                RBRA    _SFI_NF, C
+_SFI_L          RSUB    SHR_DIR_NEXT, 1
+                RBRA    _SFI_NF, C
+                CMP     0, R8
+                RBRA    _SFI_NF, Z
+                RSUB    SHR_NAMEEQ, 1
+                RBRA    _SFI_L, !C
+                MOVE    SHR_CIDX, R8
+                MOVE    @R8, R8
+                SUB     1, R8
+                AND     0xFFFB, SR              ; C=0
+                DECRB
+                RET
+_SFI_NF         MOVE    SHR_E_NOTFOUND, R8
+                OR      0x0004, SR              ; C=1
+                DECRB
+                RET
+
+; SHR_PARENT: SHR_OT := its parent directory. C=1 and R8 = error code for the
+; root. R8..R12 clobbered.
+SHR_PARENT      MOVE    SHR_OT, R8
+                CMP     SHR_T_ROOT, @R8
+                RBRA    _SPA_ROOT, Z
+                CMP     SHR_T_FILE, @R8
+                RBRA    _SPA_DIR, !Z
+                MOVE    SHR_OC, R9              ; a file: its directory
+                MOVE    @R9++, R8
+                MOVE    @R9, R9
+                RBRA    _SPA_SET, 1
+_SPA_DIR        MOVE    SHR_OC, R9              ; a directory: ".."
+                MOVE    @R9++, R8
+                MOVE    @R9, R9
+                RSUB    SHR_DOTDOT, 1
+                RBRA    _SPA_NF, C
+_SPA_SET        RSUB    SHR_OBJ_DIR, 1
+                AND     0xFFFB, SR              ; C=0
+                RET
+_SPA_ROOT
+_SPA_NF         MOVE    SHR_E_NOTFOUND, R8
+                OR      0x0004, SR              ; C=1
+                RET
+
+; SHR_RESOLVE: SHR_OT := the object of the key in field R8 of the request and
+; the path in SHR_PATH. AmigaDOS paths: "x:" anywhere means the root when
+; nothing stands before the colon (":c/d"), otherwise the key's directory (a
+; device, volume or assign name); "/" alone is the parent; a component is
+; looked up ignoring case. C=1 and R8 = error code on a failure. R8..R12
+; clobbered.
+SHR_RESOLVE     INCRB
+                RSUB    SHR_KEY_OBJ, 1
+                RBRA    _SRS_ERR, C
+                MOVE    SHR_PATH_LEN, R1
+                MOVE    @R1, R1                 ; R1: length
+                XOR     R2, R2                  ; R2: position
+                MOVE    SHR_PATH, R3            ; a colon?
+_SRS_C          CMP     R2, R1
+                RBRA    _SRS_NOC, Z
+                CMP     0x003A, @R3++
+                RBRA    _SRS_COL, Z
+                ADD     1, R2
+                RBRA    _SRS_C, 1
+_SRS_COL        CMP     0, R2                   ; ":..." is the root
+                RBRA    _SRS_C1, !Z
+                MOVE    SHR_ROOTLOCK, R8
+                RSUB    SHR_OBJ_LOAD, 1
+_SRS_C1         ADD     1, R2                   ; the path follows the colon
+                RBRA    _SRS_LOOP, 1
+_SRS_NOC        XOR     R2, R2
+
+_SRS_LOOP       CMP     R2, R1                  ; the end of the path
+                RBRA    _SRS_OK, Z
+                MOVE    SHR_PATH, R3
+                ADD     R2, R3
+                CMP     0x002F, @R3             ; "/": the parent
+                RBRA    _SRS_NAME, !Z
+                ADD     1, R2
+                RSUB    SHR_PARENT, 1
+                RBRA    _SRS_ERR, C
+                RBRA    _SRS_LOOP, 1
+
+_SRS_NAME       MOVE    R2, R4                  ; R4: start of the component
+_SRS_N1         ADD     1, R2
+                CMP     R2, R1
+                RBRA    _SRS_N2, Z
+                ADD     1, R3
+                CMP     0x002F, @R3
+                RBRA    _SRS_N1, !Z
+                MOVE    R2, R5                  ; its end; one "/" separates
+                ADD     1, R2                   ; it from the next component
+                RBRA    _SRS_N3, 1
+_SRS_N2         MOVE    R2, R5
+_SRS_N3         MOVE    SHR_CPOS, R6
+                MOVE    R4, @R6
+                SUB     R4, R5
+                MOVE    SHR_CLEN, R6
+                MOVE    R5, @R6
+                MOVE    SHR_OT, R6              ; only directories have
+                CMP     SHR_T_FILE, @R6         ; components
+                RBRA    _SRS_INDIR, !Z
+                MOVE    SHR_E_TYPE, R8
+                RBRA    _SRS_ERR, 1
+_SRS_INDIR      MOVE    SHR_OC, R6
+                MOVE    @R6++, R8
+                MOVE    @R6, R9
+                RSUB    SHR_FIND, 1
+                RBRA    _SRS_ERR, C
+                MOVE    SHR_DE, R6              ; a directory or a file?
+                ADD     FAT32$DE_ATTRIB, R6
+                MOVE    @R6, R6
+                AND     FAT32$FA_DIR, R6
+                RBRA    _SRS_FILE, Z
+                MOVE    SHR_DE, R6
+                ADD     FAT32$DE_CLUS_LO, R6
+                MOVE    @R6++, R8
+                MOVE    @R6, R9
+                RSUB    SHR_OBJ_DIR, 1
+                RBRA    _SRS_LOOP, 1
+_SRS_FILE       MOVE    SHR_OT, R6              ; a file in the directory
+                MOVE    SHR_T_FILE, @R6         ; SHR_OC, index R8
+                ADD     3, R6
+                MOVE    R8, @R6
+                RBRA    _SRS_LOOP, 1
+
+_SRS_OK         AND     0xFFFB, SR              ; C=0
+                DECRB
+                RET
+_SRS_ERR        OR      0x0004, SR              ; C=1
+                DECRB
+                RET
+
+; SHR_OBJ_DE: the directory entry of the object SHR_OT (not the root) ->
+; SHR_DE. C=1 and R8 = error code if it is not there (any more). R8..R12
+; clobbered.
+SHR_OBJ_DE      INCRB
+                MOVE    SHR_OT, R0
+                CMP     SHR_T_FILE, @R0
+                RBRA    _SOE_DIR, !Z
+                MOVE    SHR_OC, R0              ; a file: entry SHR_OI of its
+                MOVE    @R0++, R8               ; directory
+                MOVE    @R0++, R9
+                MOVE    @R0, R10
+                RSUB    SHR_DIR_AT, 1
+                RBRA    _SOE_NF, C
+                RSUB    SHR_DIR_NEXT, 1
+                RBRA    _SOE_NF, C
+                CMP     0, R8
+                RBRA    _SOE_NF, Z
+                RBRA    _SOE_OK, 1
+_SOE_DIR        MOVE    SHR_OC, R0              ; a directory: the entry of
+                MOVE    @R0++, R8               ; its parent that has its
+                MOVE    @R0, R9                 ; cluster
+                MOVE    R8, R4
+                MOVE    R9, R5
+                RSUB    SHR_DOTDOT, 1
+                RBRA    _SOE_NF, C
+                XOR     R10, R10
+                RSUB    SHR_DIR_AT, 1
+                RBRA    _SOE_NF, C
+_SOE_L          RSUB    SHR_DIR_NEXT, 1
+                RBRA    _SOE_NF, C
+                CMP     0, R8
+                RBRA    _SOE_NF, Z
+                MOVE    SHR_DE, R0
+                ADD     FAT32$DE_ATTRIB, R0
+                MOVE    @R0, R1
+                AND     FAT32$FA_DIR, R1
+                RBRA    _SOE_L, Z
+                ADD     FAT32$DE_CLUS_LO, R0    ; (DE_CLUS_LO = DE_ATTRIB + 9)
+                SUB     FAT32$DE_ATTRIB, R0
+                CMP     @R0++, R4
+                RBRA    _SOE_L, !Z
+                CMP     @R0, R5
+                RBRA    _SOE_L, !Z
+_SOE_OK         AND     0xFFFB, SR              ; C=0
+                DECRB
+                RET
+_SOE_NF         MOVE    SHR_E_NOTFOUND, R8
+                OR      0x0004, SR              ; C=1
+                DECRB
+                RET
+
+; SHR_EXFILL: the Examine response (fields 3..9 and the name) for the object
+; SHR_OT; R8 = the disk key to return. R8 = error code (0 = OK). R9..R12
+; clobbered.
+SHR_EXFILL      INCRB
+                MOVE    R8, R7                  ; R7: disk key
+                MOVE    SHR_OT, R0
+                CMP     SHR_T_ROOT, @R0
+                RBRA    _SEF_ENT, !Z
+                RSUB    SHR_SEL, 1              ; the root: the volume name,
+                MOVE    SHR_VOLNAME, R8         ; no size, no date
+                RSUB    SHR_PUTNAME, 1
+                MOVE    SHR_T_ROOT, R1          ; R1: type (low word)
+                XOR     R2, R2                  ; R2: high word of the type
+                XOR     R3, R3                  ; R3: size lo, R4: size hi
+                XOR     R4, R4
+                XOR     R5, R5                  ; R5: protection
+                MOVE    7, R8                   ; date 0
+                XOR     R9, R9
+                XOR     R10, R10
+                RSUB    SHR_WL, 1
+                MOVE    8, R8
+                RSUB    SHR_WL, 1
+                MOVE    9, R8
+                RSUB    SHR_WL, 1
+                RBRA    _SEF_W, 1
+
+_SEF_ENT        RSUB    SHR_OBJ_DE, 1
+                RBRA    _SEF_RET, C
+                RBRA    _SEF_DE, 1
+
+; SHR_EXFILL_DE: SHR_EXFILL for the entry in SHR_DE (R8 = disk key)
+SHR_EXFILL_DE   INCRB
+                MOVE    R8, R7
+_SEF_DE         RSUB    SHR_SEL, 1
+                MOVE    SHR_DE, R8
+                RSUB    SHR_PUTNAME, 1
+                RSUB    SHR_DATE, 1
+                MOVE    SHR_DE, R0
+                ADD     FAT32$DE_ATTRIB, R0
+                MOVE    @R0++, R6               ; R6: attributes
+                MOVE    @R0++, R3               ; (DE_SIZE_LO, DE_SIZE_HI)
+                MOVE    @R0, R4
+                XOR     R5, R5
+                MOVE    R6, R0
+                AND     FAT32$FA_READ_ONLY, R0
+                RBRA    _SEF_T, Z
+                MOVE    0x0005, R5              ; read-only: no write/delete
+_SEF_T          MOVE    SHR_T_DIR, R1
+                XOR     R2, R2
+                MOVE    R6, R0
+                AND     FAT32$FA_DIR, R0
+                RBRA    _SEF_DIR, !Z
+                MOVE    0xFFFD, R1              ; ST_FILE = -3
+                MOVE    0xFFFF, R2
+                RBRA    _SEF_W, 1
+_SEF_DIR        XOR     R3, R3
+                XOR     R4, R4
+
+_SEF_W          MOVE    3, R8                   ; disk_key
+                XOR     R9, R9
+                MOVE    R7, R10
+                RSUB    SHR_WL, 1
+                MOVE    4, R8                   ; entry_type
+                MOVE    R2, R9
+                MOVE    R1, R10
+                RSUB    SHR_WL, 1
+                MOVE    5, R8                   ; size
+                MOVE    R4, R9
+                MOVE    R3, R10
+                RSUB    SHR_WL, 1
+                MOVE    6, R8                   ; protection
+                XOR     R9, R9
+                MOVE    R5, R10
+                RSUB    SHR_WL, 1
+                XOR     R8, R8
+_SEF_RET        DECRB
+                RET
+
+; SHR_DATE: the date of SHR_DE as an AmigaOS DateStamp (days since 1978,
+; minutes, ticks) in fields 7..9 of the response. R8..R12 clobbered.
+SHR_DATE        INCRB
+                MOVE    SHR_DE, R0
+                ADD     FAT32$DE_YEAR, R0
+                MOVE    @R0++, R1               ; R1: year
+                MOVE    @R0++, R2               ; R2: month
+                MOVE    @R0++, R3               ; R3: day
+                MOVE    R1, R4                  ; R4: years since 1980
+                SUB     1980, R4
+                RBRA    _SDT_Y, !N
+                XOR     R4, R4
+_SDT_Y          MOVE    R4, R8                  ; days = 730 + 365 x years
+                MOVE    365, R9                 ; + leap days before
+                SYSCALL(mulu, 1)
+                MOVE    R10, R5
+                ADD     730, R5
+                MOVE    R4, R6
+                ADD     3, R6
+                AND     0xFFFB, SR
+                SHR     2, R6
+                AND     0x3FFF, R6
+                ADD     R6, R5
+                CMP     R1, 2100                ; 2100 is no leap year
+                RBRA    _SDT_M, !N              ; (R1 <= 2100)
+                SUB     1, R5
+_SDT_M          SUB     1, R2                   ; + days before the month
+                AND     0x000F, R2
+                CMP     R2, 11
+                RBRA    _SDT_M1, !N             ; (R2 <= 11)
+                XOR     R2, R2
+_SDT_M1         MOVE    SHR_MDAYS, R6
+                ADD     R2, R6
+                ADD     @R6, R5
+                CMP     2, R2                   ; March or later in a leap
+                RBRA    _SDT_D, N               ; year: + 1 (2 > R2)
+                MOVE    R1, R6
+                AND     3, R6
+                RBRA    _SDT_D, !Z
+                CMP     2100, R1
+                RBRA    _SDT_D, Z
+                ADD     1, R5
+_SDT_D          CMP     0, R3                   ; + day - 1
+                RBRA    _SDT_D1, Z
+                SUB     1, R3
+_SDT_D1         ADD     R3, R5
+                MOVE    7, R8                   ; days
+                XOR     R9, R9
+                MOVE    R5, R10
+                RSUB    SHR_WL, 1
+                MOVE    @R0++, R8               ; minutes = hour x 60 + minute
+                MOVE    60, R9
+                SYSCALL(mulu, 1)
+                ADD     @R0++, R10
+                MOVE    8, R8
+                XOR     R9, R9
+                RSUB    SHR_WL, 1
+                MOVE    @R0, R8                 ; ticks = second x 50
+                MOVE    50, R9
+                SYSCALL(mulu, 1)
+                MOVE    9, R8
+                XOR     R9, R9
+                RSUB    SHR_WL, 1
+                DECRB
+                RET
+
+; SHR_FILE_GET: the open file of the handle in field 2 of the request -> R8 =
+; its slot, C=0; or C=1 and R8 = error code. R9, R10 clobbered.
+SHR_FILE_GET    MOVE    2, R8
+                RSUB    SHR_KEY, 1
+                MOVE    SHR_GEN, R10
+                CMP     @R10, R8
+                RBRA    _SFG_SLOT, Z
+                MOVE    SHR_E_NOTMNT, R8
+                RBRA    _SFG_ERR, 1
+_SFG_SLOT       SUB     1, R9
+                CMP     SHR_FILES_N, R9
+                RBRA    _SFG_INV, !N            ; (SHR_FILES_N <= R9)
+                MOVE    R9, R8
+                AND     0xFFFD, SR              ; (x 16: clear X)
+                SHL     4, R8
+                ADD     SHR_FILES, R8
+                MOVE    R8, R10
+                ADD     SHR_F_USED, R10
+                CMP     0, @R10
+                RBRA    _SFG_INV, Z
+                AND     0xFFFB, SR              ; C=0
+                RET
+_SFG_INV        MOVE    SHR_E_NOTFOUND, R8
+_SFG_ERR        OR      0x0004, SR              ; C=1
+                RET
+
+; ----------------------------------------------------------------------------
+; Shared folder: the packet handlers (R8 = DOS error code on return)
+; ----------------------------------------------------------------------------
+
+; LOCATE_OBJECT: key, mode, name -> key
+SHR_DO_LOCATE   MOVE    20, R8
+                RSUB    SHR_GETNAME, 1
+                MOVE    2, R8
+                RSUB    SHR_RESOLVE, 1
+                RBRA    _SDL_RET, C
+_SDL_NEW        RSUB    SHR_LOCK_NEW, 1
+                RBRA    _SDL_RET, C
+                RSUB    SHR_SEL, 1
+                MOVE    3, R8
+                RSUB    SHR_WL, 1
+                XOR     R8, R8
+_SDL_RET        RET
+
+; FREE_LOCK: key
+SHR_DO_FREELOCK MOVE    2, R8
+                RSUB    SHR_KEY, 1
+                MOVE    R8, R10
+                OR      R9, R10
+                RBRA    _SDF_RET, Z             ; (the root lock is static)
+                RSUB    SHR_LOCK_GET, 1
+                RBRA    _SDF_RET, C
+                MOVE    0, @R8
+_SDF_RET        XOR     R8, R8
+                RET
+
+; COPY_DIR (DupLock): key -> key
+SHR_DO_COPYDIR  MOVE    2, R8
+                RSUB    SHR_KEY_OBJ, 1
+                RBRA    _SDL_RET, C
+                RBRA    _SDL_NEW, 1
+
+; PARENT: key -> key of the parent, 0 for the root
+SHR_DO_PARENT   MOVE    2, R8
+                RSUB    SHR_KEY_OBJ, 1
+                RBRA    _SDL_RET, C
+                MOVE    SHR_OT, R8
+                CMP     SHR_T_ROOT, @R8
+                RBRA    _SDP_UP, !Z
+                RSUB    SHR_SEL, 1
+                MOVE    3, R8
+                XOR     R9, R9
+                XOR     R10, R10
+                RSUB    SHR_WL, 1
+                XOR     R8, R8
+                RET
+_SDP_UP         RSUB    SHR_PARENT, 1
+                RBRA    _SDL_RET, C
+                RBRA    _SDL_NEW, 1
+
+; EXAMINE_OBJECT: key -> FileInfoBlock fields
+SHR_DO_EXAMINE  MOVE    2, R8
+                RSUB    SHR_KEY_OBJ, 1
+                RBRA    _SDL_RET, C
+                XOR     R8, R8                  ; the first ExNext: entry 0
+                RBRA    SHR_EXFILL, 1           ; (returns from there)
+
+; EXAMINE_NEXT: key, disk key (the index of the next entry) -> the entry
+SHR_DO_EXNEXT   MOVE    2, R8
+                RSUB    SHR_KEY_OBJ, 1
+                RBRA    _SDL_RET, C
+                MOVE    SHR_OT, R8
+                CMP     SHR_T_FILE, @R8
+                RBRA    _SDX_DIR, !Z
+_SDX_END        MOVE    SHR_E_NOMORE, R8
+                RET
+_SDX_DIR        MOVE    3, R8                   ; the index
+                RSUB    SHR_RL, 1
+                CMP     0, R9
+                RBRA    _SDX_END, !Z
+                MOVE    R10, @--SP
+                MOVE    SHR_OC, R8
+                MOVE    @R8++, R11
+                MOVE    @R8, R9
+                MOVE    R11, R8
+                RSUB    SHR_DIR_AT, 1
+                MOVE    @SP++, R12              ; R12: the index
+                RBRA    _SDX_END, C
+                RSUB    SHR_DIR_NEXT, 1
+                RBRA    _SDX_END, C
+                CMP     0, R8
+                RBRA    _SDX_END, Z
+                MOVE    R12, R8                 ; the next ExNext: the entry
+                ADD     1, R8                   ; after this one
+                RBRA    SHR_EXFILL_DE, 1        ; (returns from there)
+
+; EXAMINE_FH: file handle -> FileInfoBlock fields
+SHR_DO_EXFH     RSUB    SHR_FILE_GET, 1
+                RBRA    _SDL_RET, C
+                MOVE    SHR_OT, R9
+                MOVE    SHR_T_FILE, @R9++
+                ADD     SHR_F_CLUS, R8
+                MOVE    @R8++, @R9++
+                MOVE    @R8++, @R9++
+                MOVE    @R8, @R9
+                XOR     R8, R8
+                RBRA    SHR_EXFILL, 1           ; (returns from there)
+
+; FINDINPUT (Open MODE_OLDFILE): key, name -> file handle
+SHR_DO_FINDIN   MOVE    16, R8
+                RSUB    SHR_GETNAME, 1
+                MOVE    2, R8
+                RSUB    SHR_RESOLVE, 1
+                RBRA    _SDL_RET, C
+                MOVE    SHR_OT, R8
+                CMP     SHR_T_FILE, @R8
+                RBRA    _SDI_FILE, Z
+                MOVE    SHR_E_TYPE, R8
+                RET
+_SDI_FILE       INCRB
+                MOVE    SHR_FILES, R0           ; a free file slot
+                XOR     R1, R1
+_SDI_L          MOVE    R0, R2
+                ADD     SHR_F_USED, R2
+                CMP     0, @R2
+                RBRA    _SDI_F, Z
+                ADD     SHR_FILE_SZ, R0
+                ADD     1, R1
+                CMP     SHR_FILES_N, R1
+                RBRA    _SDI_L, !Z
+                MOVE    SHR_E_NOMEM, R8
+                RBRA    _SDI_RET, 1
+_SDI_F          RSUB    SHR_OBJ_DE, 1           ; its exact name
+                RBRA    _SDI_RET, C
+                MOVE    SHR_DE, R8              ; copy it: FAT32$FILE_OPEN
+                MOVE    SHR_PATH, R9            ; takes a path
+_SDI_C          MOVE    @R8++, @R9
+                CMP     0, @R9++
+                RBRA    _SDI_C, !Z
+                MOVE    SHR_OC, R2              ; its directory becomes the
+                MOVE    SHARE_DEV, R3           ; current one of SHARE_DEV
+                ADD     FAT32$DEV_AD_1STCLUS_LO, R3
+                MOVE    @R2++, @R3++
+                MOVE    @R2, @R3
+                MOVE    SHR_CVAL, R2            ; (FILE_OPEN moves through
+                MOVE    0, @R2                  ;  that directory)
+                MOVE    SHARE_DEV, R8
+                MOVE    R0, R9
+                MOVE    SHR_PATH, R10
+                XOR     R11, R11
+                RSUB    FAT32$FILE_OPEN, 1
+                CMP     0, R10
+                RBRA    _SDI_NF, !Z
+                MOVE    SHR_OC, R2              ; the object, for EXAMINE_FH
+                MOVE    R0, R3
+                ADD     SHR_F_CLUS, R3
+                MOVE    @R2++, @R3++
+                MOVE    @R2++, @R3++
+                MOVE    @R2, @R3++
+                MOVE    1, @R3                  ; (SHR_F_USED)
+                RSUB    SHR_SEL, 1
+                MOVE    3, R8
+                MOVE    SHR_GEN, R9
+                MOVE    @R9, R9
+                MOVE    R1, R10
+                ADD     1, R10
+                RSUB    SHR_WL, 1
+                XOR     R8, R8
+                RBRA    _SDI_RET, 1
+_SDI_NF         MOVE    SHR_E_NOTFOUND, R8
+_SDI_RET        DECRB
+                RET
+
+; READ: file handle, buffer address (ignored), length -> bytes read, in the
+; data buffer at word 0x800. Sector by sector: FAT32$FILE_SEEK to the current
+; position puts its sector into the sector buffer of the SD controller, and
+; the bytes are copied straight from there (a library call per byte would cost
+; ten times as much); then the position moves on in the file handle.
+SHR_DO_READ     RSUB    SHR_FILE_GET, 1
+                RBRA    _SDL_RET, C
+                INCRB
+                MOVE    R8, R0                  ; R0: the file handle
+                MOVE    4, R8                   ; R1: length, at most 4 KB
+                RSUB    SHR_RL, 1
+                MOVE    R10, R1
+                CMP     0, R9
+                RBRA    _SDR_MAX, !Z
+                CMP     R1, 0x1000
+                RBRA    _SDR_GO, !N             ; (R1 <= 0x1000)
+_SDR_MAX        MOVE    0x1000, R1
+_SDR_GO         XOR     R2, R2                  ; R2: bytes read
+                MOVE    SHR_W_DATA, R3          ; R3: next word
+                XOR     R4, R4                  ; R4: high byte waiting
+
+_SDR_SECT       CMP     R2, R1                  ; done?
+                RBRA    _SDR_DONE, Z
+                MOVE    R0, R8                  ; R7:R6 = size - position
+                ADD     FAT32$FDH_SIZE_LO, R8
+                MOVE    @R8++, R6               ; (SIZE_HI, ACCESS_LO,
+                MOVE    @R8++, R7               ;  ACCESS_HI follow)
+                MOVE    @R8++, R9
+                MOVE    @R8, R10
+                SUB     R9, R6
+                SUBC    R10, R7
+                MOVE    R6, R8
+                OR      R7, R8
+                RBRA    _SDR_DONE, Z            ; the end of the file
+                MOVE    R0, R8                  ; the sector of the position
+                RSUB    FAT32$FILE_SEEK, 1      ; (R9, R10: the position)
+                CMP     0, R9
+                RBRA    _SDR_ERR, !Z
+                MOVE    R0, R8                  ; R5: bytes from this sector:
+                ADD     FAT32$FDH_INDEX, R8     ; 512 - index, at most the
+                MOVE    @R8, R12                ; rest of the request and of
+                MOVE    512, R5                 ; the file
+                SUB     R12, R5
+                MOVE    R1, R8
+                SUB     R2, R8
+                CMP     R5, R8
+                RBRA    _SDR_N1, !N             ; (R5 <= R8)
+                MOVE    R8, R5
+_SDR_N1         CMP     0, R7
+                RBRA    _SDR_N2, !Z
+                CMP     R5, R6
+                RBRA    _SDR_N2, !N             ; (R5 <= R6)
+                MOVE    R6, R5
+_SDR_N2         MOVE    R5, R6                  ; R6: bytes of this sector
+                MOVE    R12, R7                 ; R7: index in the sector
+                MOVE    IO$SD_DATA_POS, R10
+                MOVE    IO$SD_DATA, R11
+_SDR_B          MOVE    R7, @R10
+                MOVE    @R11, R9
+                ADD     1, R7
+                AND     0x00FF, R9
+                MOVE    R2, R12
+                AND     1, R12
+                RBRA    _SDR_ODD, !Z
+                SWAP    R9, R4                  ; an even byte: bits 15:8
+                RBRA    _SDR_NX, 1
+_SDR_ODD        OR      R4, R9                  ; an odd byte completes the
+                MOVE    R9, @R3++               ; word
+_SDR_NX         ADD     1, R2
+                SUB     1, R5
+                RBRA    _SDR_B, !Z
+                MOVE    R0, R8                  ; the file handle moves on
+                ADD     FAT32$FDH_INDEX, R8     ; (an index of 512 is what
+                MOVE    R7, @R8                 ; FAT32$FILE_RB leaves, too)
+                MOVE    R0, R8
+                ADD     FAT32$FDH_ACCESS_LO, R8
+                ADD     R6, @R8++
+                ADDC    0, @R8
+                RBRA    _SDR_SECT, 1
+
+_SDR_DONE       MOVE    R2, R5                  ; a last even byte
+                AND     1, R5
+                RBRA    _SDR_RES, Z
+                MOVE    R4, @R3
+_SDR_RES        MOVE    3, R8
+                XOR     R9, R9
+                MOVE    R2, R10
+                RSUB    SHR_WL, 1
+                XOR     R8, R8
+                DECRB
+                RET
+_SDR_ERR        MOVE    SHR_E_NOTFOUND, R8
+                DECRB
+                RET
+
+; SEEK: file handle, position, mode (-1 start, 0 current, 1 end) -> the old
+; position
+SHR_DO_SEEK     RSUB    SHR_FILE_GET, 1
+                RBRA    _SDL_RET, C
+                INCRB
+                MOVE    R8, R0                  ; R0: the file handle
+                MOVE    R0, R1
+                ADD     FAT32$FDH_SIZE_LO, R1
+                MOVE    @R1++, R4               ; R5:R4: size (SIZE_HI
+                MOVE    @R1++, R5               ; follows, then ACCESS_LO/HI)
+                MOVE    @R1++, R6               ; R7:R6: position
+                MOVE    @R1, R7
+                MOVE    4, R8                   ; mode
+                RSUB    SHR_RL, 1
+                MOVE    R10, R3
+                MOVE    3, R8                   ; R2:R1 = offset
+                RSUB    SHR_RL, 1
+                MOVE    R10, R1
+                MOVE    R9, R2
+                CMP     0xFFFF, R3              ; OFFSET_BEGINNING
+                RBRA    _SDS_ADD, Z
+                CMP     0, R3                   ; OFFSET_CURRENT
+                RBRA    _SDS_CUR, Z
+                CMP     1, R3                   ; OFFSET_END
+                RBRA    _SDS_ERR, !Z
+                ADD     R4, R1
+                ADDC    R5, R2
+                RBRA    _SDS_ADD, 1
+_SDS_CUR        ADD     R6, R1
+                ADDC    R7, R2
+_SDS_ADD        CMP     0, R2                   ; before the start?
+                RBRA    _SDS_ERR, V             ; (signed 0 > R2)
+                CMP     R2, R5                  ; past the end?
+                RBRA    _SDS_ERR, N             ; (R2 > R5)
+                RBRA    _SDS_GO, !Z
+                CMP     R1, R4
+                RBRA    _SDS_ERR, N             ; (R1 > R4)
+_SDS_GO         MOVE    R0, R8
+                MOVE    R1, R9
+                MOVE    R2, R10
+                RSUB    FAT32$FILE_SEEK, 1
+                CMP     0, R9
+                RBRA    _SDS_ERR, !Z
+                MOVE    3, R8                   ; the old position
+                MOVE    R7, R9
+                MOVE    R6, R10
+                RSUB    SHR_WL, 1
+                XOR     R8, R8
+                DECRB
+                RET
+_SDS_ERR        MOVE    SHR_E_SEEK, R8
+                DECRB
+                RET
+
+; END (Close): file handle
+SHR_DO_END      RSUB    SHR_FILE_GET, 1
+                RBRA    _SDE_RET, C
+                ADD     SHR_F_USED, R8
+                MOVE    0, @R8
+_SDE_RET        XOR     R8, R8
+                RET
+
+; SAME_LOCK: key, key -> LOCK_SAME (0, success), LOCK_SAME_VOLUME (1) or
+; LOCK_DIFFERENT (-1)
+SHR_DO_SAMELOCK INCRB
+                MOVE    2, R8
+                RSUB    SHR_KEY, 1
+                RSUB    SHR_LOCK_GET, 1
+                RBRA    _SDM_DIFF, C
+                MOVE    R8, R0
+                MOVE    3, R8
+                RSUB    SHR_KEY, 1
+                RSUB    SHR_LOCK_GET, 1
+                RBRA    _SDM_DIFF, C
+                MOVE    4, R1                   ; type, cluster and index
+_SDM_L          CMP     @R0++, @R8++
+                RBRA    _SDM_VOL, !Z
+                SUB     1, R1
+                RBRA    _SDM_L, !Z
+                XOR     R8, R8
+                DECRB
+                RET
+_SDM_VOL        MOVE    1, R8
+                DECRB
+                RET
+_SDM_DIFF       MOVE    0xFFFF, R8
+                DECRB
+                RET
+
+; INFO, DISK_INFO: -> total and used blocks
+SHR_DO_INFO     RSUB    SHR_SEL, 1
+                MOVE    SHR_TOTAL, R11
+                MOVE    3, R8
+                MOVE    @R11++, R10
+                MOVE    @R11, R9
+                RSUB    SHR_WL, 1
+                MOVE    SHR_USED, R11
+                MOVE    4, R8
+                MOVE    @R11++, R10
+                MOVE    @R11, R9
+                RSUB    SHR_WL, 1
+                MOVE    5, R8
+                XOR     R9, R9
+                XOR     R10, R10
+                RSUB    SHR_WL, 1
+                XOR     R8, R8
+                RET
+
+; everything that writes: the volume is write-protected
+SHR_DO_WPROT    MOVE    SHR_E_WPROT, R8
                 RET
 
 ; ----------------------------------------------------------------------------
@@ -4802,6 +6488,36 @@ HWF_LABEL       .BLOCK 23                       ; the built label: 22 chars
 RTC_LAST_MIN    .BLOCK 1                        ; last internal minute seen by
                                                 ; RTC_STEP; 0xFFFF = none yet
 
+; Megamiga 0.6.1: the shared folder (see SHARE_STEP)
+SHARE_DEV       .BLOCK  FAT32$DEV_STRUCT_SIZE   ; device handle of the volume
+SHR_UP          .BLOCK 1                        ; 1: the volume is mounted
+SHR_GEN         .BLOCK 1                        ; generation 1..0x7FFF
+SHR_LASTREQ     .BLOCK 1                        ; last request number seen
+SHR_RSTSEEN     .BLOCK 1                        ; last Amiga reset count seen
+SHR_SLOT        .BLOCK 1                        ; active SD slot seen last
+SHR_DET         .BLOCK 1                        ; its card-detect seen last
+SHR_SDCH        .BLOCK 1                        ; SD_CHANGED seen last
+SHR_MNT_PEND    .BLOCK 1                        ; 1: mount after SHR_MNT_T
+SHR_MNT_T       .BLOCK 1                        ; IO$CYC_MID at the event
+SHR_TOTAL       .BLOCK 2                        ; blocks of the volume (lo, hi)
+SHR_USED        .BLOCK 2                        ; used blocks (lo, hi)
+SHR_ROOTLOCK    .BLOCK 4                        ; the lock of key 0 (/amiga)
+SHR_OT          .BLOCK 1                        ; the current object: type,
+SHR_OC          .BLOCK 2                        ; cluster (lo, hi) and index
+SHR_OI          .BLOCK 1                        ; (the layout of a lock slot)
+SHR_CVAL        .BLOCK 1                        ; directory cursor: valid,
+SHR_CCLO        .BLOCK 1                        ; cluster, index of the next
+SHR_CCHI        .BLOCK 1                        ; entry, directory handle
+SHR_CIDX        .BLOCK 1
+SHR_CFDH        .BLOCK  FAT32$FDH_STRUCT_SIZE
+SHR_PATH_LEN    .BLOCK 1                        ; the path of the request
+SHR_CPOS        .BLOCK 1                        ; the component being looked up
+SHR_CLEN        .BLOCK 1
+SHR_PATH        .BLOCK 256                      ; one character per word
+SHR_DE          .BLOCK  FAT32$DE_STRUCT_SIZE    ; directory entry
+SHR_LOCKS       .BLOCK 256                      ; SHR_LOCKS_N x SHR_LOCK_SZ
+SHR_FILES       .BLOCK 128                      ; SHR_FILES_N x SHR_FILE_SZ
+
 ; M2M Shell variables (only include, if you included "shell.asm" above)
 #include "../../M2M/rom/shell_vars.asm"
 
@@ -4899,7 +6615,10 @@ HEAP            .BLOCK 1
 ; Megamiga, M2M-UPSTREAM rom-32k: the device window moved into the RAM
 ; (0x8000-0x8FFF), so the variables start at 0x9000 and the combined total is
 ; 4096 words smaller: 25056 (the stack margin stays the same).
-HEAP_SIZE       .EQU 21504                      ; 25056 - 3552 = 21504
+; Megamiga 0.6.1: the shared folder added 966 words of variables (SHARE_*,
+; SHR_*), so the combined total went down by 992 to 24064.
+;HEAP_SIZE       .EQU 21504                      ; 25056 - 3552 = 21504
+HEAP_SIZE       .EQU 20512                      ; 24064 - 3552 = 20512
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

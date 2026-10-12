@@ -77,6 +77,9 @@ Features
   and write, that Kickstart boots from (needs the free lide.device boot ROM)
 * A network card on the MEGA65's Ethernet port (R4/R5/R6, 100 Mbit/s) with a
   SANA-II driver: Roadshow, AmiTCP, Miami and the like
+* A shared folder: the `/amiga` folder of the SD card as the Amiga volume
+  `SDCard:`, read-only, that comes and goes with the card like a disk in a
+  drive - no reboot to mount it
 * The Amiga serial port on the MEGA65's PMOD header (R4/R5/R6, off by
   default): a terminal, a null-modem link or MIDI
 * Kickstart 1.3 (256 KB) or 2.04 / 3.x (512 KB), one per profile, and
@@ -820,6 +823,36 @@ unique device ID. The card needs a 100 Mbit/s port: it does not do 10 Mbit/s
 and has no collision handling for old hubs. The driver is based on Niklas
 Ekström's a314eth.device; the design is described in
 [doc/developers/ethernet.md](doc/developers/ethernet.md).
+
+### Shared folder (SDCard:)
+
+The folder `/amiga` of the SD card can be an Amiga volume, `SDCard:`, so that
+files you copy onto the card on your computer reach the Amiga without disk
+images. It is read-only for now: copy files from it, not to it. It works in
+every profile and with every CPU.
+
+The handler `MegamigaFS` is on the `Megamiga_Share.adf` disk of the release
+(or build it from `CORE/share/`). With Kickstart 2.0 or newer:
+
+1. Copy `L/MegamigaFS` to `L:`, `Devs/dummy.device` to `DEVS:` and
+   `Devs/DOSDrivers/SD` to `DEVS:DOSDrivers/`.
+2. Run `Mount SD:` in a Shell - or just reboot: from then on, the volume is
+   there at every start.
+
+With Kickstart 1.3, add the entry from `Devs/MountList` to `DEVS:MountList`
+instead and run `Mount SD:` (in `S:Startup-Sequence` for every start).
+
+`SDCard:` shows the `/amiga` folder of the SD card that is active in the
+MEGA65 - the card in the bottom tray, or the one in the back slot when there
+is one. It behaves like a disk in a drive: pull the card and the volume goes
+away; insert one and it comes back about a second later, and Workbench shows
+its icon again. Switching cards with F1/F3 in the core's file browser
+changes it, too. Long file names work (up to 106 characters, the limit of
+AmigaOS); hidden files and anything outside `/amiga` are not shown.
+
+The volume speaks the protocol of the MiSTer's shared folder, so MiSTer's own
+`MiSTerFileSystem` works too, without the disk-change part. `MegamigaFS` is
+based on it (Alexey Melnikov) and on a314fs (Niklas Ekström).
 
 ### Serial port (PMOD)
 

@@ -217,6 +217,13 @@ entity main is
       eth_ready_i             : in  std_logic;
       eth_irq_i               : in  std_logic;
 
+      -- Shared folder memory (share_buf.vhd in mega65.vhd), $DD4000-$DD5FFF, the third
+      -- target of cpu_wrapper's ext_* port: shr_sel_o like ide_sel_o (fram_addr_o(12 downto
+      -- 1) = offset from $DD4000)
+      shr_sel_o               : out std_logic;
+      shr_data_i              : in  std_logic_vector(15 downto 0);
+      shr_ready_i             : in  std_logic;
+
       -- Hardware Floppy (the MEGA65's real internal drive as an Amiga unit).
       -- Drive map from the OSM "Drive Settings" submenu (static in clk_main;
       -- changes trigger the amiga_cold_boot reset in mega65.vhd):
@@ -523,6 +530,7 @@ architecture synthesis of main is
          z3ena          : in  std_logic;
          eth_ena        : in  std_logic;
          ext_eth        : out std_logic;
+         ext_shr        : out std_logic;
          ext_sel        : out std_logic;
          ext_dout       : in  std_logic_vector(15 downto 0);
          ext_ready      : in  std_logic;
@@ -777,6 +785,7 @@ architecture synthesis of main is
    -- cpu_wrapper's ext_* port, split between the IDE board and the network card
    signal cpu_ext_sel      : std_logic;
    signal cpu_ext_eth      : std_logic;
+   signal cpu_ext_shr      : std_logic;
    signal cpu_ext_dout     : std_logic_vector(15 downto 0);
    signal cpu_ext_ready    : std_logic;
 
@@ -861,10 +870,18 @@ begin
 
    -- IDE board reset: the same condition that resets cpu_wrapper's autoconfig chain
    -- cpu_wrapper's ext_* port serves two boards: the IDE board and the network card
-   ide_sel_o     <= cpu_ext_sel and not cpu_ext_eth;
+   -- Megamiga 0.6.1: and the shared folder memory
+   --ide_sel_o     <= cpu_ext_sel and not cpu_ext_eth;
+   --eth_sel_o     <= cpu_ext_sel and cpu_ext_eth;
+   --cpu_ext_dout  <= eth_data_i  when cpu_ext_eth = '1' else ide_data_i;
+   --cpu_ext_ready <= eth_ready_i when cpu_ext_eth = '1' else ide_ready_i;
+   ide_sel_o     <= cpu_ext_sel and not cpu_ext_eth and not cpu_ext_shr;
    eth_sel_o     <= cpu_ext_sel and cpu_ext_eth;
-   cpu_ext_dout  <= eth_data_i  when cpu_ext_eth = '1' else ide_data_i;
-   cpu_ext_ready <= eth_ready_i when cpu_ext_eth = '1' else ide_ready_i;
+   shr_sel_o     <= cpu_ext_sel and cpu_ext_shr;
+   cpu_ext_dout  <= eth_data_i  when cpu_ext_eth = '1' else
+                    shr_data_i  when cpu_ext_shr = '1' else ide_data_i;
+   cpu_ext_ready <= eth_ready_i when cpu_ext_eth = '1' else
+                    shr_ready_i when cpu_ext_shr = '1' else ide_ready_i;
 
    ide_rst_proc : process (clk_main_i)
    begin
@@ -930,6 +947,7 @@ begin
          z3ena           => z3_ram_i,            -- 16 MB Zorro III board (68020 only)
          eth_ena         => eth_ena_i,           -- network card in the autoconfig chain
          ext_eth         => cpu_ext_eth,
+         ext_shr         => cpu_ext_shr,
          ext_sel         => cpu_ext_sel,
          ext_dout        => cpu_ext_dout,
          ext_ready       => cpu_ext_ready,

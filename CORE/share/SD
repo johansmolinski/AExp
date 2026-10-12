@@ -1,0 +1,12 @@
+/* Megamiga: the /amiga folder of the SD card as the volume SDCard (MegamigaFS) */
+FileSystem     = L:MegamigaFS
+Device         = dummy.device
+Unit           = 0
+Surfaces       = 1
+BlocksPerTrack = 10
+Reserved       = 2
+LowCyl         = 0
+HighCyl        = 100
+StackSize      = 4000
+DosType        = 0x4D534400
+Activate       = 1
