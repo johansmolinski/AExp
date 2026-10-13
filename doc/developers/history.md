@@ -1833,7 +1833,8 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   patterns after the bank split and were refreshed). (d) `7a0cc54`: SDCard:
   read/write, protocol 2 (FINDOUTPUT/FINDUPDATE, WRITE, SETSIZE, DELETE,
   RENAME, CREATEDIR, SETPROTECT, SETCOMMENT (accepted, ignored), SETDATE;
-  time from the handler's DateStamp at `$DD4FE0`); share fw harness 1216
+  time from the handler's DateStamp at `$DD4FE0`; HARDWARE-CONFIRMED by the
+  user 2026-10-13 with `mega65_r6_rw1.bit`); share fw harness 1216
   records + fsck/mtools image check PASS at spc 1/8/64. (e) M2M exception
   17 `cfg-strings` (see AGENTS): `key=value` text behind the menu bytes of
   the settings file; `ROSM_SAVE` resizes it (entry date kept: W_SYNC leaves
