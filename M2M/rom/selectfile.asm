@@ -443,11 +443,21 @@ _ELEMENT_FOUND  MOVE    R11, R8                 ; R11: selected SLL element
                 MOVE    R11, R8
                 ADD     SLL$OVRHD_SIZE, R8
                 ADD     R9, R8
-                CMP     0, @--R8                ; 0=file, 1=directory
+                ; M2M-UPSTREAM cfg-strings: 2 + id = an entry of the core that
+                ; is no file (BROWSE_EXTRA): SF_VIRTUAL = id + 1, else 0
+                MOVE    SF_VIRTUAL, R9
+                MOVE    0, @R9
+                MOVE    @--R8, R10
+                CMP     0, R10                  ; 0=file, 1=directory
                 RBRA    _RETNAME, Z             ; return name
+                CMP     1, R10
+                RBRA    _ELEM_CD, Z
+                SUB     1, R10                  ; an entry of the core
+                MOVE    R10, @R9
+                RBRA    _RETNAME, 1
 
                 ; change directory
-                MOVE    R4, R8                  ; deselect current line
+_ELEM_CD        MOVE    R4, R8                  ; deselect current line
                 MOVE    M2M$SA_COL_STD, R9
                 RSUB    SELECT_LINE, 1
                 MOVE    LOG_STR_CD, R8          ; log directory change to UART
@@ -551,6 +561,8 @@ FB_INIT         INCRB
                 MOVE    0, @R0
 
                 MOVE    SF_CONTEXT, R0          ; no context
+                MOVE    0, @R0
+                MOVE    SF_VIRTUAL, R0          ; M2M-UPSTREAM cfg-strings
                 MOVE    0, @R0
 
                 DECRB

@@ -113,6 +113,9 @@ FB_LASTCALLER   .BLOCK 1                        ; vdrive id/CRTROM id + mode
 ; context variables (see CTX_* constants in sysdef.asm)
 SF_CONTEXT      .BLOCK 1                        ; context for SELECT_FILE
 SF_CONTEXT_DATA .BLOCK 1                        ; optional add. data for ctx
+SF_VIRTUAL      .BLOCK 1                        ; M2M-UPSTREAM cfg-strings: the
+                                                ; chosen entry is no file but
+                                                ; BROWSE_EXTRA's id + 1 (else 0)
 
 ; ----------------------------------------------------------------------------
 ; Virtual drive and manual/automatic CRT/ROM loading system

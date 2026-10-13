@@ -111,8 +111,10 @@ FILTER_FILES    INCRB
 
                 CMP     CTX_LOAD_ROM, R10       ; only filter in the ADF
                 RBRA    _FFILES_RET_0, !Z       ; load context
-                MOVE    HDF_FILE_EXT, R9        ; the HDF line: .hdf files
+                MOVE    HDF_FILE_EXT, R9        ; the HDF lines: .hdf files
                 CMP     AEXP_OPTM_G_HDF, R11
+                RBRA    _FFILES_EXT, Z
+                CMP     AEXP_OPTM_G_HDF1, R11
                 RBRA    _FFILES_EXT, Z
                 MOVE    R8, R1                  ; R1: keep the directory entry
                 MOVE    R11, R8                 ; one of the three mount items?
@@ -173,7 +175,14 @@ _PREP_LI_H0     XOR     R9, R9                  ; master
 _PREP_LI_HDF    MOVE    R8, R5                  ; R5: the file, R6: its ROM id
                 MOVE    R9, R6
                 ADD     PROF_HDF_ID, R6
-                RSUB    HDF_PREP, 1             ; R8/R9: result
+                MOVE    SF_VIRTUAL, R4          ; a partition from the browser
+                MOVE    @R4, R4                 ; (BROWSE_EXTRA: id = its
+                CMP     0, R4                   ; number)
+                RBRA    _PREP_LI_HP, Z
+                SUB     1, R4
+                MOVE    HDF_VPART, R7
+                MOVE    R4, @R7
+_PREP_LI_HP     RSUB    HDF_PREP, 1             ; R8/R9: result
                 RBRA    _PREP_LI_REM, 1
 _PREP_LI_NHDF   CMP     AEXP_OPTM_G_KICK, R10   ; the Kickstart selector: own path
                 RBRA    _PREP_LI_NKCK, !Z
@@ -625,19 +634,23 @@ _KP_RET         MOVE    R4, R10
                 RET
 
 ; ----------------------------------------------------------------------------
-; PROFILE_APPLY: the Kickstart and the hard disk of a machine profile
+; PROFILE_APPLY: the Kickstart and the hard disks of a machine profile
 ;
 ; Megamiga 0.3: the main menu selects a machine profile (A500 / A600 / A1200).
 ; The HDL applies its CPU, chipset and RAM settings (mega65.vhd prof_decode,
-; a cold boot of the Amiga). Here the files of the profile are loaded: the Kickstart
-; /amiga/a500.rom, a600.rom or a1200.rom (if missing: /amiga/kick.rom) and the
-; hard disks /amiga/a500.hdf, a600.hdf or a1200.hdf (master, unit 0) and
-; a500-1.hdf, a600-1.hdf or a1200-1.hdf (slave, unit 1); a missing file means
-; no drive there.
-; The menu lines Kickstart and HDF show the new names, as after a manual load.
+; a cold boot of the Amiga). Here the files of the profile are loaded.
 ;
-; At boot (PREP_START) the mandatory /amiga/kick.rom is already loaded and no
-; HDF is mounted, so there a missing file changes nothing.
+; Megamiga 0.6.1: everything is explicit. A profile loads only the files the
+; user chose for it through the menu (the settings file remembers them by
+; path, B2_PROF_SAVED); nothing chosen = nothing loaded. The one exception is
+; the Kickstart: a profile without a chosen Kickstart uses /amiga/kick.rom
+; (an optional boot-time load since 0.6.1). Without either - or if the chosen
+; Kickstart cannot be loaded - the Amiga is held in reset (Kickstart CSR at
+; LOADING: black screen) until the user loads one.
+; The menu lines Kickstart and HDF show the names, as after a manual load.
+;
+; At boot (PREP_START) /amiga/kick.rom is already loaded if it exists, and no
+; HDF is mounted.
 ;
 ; The files are opened through the device handle of the Shell (HANDLE_DEV, as
 ; the file browser does), so the HDF lives on the same handle as a manually
@@ -673,22 +686,25 @@ _PA_MNT         MOVE    0, @R8
 _PA_KICK        MOVE    FL_NOBAR, R2            ; no progress bar: the menu
                 MOVE    1, @R2                  ; is on screen
                 MOVE    R0, R8                  ; one the profile remembers?
-                MOVE    PROF_KICK_ID, R9        ; (C=1: open, R8: its name)
-                RSUB    PROF_SAVED, 1
-                MOVE    R8, R3
+                MOVE    PROF_KICK_ID, R9        ; (C=1: open, R8: its name;
+                RSUB    PROF_SAVED, 1           ; C=0: R8 = 0 none chosen, 1
+                MOVE    R8, R3                  ; chosen but not there)
                 RBRA    _PA_KLD, C
-                MOVE    PROF_KICK_TAB, R8
-                ADD     R0, R8
-                MOVE    @R8, R8
-                MOVE    R8, R3                  ; R3: the label of the path
-                RSUB    PROF_OPEN, 1            ; C=1: open
-                RBRA    _PA_KLD, C
-                CMP     0, R1                   ; boot: kick.rom is loaded
-                RBRA    _PA_HDF, Z
-                MOVE    PN_KICK, R8
+                CMP     0, R8
+                RBRA    _PA_KHOLD, !Z           ; chosen, not there: hold
+                CMP     0, R1                   ; boot: kick.rom is loaded if
+                RBRA    _PA_KSW, !Z             ; it exists
+                MOVE    CRTROM_AUT_LDF, R8      ; (auto-load ROM 0, see
+                CMP     0, @R8                  ; C_CRTROMS_AUTO)
+                RBRA    _PA_KHOLD, Z
+                MOVE    PN_KICK, R8             ; its name in the menu
+                MOVE    PROF_KICK_ID, R9
+                RSUB    PROF_NAME, 1
+                RBRA    _PA_HDF, 1
+_PA_KSW         MOVE    PN_KICK, R8             ; switch: kick.rom
                 MOVE    R8, R3
                 RSUB    PROF_OPEN, 1
-                RBRA    _PA_HDF, !C
+                RBRA    _PA_KHOLD, !C
 _PA_KLD
                 MOVE    AEXP_DEV_KICK, R8       ; LOADING holds the Amiga
                 MOVE    CRTROM_CSR_STATUS, R9   ; in reset
@@ -697,7 +713,7 @@ _PA_KLD
                 MOVE    PROF_FDH, R8
                 RSUB    KICK_PREP, 1            ; error: CSR back to IDLE
                 CMP     0, R8
-                RBRA    _PA_HDF, !Z
+                RBRA    _PA_KHOLD, !Z
                 MOVE    AEXP_DEV_KICK, R8       ; OK: the cold boot
                 MOVE    CRTROM_CSR_STATUS, R9
                 MOVE    CRTROM_CSR_ST_OK, R10
@@ -705,6 +721,20 @@ _PA_KLD
                 MOVE    R3, R8
                 MOVE    PROF_KICK_ID, R9
                 RSUB    PROF_NAME, 1
+                RBRA    _PA_HDF, 1
+
+                ; no Kickstart: the Amiga stays in reset, the menu shows <Load>
+_PA_KHOLD       MOVE    AEXP_DEV_KICK, R8
+                MOVE    CRTROM_CSR_STATUS, R9
+                MOVE    CRTROM_CSR_ST_LDNG, R10
+                RSUB    CRTROM_CSR_W, 1
+                MOVE    CRTROM_MAN_LDF, R8
+                ADD     PROF_KICK_ID, R8
+                MOVE    0, @R8
+                MOVE    PROF_PEND, R8
+                ADD     PROF_KICK_ID, R8
+                SUB     PROF_HDF_ID, R8
+                MOVE    0, @R8
 
                 ; the hard disks: R4 = drive, 0 master, 1 slave
 _PA_HDF         XOR     R4, R4
@@ -713,17 +743,8 @@ _PA_HL          MOVE    R0, R8                  ; one the profile remembers?
                 ADD     R4, R9
                 RSUB    PROF_SAVED, 1
                 MOVE    R8, R3                  ; R3: its name
-                RBRA    _PA_HOP, C
-                MOVE    PROF_HDF_TAB, R8        ; masters, then slaves
-                ADD     R0, R8
-                CMP     0, R4
-                RBRA    _PA_HU, Z
-                ADD     3, R8
-_PA_HU          MOVE    @R8, R8
-                MOVE    R8, R3                  ; R3: the label of the path
-                RSUB    PROF_OPEN, 1
-                RBRA    _PA_HNO, !C
-_PA_HOP         MOVE    PROF_FDH, R8
+                RBRA    _PA_HNO, !C             ; none: no drive there
+                MOVE    PROF_FDH, R8
                 MOVE    R4, R9
                 RSUB    HDF_PREP, 1             ; mounts, restarts the Amiga
                 CMP     0, R8
@@ -874,10 +895,7 @@ _PPA_NEXT       ADD     1, R9
 _PPA_RET        SYSCALL(leave, 1)
                 RET
 
-PROF_KICK_TAB   .DW     PN_K500, PN_K600, PN_K1200
 HDF_DEV_TAB     .DW     AEXP_DEV_IDE, AEXP_DEV_IDE1         ; the device of each HDF line
-PROF_HDF_TAB    .DW     PN_H500, PN_H600, PN_H1200          ; masters (unit 0)
-                .DW     PN_S500, PN_S600, PN_S1200          ; slaves (unit 1)
 
 ; ----------------------------------------------------------------------------
 ; Core specific callback functions: Custom tasks
@@ -1116,6 +1134,105 @@ OSM_SEL_PRE     INCRB
 ; ----------------------------------------------------------------------------
 ; Core specific callback functions: Custom messages
 ; ----------------------------------------------------------------------------
+
+; BROWSE_EXTRA callback function (M2M-UPSTREAM cfg-strings):
+;
+; Entries of the file browser that are no files. The browser lists them first
+; (behind "<..>"); choosing one makes the Shell call PREP_LOAD_IMAGE with an
+; empty file handle and SF_VIRTUAL = id + 1.
+;
+; Megamiga: for the two HDF lines, the partitions of the SD card with the MBR
+; type 0x7F ("Partition 2: 1024 MB"), id = the partition number: the drive is
+; then that partition (HDF_PREP, HDF_VPART), like a link file names it.
+;
+; Input:  R8: index of the entry (0, 1, ...), R9: context (CTX_*), R10: group
+; Output: R8: its name (0 = no more entries), R9: its id (0..0x0FFF);
+;         R10..R12 preserved
+BROWSE_EXTRA    INCRB
+                MOVE    R10, R0
+                MOVE    R11, R1
+                MOVE    R12, R2
+                CMP     CTX_LOAD_ROM, R9
+                RBRA    _BRX_NO, !Z
+                CMP     AEXP_OPTM_G_HDF, R0
+                RBRA    _BRX_GO, Z
+                CMP     AEXP_OPTM_G_HDF1, R0
+                RBRA    _BRX_NO, !Z
+_BRX_GO         MOVE    R8, R3                  ; R3: usable ones to skip
+                MOVE    1, R4                   ; R4: partition number
+_BRX_L          MOVE    HDF_DEVREF, R8
+                MOVE    R4, R9
+                RSUB    HDF_PART_GET, 1         ; R8: n or 0xFF, R12:R11 size
+                CMP     0x00FF, R8
+                RBRA    _BRX_NX, Z
+                CMP     0, R3
+                RBRA    _BRX_FOUND, Z
+                SUB     1, R3
+_BRX_NX         ADD     1, R4
+                CMP     5, R4
+                RBRA    _BRX_L, !Z
+_BRX_NO         XOR     R8, R8
+                RBRA    _BRX_RET, 1
+
+_BRX_FOUND      MOVE    BRX_S_PART, R8          ; "Partition n: "
+                MOVE    BRX_NAME, R9
+                SYSCALL(strcpy, 1)
+                MOVE    R9, R5
+                ADD     BRX_S_PLEN, R5
+                MOVE    R4, R6
+                ADD     0x0030, R6
+                MOVE    R6, @R5++
+                MOVE    0x003A, @R5++
+                MOVE    0x0020, @R5++
+                MOVE    R11, R8                 ; the size: MB = blocks >> 11,
+                MOVE    R12, R9                 ; GB from 10000 MB on
+                MOVE    11, R10
+                RSUB    _BRX_SHR, 1
+                MOVE    BRX_S_MB, R7
+                CMP     0, R9
+                RBRA    _BRX_GB, !Z
+                CMP     R8, 9999
+                RBRA    _BRX_DEC, !N            ; (R8 <= 9999)
+_BRX_GB         MOVE    10, R10
+                RSUB    _BRX_SHR, 1
+                MOVE    BRX_S_GB, R7
+_BRX_DEC        MOVE    BRX_DEC, R10
+                SYSCALL(h2dstr, 1)              ; R11: the decimal string
+                MOVE    R11, R8
+                MOVE    R5, R9
+                SYSCALL(strcpy, 1)
+                SYSCALL(strlen, 1)
+                ADD     R9, R5
+                MOVE    R7, R8
+                MOVE    R5, R9
+                SYSCALL(strcpy, 1)
+                MOVE    BRX_NAME, R8
+                MOVE    R4, R9
+_BRX_RET        MOVE    R0, R10
+                MOVE    R1, R11
+                MOVE    R2, R12
+                DECRB
+                RET
+
+; _BRX_SHR: R9:R8 >> R10 (1..15). R11, R12 clobbered.
+_BRX_SHR        MOVE    R9, R11
+                MOVE    16, R12
+                SUB     R10, R12
+                AND     0xFFFD, SR              ; (X: shift in zeros)
+                SHL     R12, R11
+                AND     0xFFFB, SR              ; (C: shift in zeros)
+                SHR     R10, R8
+                OR      R11, R8
+                AND     0xFFFB, SR
+                SHR     R10, R9
+                RET
+
+BRX_S_PART      .ASCII_W "Partition "
+BRX_S_PLEN      .EQU    10
+BRX_S_MB        .ASCII_W " MB"
+BRX_S_GB        .ASCII_W " GB"
+HDF_DEVREF      .DW     HANDLE_DEV              ; a "file handle" for HDF_PART_GET:
+                                                ; only its device word is read
 
 ; CUSTOM_MSG callback function:
 ;
@@ -2014,6 +2131,9 @@ _HUK_H          MOVE    R2, R3                  ; drive mask 1 / 2
                 RBRA    _HUK_RET, !Z
                 MOVE    R2, R8
                 RSUB    HDF_EJECT, 1
+                MOVE    R2, R9                  ; the profile forgets it
+                ADD     PROF_HDF_ID, R9
+                RSUB    PROF_FORGET, 1
                 RBRA    _HUK_RET, 1
 
                 ; --- gate 3: is a disk in THAT drive? PARSEST == PT_OK ---
@@ -2566,6 +2686,8 @@ PROF_REMEMBER   RSUB    FAR_CALL, 1
                 .DW     BANK_F32F, B2_PROF_REMEMBER
 PROF_SAVED      RSUB    FAR_CALL, 1
                 .DW     BANK_F32F, B2_PROF_SAVED
+PROF_FORGET     RSUB    FAR_CALL, 1
+                .DW     BANK_F32F, B2_PROF_FORGET
 
 ; ----------------------------------------------------------------------------
 ; The FAT32 write layer (M2M/QNICE/monitor/fat32_write.asm, fat32_wfile.asm):
@@ -2847,6 +2969,18 @@ HDF_PREP        INCRB
                 RSUB    IDE_LIDE_OK, 1          ; no boot ROM, no board
                 RBRA    _HDFP_NOROM, !C
 
+                MOVE    HDF_VPART, R1           ; a partition, not the file
+                CMP     0, @R1                  ; (the file browser or a
+                RBRA    _HDFP_NVP, Z            ; profile chose it)
+                MOVE    R0, R8
+                MOVE    @R1, R9
+                RSUB    HDF_PART_GET, 1
+                CMP     0x00FF, R8
+                RBRA    _HDFP_BADPT, Z
+                MOVE    R8, R3                  ; R3: the partition
+                RBRA    _HDFP_LINK, 1
+_HDFP_NVP
+
                 MOVE    R0, R1                  ; R2/R3: file size
                 ADD     FAT32$FDH_SIZE_LO, R1
                 MOVE    @R1, R2
@@ -3014,6 +3148,10 @@ _HDFP_L28       MOVE    HDF_SECT_LO, R8
                 MOVE    R7, @R8
                 MOVE    HDF_MAPOK, R8           ; the fast block path
                 MOVE    1, @R8
+                XOR     R9, R9                  ; no file (HDF_VPART): no
+                MOVE    HDF_VPART, R8           ; seek in it
+                CMP     0, @R8
+                RBRA    _HDFP_SKD, !Z
                 MOVE    R0, R8                  ; the Shell reads EOF at once
                 MOVE    R2, R9                  ; (the file is under 512 bytes)
                 XOR     R10, R10
@@ -3046,7 +3184,9 @@ _HDFP_FATERR    MOVE    1, R8
                 MOVE    R8, R9                  ; device: copy it to RAM)
                 MOVE    1, R8
 
-_HDFP_RET       MOVE    @SP++, R12
+_HDFP_RET       MOVE    HDF_VPART, R1           ; (one load only)
+                MOVE    0, @R1
+                MOVE    @SP++, R12
                 MOVE    @SP++, R11
                 MOVE    @SP++, R10
                 DECRB
@@ -3087,7 +3227,7 @@ _HLK_NUM        RSUB    _HLK_RD, 1              ; the partition digit
                 RBRA    _HLK_NO, N              ; (R9 > 3, also for < '1')
                 MOVE    R9, R3                  ; R3: partition - 1
 
-                MOVE    R0, R8                  ; the MBR: block 0, read
+_HLK_MBR        MOVE    R0, R8                  ; the MBR: block 0, read
                 RSUB    _F32_RELEASE_BUF, 1     ; straight into the buffer
                 CMP     0, R9
                 RBRA    _HLK_BAD, !Z
@@ -3148,6 +3288,19 @@ _HLK_BAD        MOVE    0x00FF, R8
 _HLK_NO         XOR     R8, R8
 _HLK_RET        DECRB
                 RET
+
+; HDF_PART_GET: partition R9 (1..4) of the SD card of the file handle R8 (only
+; its device word is read, see HDF_DEVREF): the checks of HDF_LINK (MBR type
+; 0x7F, not at block 0, at least 64 KB).
+; Output: R8: R9 if usable, else 0xFF; R10:R9 = its first block, R12:R11 = its
+;         size in blocks. The SD sector buffer is released.
+HDF_PART_GET    INCRB
+                MOVE    R8, R0
+                MOVE    R9, R3
+                SUB     1, R3
+                CMP     R3, 3
+                RBRA    _HLK_BAD, N             ; (R3 > 3, also for 0)
+                RBRA    _HLK_MBR, 1
 
 ; _HLK_RD: next byte of the link file R0 (in the register bank of HDF_LINK) into R9, a-z as A-Z
 ; Output: C=1 at the end of the file or on an error
@@ -7647,6 +7800,8 @@ _PK_600K        .ASCII_W "a600.kick"
 _PK_1200H0      .ASCII_W "a1200.hdf0"
 _PK_1200H1      .ASCII_W "a1200.hdf1"
 _PK_1200K       .ASCII_W "a1200.kick"
+_PR_S_PART      .ASCII_W "partition:"           ; a value: an SD card partition
+_PR_S_PLEN      .EQU    10
 
 ; _PR_KEY: the key of profile R8 and ROM id R9 -> R8. Other registers kept.
 _PR_KEY         INCRB
@@ -7679,7 +7834,19 @@ _PR_CUR         MOVE    R10, @--SP
 ; preserved.
 B2_PROF_REMEMBER SYSCALL(enter, 1)
                 MOVE    R9, R1                  ; R1: ROM id
-                RSUB    _PR_PATHOF, 1           ; PROF_PATH
+                MOVE    SF_VIRTUAL, R2          ; an SD card partition from the
+                MOVE    @R2, R2                 ; browser (BROWSE_EXTRA: id =
+                CMP     0, R2                   ; its number): "partition:N"
+                RBRA    _PRR_FILE, Z
+                MOVE    _PR_S_PART, R8
+                MOVE    PROF_PATH, R9
+                SYSCALL(strcpy, 1)
+                ADD     _PR_S_PLEN, R9
+                ADD     0x002F, R2              ; (id + 1) - 1 + "0"
+                MOVE    R2, @R9++
+                MOVE    0, @R9
+                RBRA    _PRR_OK, 1
+_PRR_FILE       RSUB    _PR_PATHOF, 1           ; PROF_PATH
                 RBRA    _PRR_OK, C
                 MOVE    PROF_PATH, R0           ; unknown: forget it (the
                 MOVE    0, @R0                  ; standard file then)
@@ -7691,9 +7858,23 @@ _PRR_OK         RSUB    _PR_CUR, 1
                 SYSCALL(leave, 1)
                 RET
 
+; B2_PROF_FORGET: the selected profile forgets its file for ROM id R9 (SPACE
+; ejected it). All registers preserved.
+B2_PROF_FORGET  SYSCALL(enter, 1)
+                MOVE    R9, R0                  ; R0: ROM id
+                RSUB    _PR_CUR, 1              ; (R9 used)
+                MOVE    R0, R9
+                RSUB    _PR_KEY, 1
+                MOVE    PROF_PATH, R9           ; the empty value removes it
+                MOVE    0, @R9
+                RSUB    CFGS_SET, 1
+                SYSCALL(leave, 1)
+                RET
+
 ; B2_PROF_SAVED: profile R8 remembers a file for ROM id R9 and it opens:
 ; C=1, PROF_FDH is open, R8 = its name (for the menu line, in PROF_PNAME);
-; C=0 otherwise. R9..R12 preserved.
+; C=0 otherwise, R8 = 0 if it remembers none, 1 if it cannot be opened.
+; R9..R12 preserved.
 B2_PROF_SAVED   INCRB
                 MOVE    R9, R0                  ; R0: ROM id
                 MOVE    R10, R1
@@ -7707,12 +7888,18 @@ B2_PROF_SAVED   INCRB
                 MOVE    PROF_PATH, R10
                 CMP     0, @R10
                 RBRA    _PRS_NO, Z
+                MOVE    PROF_PATH, R4           ; "partition:N"?
+                MOVE    _PR_S_PART, R5
+_PRS_PP         CMP     0, @R5
+                RBRA    _PRS_PART, Z
+                CMP     @R4++, @R5++
+                RBRA    _PRS_PP, Z
                 MOVE    HANDLE_DEV, R8
                 MOVE    PROF_FDH, R9
                 XOR     R11, R11                ; "/" separator
                 SYSCALL(f32_fopen, 1)
                 CMP     0, R10
-                RBRA    _PRS_NO, !Z
+                RBRA    _PRS_NF, !Z
                 MOVE    PROF_PATH, R4           ; the name: behind the last
                 MOVE    R4, R5                  ; "/"
 _PRS_SL         CMP     0, @R4
@@ -7744,7 +7931,37 @@ _PRS_NE         MOVE    0, @R6
                 DECRB
                 OR      0x0004, SR              ; C=1
                 RET
-_PRS_NO         MOVE    R0, R9
+                ; an SD card partition: HDF_PREP mounts it (HDF_VPART), the
+                ; handle is an empty one on HANDLE_DEV (only its device counts)
+_PRS_PART       CMP     PROF_KICK_ID, R0        ; (not a Kickstart)
+                RBRA    _PRS_NF, Z
+                MOVE    @R4, R5                 ; the digit 1..4
+                SUB     0x0031, R5
+                CMP     R5, 3
+                RBRA    _PRS_NF, N              ; (R5 > 3, also below "1")
+                ADD     1, R5
+                MOVE    HDF_VPART, R6
+                MOVE    R5, @R6
+                MOVE    PROF_FDH, R8
+                MOVE    FAT32$FDH_STRUCT_SIZE, R9
+                XOR     R10, R10
+                SYSCALL(memset, 1)
+                MOVE    PROF_FDH, R8
+                MOVE    HANDLE_DEV, @R8
+                MOVE    BRX_S_PART, R8          ; its name: "Partition N"
+                MOVE    PROF_PATH, R9
+                SYSCALL(strcpy, 1)
+                MOVE    R9, R6
+                ADD     BRX_S_PLEN, R6
+                ADD     0x0030, R5
+                MOVE    R5, @R6++
+                MOVE    0, @R6
+                MOVE    PROF_PATH, R5
+                RBRA    _PRS_SE, 1
+_PRS_NF         MOVE    1, R8                   ; remembered, not there
+                RBRA    _PRS_C0, 1
+_PRS_NO         XOR     R8, R8                  ; none remembered
+_PRS_C0         MOVE    R0, R9
                 MOVE    R1, R10
                 MOVE    R2, R11
                 MOVE    R3, R12
@@ -7976,6 +8193,10 @@ PROF_PEND       .BLOCK PROF_PEND_NUM            ; its path labels (0 = none), by
 PROF_PATH       .BLOCK 128                      ; a remembered path (cfg text)
 PROF_PNAME      .BLOCK 63                       ; PROF_PEND_NUM x PROF_PN_LEN:
                                                 ; the names of remembered files
+HDF_VPART       .BLOCK 1                        ; HDF_PREP: 1..4 = mount this SD
+                                                ; card partition, not the file
+BRX_NAME        .BLOCK 32                       ; BROWSE_EXTRA: an entry's name
+BRX_DEC         .BLOCK 11                       ; its decimal size
 FL_BAR_TOTAL    .BLOCK 1                        ; FAST_LOAD progress bar: sectors
 FL_BAR_WIDTH    .BLOCK 1                        ; bar width in characters
 FL_BAR_ACC      .BLOCK 1                        ; Bresenham accumulator
@@ -8200,7 +8421,9 @@ HEAP            .BLOCK 1
 ; Megamiga 0.6.1: text in the settings file (M2M-UPSTREAM cfg-strings: CFGS_*)
 ; and the files a profile remembers (PROF_PATH, PROF_PNAME) added 705 words:
 ; the combined total is 736 words smaller: 18592, stack margin 287 words.
-HEAP_SIZE       .EQU 15008                      ; 18592 - 3584 = 15008
+; Partitions in the HDF browser (HDF_VPART, BRX_*) and SF_VIRTUAL: 45 words,
+; the combined total is 32 words smaller: 18560, stack margin 274 words.
+HEAP_SIZE       .EQU 14976                      ; 18560 - 3584 = 14976
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

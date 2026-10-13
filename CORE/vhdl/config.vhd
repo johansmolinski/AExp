@@ -104,11 +104,9 @@ constant HELP_1 : string :=
    " A1200: 68020, AGA, 2 MB Chip\n" &
    " CPU (68000-68040), chipset, RAM (8 MB\n" &
    " Zorro II, 16 MB Zorro III) are set in\n" &
-   " Profile Settings. A profile loads its\n" &
-   " Kickstart /amiga/a500.rom, a600.rom or\n" &
-   " a1200.rom (else kick.rom) and its hard\n" &
-   " disks a500.hdf (master) and a500-1.hdf\n" &
-   " (slave); likewise a600 and a1200.\n\n" &
+   " Profile Settings. A profile keeps the\n" &
+   " Kickstart (else kick.rom) and hard\n" &
+   " disks you load for it.\n\n" &
 
    " Mouse: Port 1   Joystick: Port 2\n\n" &
 
@@ -118,7 +116,9 @@ constant HELP_1 : string :=
    " and real Amiga disks in the MEGA65\n" &
    " drive, all read and write. Hard disks:\n" &
    " two HDF images, need /amiga/lide.rom.\n" &
-   " Space on a mounted HDF line ejects it.\n\n" &
+   " Space on a mounted HDF line ejects it.\n" &
+   " The HDF browser also offers the SD\n" &
+   " card partitions of MBR type 0x7F.\n\n" &
 
    " Not implemented, yet: NTSC, flicker-free\n\n" &
 
@@ -384,8 +384,7 @@ constant OPTM_PAUSE        : boolean := false;
 
 -- show the welcome screen in general
 -- Switched off like in the C64MEGA65 reference: boots straight into the core.
--- The mandatory-ROM fatal screen names /amiga/kick.rom if it is missing, and
--- the About & Help pages document the SD card setup, so nothing is lost.
+-- The About & Help pages document the SD card setup, so nothing is lost.
 -- (SCR_WELCOME stays defined: WHS array position 0 must always exist.)
 constant WELCOME_ACTIVE    : boolean := false;
 
@@ -588,7 +587,8 @@ constant OPTM_DY           : natural := 34;
 --   line 161: Kickstart selector (manual CRT/ROM 4 into C_DEV_AMIGA_KICK); firmware-only:
 --            PREP_LOAD_IMAGE checks the size (256 or 512 KB) and loads the ROM, the
 --            kick device holds the Amiga in reset meanwhile and cold-boots it after.
---            Not saved: at power-on the core loads /amiga/kick.rom again.
+--            Saved per profile in the settings file (cfg text, PROF_REMEMBER); a profile
+--            without one uses /amiga/kick.rom, or holds the Amiga in reset.
 --   line 204: Serial port on PMOD toggle (C_MENU_SERIAL), default OFF; Settings > Ports.
 --            On = PMOD1 powered, Paula's UART and CIA-B /CTS /RTS on its pins (R4/R5/R6;
 --            pin layout in mega65.vhd). Off = every PMOD pin high-Z, headers unpowered.

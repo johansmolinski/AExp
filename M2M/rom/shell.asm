@@ -697,6 +697,22 @@ _LI_OPENFILE    MOVE    HANDLE_DEV, R8          ; R8: sd card device handle
                 ADD     R1, R9
                 MOVE    @R9, R9                 ; R9: file handle
                 MOVE    R9, R5                  ; R5: remember file handle
+                ; M2M-UPSTREAM cfg-strings: an entry of the core that is no
+                ; file (SF_VIRTUAL, see BROWSE_EXTRA): an empty handle (size 0,
+                ; on HANDLE_DEV) instead; PREP_LOAD_IMAGE knows what it is
+                MOVE    SF_VIRTUAL, R10
+                CMP     0, @R10
+                RBRA    _LI_FOPEN, Z
+                MOVE    R5, R8
+                MOVE    FAT32$FDH_STRUCT_SIZE, R9
+                XOR     R10, R10
+                SYSCALL(memset, 1)
+                MOVE    R5, R8
+                ADD     FAT32$FDH_DEVICE, R8
+                MOVE    HANDLE_DEV, @R8
+                RBRA    _LI_FOPEN_OK, 1
+_LI_FOPEN       MOVE    HANDLE_DEV, R8
+                MOVE    R5, R9
                 MOVE    R2, R10
                 XOR     R11, R11
                 SYSCALL(f32_fopen, 1)

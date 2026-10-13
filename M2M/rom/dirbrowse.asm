@@ -16,6 +16,7 @@
 #include "llist.asm"
 
 _DIRBR_DOT      .ASCII_W "."                    ; filter this from dir. views
+_DIRBR_UPDIR    .ASCII_W "<..>"                 ; (M2M-UPSTREAM cfg-strings)
 _DIRBR_DS       .EQU    0x3C                    ; ASCII of "<"
 _DIRBR_DE       .EQU    0x3E                    ; ASCII of ">"
 _DIRBR_DSDESIZE .EQU    2                       ; amount of characters in sum
@@ -115,7 +116,87 @@ _DIRBR_LOOP     MOVE    R7, R8                  ; R8: directory handle
                 MOVE    R8, R5                  ; R5: (new) head of linked lst
                 RBRA    _DIRBR_LOOP, 1          ; next iteration
 
-_DIRBR_LOOPEND  MOVE    R4, R9                  ; return amount of entries
+                ; M2M-UPSTREAM cfg-strings (Megamiga): entries of the core
+                ; that are no files (BROWSE_EXTRA, e.g. SD card partitions),
+                ; in the Shell only (R6: a filter is given). They come first,
+                ; behind "<..>", in the order of the core, unsorted; their flag
+                ; word is 2 + the id of the core (see SELECT_FILE).
+_DIRBR_LOOPEND  CMP     0, R6
+                RBRA    _DIRBR_LEND2, Z
+                XOR     R0, R0                  ; R0: insert behind (0: head)
+                CMP     0, R5
+                RBRA    _DIRBR_X0, Z
+                MOVE    R5, R8                  ; the list starts with "<..>"?
+                ADD     SLL$DATA, R8
+                MOVE    _DIRBR_UPDIR, R9
+                SYSCALL(strcmp, 1)
+                CMP     0, R10
+                RBRA    _DIRBR_X0, !Z
+                MOVE    R5, R0
+_DIRBR_X0       XOR     R7, R7                  ; R7: index of the entry
+_DIRBR_XL       MOVE    R7, R8
+                MOVE    SF_CONTEXT, R9
+                MOVE    @R9, R9
+                MOVE    SF_CONTEXT_DATA, R10
+                MOVE    @R10, R10
+                RSUB    BROWSE_EXTRA, 1         ; R8: name (0: no more), R9: id
+                CMP     0, R8
+                RBRA    _DIRBR_LEND2, Z
+                MOVE    R9, R12                 ; R12: the id
+                MOVE    _DIRBR_ENTRY, R9        ; as a directory entry
+                ADD     FAT32$DE_NAME, R9
+                SYSCALL(strcpy, 1)
+                MOVE    _DIRBR_ENTRY, R9
+                ADD     FAT32$DE_ATTRIB, R9
+                MOVE    0, @R9
+                MOVE    R1, R8
+                MOVE    R2, R9
+                MOVE    R3, R10
+                RSUB    _DIRBR_NEWELM, 1
+                MOVE    R8, R1
+                MOVE    R10, R3
+                CMP     0, R11
+                RBRA    _DIRBR_RD_WOOM, !Z
+                MOVE    R1, R10                 ; its flag word: the last one
+                SUB     1, R10
+                ADD     2, R12
+                MOVE    R12, @R10
+                MOVE    R9, R10                 ; R10: the new element
+                CMP     0, R0
+                RBRA    _DIRBR_XH, Z
+                MOVE    R0, R11                 ; behind R0
+                ADD     SLL$NEXT, R11
+                MOVE    @R11, R12               ; R12: its successor
+                MOVE    R10, @R11
+                MOVE    R10, R11
+                ADD     SLL$NEXT, R11
+                MOVE    R12, @R11
+                MOVE    R10, R11
+                ADD     SLL$PREV, R11
+                MOVE    R0, @R11
+                CMP     0, R12
+                RBRA    _DIRBR_XN, Z
+                ADD     SLL$PREV, R12
+                MOVE    R10, @R12
+                RBRA    _DIRBR_XN, 1
+_DIRBR_XH       MOVE    R10, R11                ; at the head
+                ADD     SLL$NEXT, R11
+                MOVE    R5, @R11
+                MOVE    R10, R11
+                ADD     SLL$PREV, R11
+                MOVE    0, @R11
+                CMP     0, R5
+                RBRA    _DIRBR_XH2, Z
+                MOVE    R5, R11
+                ADD     SLL$PREV, R11
+                MOVE    R10, @R11
+_DIRBR_XH2      MOVE    R10, R5
+_DIRBR_XN       MOVE    R10, R0
+                ADD     1, R4
+                ADD     1, R7
+                RBRA    _DIRBR_XL, 1
+
+_DIRBR_LEND2    MOVE    R4, R9                  ; return amount of entries
                 MOVE    R5, R10                 ; R10: head of linked list
                 XOR     R11, R11                ; 0 = no error
                 RBRA    _DIRBR_RD_RET, 1

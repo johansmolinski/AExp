@@ -297,9 +297,10 @@ constant C_CRTROMS_MAN           : crtrom_buf_array := ( C_CRTROMTYPE_DEVICE, C_
 
 -- Automatically loaded ROMs: These ROMs are loaded before the core starts
 --
--- The Amiga 500 cannot work without its Kickstart ROM, therefore it is
--- MANDATORY: if the file is missing on the SD card, the firmware shows a
--- fatal error (including the file name) and the core does not start.
+-- Megamiga 0.6.1: OPTIONAL. A machine profile uses the Kickstart the user chose for it
+-- (remembered in the settings file); kick.rom is only the one for a profile without a
+-- choice. Without either, PROFILE_APPLY holds the Amiga in reset (black screen) until a
+-- Kickstart is loaded through the menu. (It used to be MANDATORY: a fatal error.)
 --
 -- File format: raw 256 KB dump of Kickstart 1.3 (rev 34.5, A500/A1000/A2000),
 -- big-endian as dumped from the original ROM chip (no byte swapping needed).
@@ -316,7 +317,7 @@ constant LIDE_ROM_NAME_START     : std_logic_vector(15 downto 0) := std_logic_ve
 constant C_CRTROMS_AUTO_NUM      : natural := 2;                                       -- Amount of automatically loadable ROMs and carts, maximum is 16
 constant C_CRTROMS_AUTO_NAMES    : string  := KICK_ROM_NAME & LIDE_ROM_NAME;
 constant C_CRTROMS_AUTO          : crtrom_buf_array := ( C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_KICK,
-                                                         C_CRTROMTYPE_MANDATORY, KICK_ROM_NAME_START,
+                                                         C_CRTROMTYPE_OPTIONAL, KICK_ROM_NAME_START,
                                                          C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_IDEROM,
                                                          C_CRTROMTYPE_OPTIONAL, LIDE_ROM_NAME_START,
                                                          x"EEEE");                     -- Always finish the array using x"EEEE"
