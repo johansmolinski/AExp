@@ -2543,6 +2543,9 @@ _DEG_N          ADD     1, R4
 ;               volume present and bits 14..0 = the generation, then the
 ;               protocol version. The generation changes whenever the volume
 ;               goes away or comes back: MegamigaFS shows that as a disk change.
+;   word 0x7F6  event counters (diagnostics, the ShareInfo tool shows them):
+;               card-detect changes (raw, also glitches), card removals and
+;               insertions (debounced), SD_CHANGED, slot switches, mounts
 ;   word 0x800  the data buffer (4 KB) of READ
 ;
 ; Volume: /amiga is mounted on the device handle SHARE_DEV of its own (the
@@ -2550,6 +2553,11 @@ _DEG_N          ADD     1, R4
 ; a second after the core starts, after a card is inserted (card-detect rising
 ; edge), after a switch of the active SD slot and after a card change the
 ; Shell noticed (SD_CHANGED). A card-detect falling edge takes the volume down.
+; A card-detect level counts only once it held for SHR_DET_DEB (~100 ms): a
+; glitch of the signal must not look like a disk change to the Amiga.
+; The main menu item " SDCard: inserted" (AEXP_OSM_SHARE) ejects the volume
+; while it is off, without touching the card; switching it on again inserts it
+; (after the same ~1 s as a card change).
 ; Edges, not levels: a slot whose card-detect does not work still gets its
 ; volume at start.
 ;
@@ -2573,6 +2581,7 @@ SHR_W_FLAG      .EQU    0x8000                  ; the shared memory (window 0):
 SHR_W_ACK       .EQU    0x8001                  ; request flag, answer flag,
 SHR_W_REQ       .EQU    0x8002                  ; request/response,
 SHR_W_STAT      .EQU    0x87FC                  ; status words,
+SHR_W_EVC       .EQU    0x87F6                  ; event counters,
 SHR_W_DATA      .EQU    0x8800                  ; data buffer
 SHR_W_RSTC      .EQU    0x8000                  ; window 1: the reset counter
 SHR_W_BYTES     .EQU    0x8000                  ; byte 0 of the shared memory
@@ -2585,6 +2594,14 @@ SHR_F_CLUS      .EQU    12                      ; index, used
 SHR_F_IDX       .EQU    14
 SHR_F_USED      .EQU    15
 SHR_DEBOUNCE    .EQU    768                     ; IO$CYC_MID ticks: ~1 s
+SHR_DET_DEB     .EQU    77                      ; card-detect: ~100 ms
+SHR_EVC_N       .EQU    6                       ; event counters:
+SHR_EV_RAW      .EQU    0                       ; card-detect changes (raw)
+SHR_EV_OUT      .EQU    1                       ; card removed
+SHR_EV_IN       .EQU    2                       ; card inserted
+SHR_EV_SDCH     .EQU    3                       ; SD_CHANGED rising
+SHR_EV_SLOT     .EQU    4                       ; slot switch
+SHR_EV_MOUNT    .EQU    5                       ; mount attempts
 SHR_PROTO       .EQU    1                       ; protocol version
 SHR_MAXNAME     .EQU    106                     ; fib_FileName: 108 bytes
 
@@ -2689,8 +2706,17 @@ SHARE_INIT      INCRB
                 MOVE    R8, @R0
                 MOVE    SHR_DET, R0
                 MOVE    R9, @R0
+                MOVE    SHR_DETRAW, R0
+                MOVE    R9, @R0
+                MOVE    SHR_EVC, R0             ; no events yet
+                MOVE    SHR_EVC_N, R1
+_SHI_EV         MOVE    0, @R0++
+                SUB     1, R1
+                RBRA    _SHI_EV, !Z
                 MOVE    SHR_SDCH, R0
                 MOVE    0, @R0
+                MOVE    SHR_INSW, R0            ; the menu: inserted (seen as
+                MOVE    1, @R0                  ; an edge if it is off)
                 RSUB    SHR_PEND, 1             ; mount in about a second
                 RSUB    SHR_STATUS, 1
                 DECRB
@@ -2782,21 +2808,54 @@ SHR_MEDIA       SYSCALL(enter, 1)
                 XOR     R2, R2                  ; R2: 1 = remount
                 MOVE    SHR_SLOT, R0            ; another slot active?
                 CMP     @R0, R8
-                RBRA    _SHM_DET, Z
+                RBRA    _SHM_RAW, Z
                 MOVE    R8, @R0
+                MOVE    SHR_EVC, R3
+                ADD     SHR_EV_SLOT, R3
+                ADD     1, @R3
                 MOVE    1, R2
-_SHM_DET        MOVE    SHR_DET, R0             ; card-detect edge?
+                MOVE    SHR_DETRAW, R0          ; a deliberate switch: the
+                MOVE    R9, @R0                 ; card-detect of the new slot
+                MOVE    SHR_DET, R0             ; counts at once
+                MOVE    R9, @R0
+                CMP     0, R9
+                RBRA    _SHM_SDC, !Z
+                RBRA    _SHM_OUT, 1             ; (no card there)
+_SHM_RAW        MOVE    SHR_DETRAW, R0          ; card-detect changed?
+                CMP     @R0, R9
+                RBRA    _SHM_STB, Z
+                MOVE    R9, @R0                 ; yes: wait until it holds
+                MOVE    IO$CYC_MID, R1
+                MOVE    SHR_DETT, R3
+                MOVE    @R1, @R3
+                MOVE    SHR_EVC, R3
+                ADD     SHR_EV_RAW, R3
+                ADD     1, @R3
+                RBRA    _SHM_SDC, 1
+_SHM_STB        MOVE    SHR_DET, R0             ; a new level that held?
                 CMP     @R0, R9
                 RBRA    _SHM_SDC, Z
+                MOVE    IO$CYC_MID, R1
+                MOVE    @R1, R1
+                MOVE    SHR_DETT, R3
+                SUB     @R3, R1
+                CMP     SHR_DET_DEB, R1
+                RBRA    _SHM_SDC, N             ; (SHR_DET_DEB > R1)
                 MOVE    R9, @R0
                 CMP     0, R9
                 RBRA    _SHM_INS, !Z
-                RSUB    SHR_DOWN, 1             ; removed: down until a card
-                MOVE    SHR_MNT_PEND, R0        ; is inserted
+_SHM_OUT        MOVE    SHR_EVC, R3             ; removed: down until a card
+                ADD     SHR_EV_OUT, R3          ; is inserted
+                ADD     1, @R3
+                RSUB    SHR_DOWN, 1
+                MOVE    SHR_MNT_PEND, R0
                 MOVE    0, @R0
                 XOR     R2, R2
                 RBRA    _SHM_SDC, 1
-_SHM_INS        MOVE    1, R2                   ; inserted
+_SHM_INS        MOVE    SHR_EVC, R3             ; inserted
+                ADD     SHR_EV_IN, R3
+                ADD     1, @R3
+                MOVE    1, R2
 _SHM_SDC        MOVE    SD_CHANGED, R0          ; the Shell saw a card change
                 MOVE    @R0, R0
                 MOVE    SHR_SDCH, R1
@@ -2805,12 +2864,30 @@ _SHM_SDC        MOVE    SD_CHANGED, R0          ; the Shell saw a card change
                 MOVE    R0, @R1
                 CMP     0, R0
                 RBRA    _SHM_ACT, Z
+                MOVE    SHR_EVC, R3
+                ADD     SHR_EV_SDCH, R3
+                ADD     1, @R3
                 MOVE    1, R2
 _SHM_ACT        CMP     0, R2
                 RBRA    _SHM_PND, Z
                 RSUB    SHR_DOWN, 1
                 RSUB    SHR_PEND, 1
-_SHM_PND        MOVE    SHR_MNT_PEND, R0        ; mount when the time is up
+_SHM_PND        MOVE    AEXP_OSM_SHARE, R8      ; the menu: inserted?
+                RSUB    M2M$GET_SETTING, 1
+                MOVE    SHR_INSW, R0
+                CMP     @R0, R9
+                RBRA    _SHM_EJ, Z
+                MOVE    R9, @R0                 ; switched: on = insert
+                CMP     0, R9
+                RBRA    _SHM_EJ, Z
+                RSUB    SHR_PEND, 1
+_SHM_EJ         CMP     0, R9                   ; ejected: down, no mount
+                RBRA    _SHM_MNT, !Z
+                RSUB    SHR_DOWN, 1
+                MOVE    SHR_MNT_PEND, R0
+                MOVE    0, @R0
+                RBRA    _SHM_RET, 1
+_SHM_MNT        MOVE    SHR_MNT_PEND, R0        ; mount when the time is up
                 CMP     0, @R0
                 RBRA    _SHM_RET, Z
                 MOVE    IO$CYC_MID, R1
@@ -2820,8 +2897,12 @@ _SHM_PND        MOVE    SHR_MNT_PEND, R0        ; mount when the time is up
                 CMP     SHR_DEBOUNCE, R1
                 RBRA    _SHM_RET, N             ; (SHR_DEBOUNCE > R1)
                 MOVE    0, @R0
+                MOVE    SHR_EVC, R3
+                ADD     SHR_EV_MOUNT, R3
+                ADD     1, @R3
                 RSUB    SHR_MOUNT, 1
-_SHM_RET        SYSCALL(leave, 1)
+_SHM_RET        RSUB    SHR_STATUS, 1
+                SYSCALL(leave, 1)
                 RET
 
 ; SHR_DOWN: the volume goes away (if it was there). All registers preserved.
@@ -2853,6 +2934,12 @@ _SHN_W          MOVE    R1, @R0
 ; SHR_STATUS: publish the status words. All registers preserved.
 SHR_STATUS      INCRB
                 RSUB    SHR_SEL, 1
+                MOVE    SHR_EVC, R0
+                MOVE    SHR_W_EVC, R1
+                MOVE    SHR_EVC_N, R2
+_SST_E          MOVE    @R0++, @R1++
+                SUB     1, R2
+                RBRA    _SST_E, !Z
                 MOVE    SHR_W_STAT, R0
                 MOVE    0x4D53, @R0++
                 MOVE    SHR_GEN, R1
@@ -6495,7 +6582,11 @@ SHR_GEN         .BLOCK 1                        ; generation 1..0x7FFF
 SHR_LASTREQ     .BLOCK 1                        ; last request number seen
 SHR_RSTSEEN     .BLOCK 1                        ; last Amiga reset count seen
 SHR_SLOT        .BLOCK 1                        ; active SD slot seen last
-SHR_DET         .BLOCK 1                        ; its card-detect seen last
+SHR_DET         .BLOCK 1                        ; its card-detect (debounced)
+SHR_DETRAW      .BLOCK 1                        ; its card-detect seen last
+SHR_DETT        .BLOCK 1                        ; IO$CYC_MID when it changed
+SHR_INSW        .BLOCK 1                        ; the menu toggle seen last
+SHR_EVC         .BLOCK 6                        ; event counters (SHR_EV_*)
 SHR_SDCH        .BLOCK 1                        ; SD_CHANGED seen last
 SHR_MNT_PEND    .BLOCK 1                        ; 1: mount after SHR_MNT_T
 SHR_MNT_T       .BLOCK 1                        ; IO$CYC_MID at the event
@@ -6580,7 +6671,10 @@ SHR_FILES       .BLOCK 128                      ; SHR_FILES_N x SHR_FILE_SZ
 ; Megamiga 68040: the blank line after each profile's CPU radio became " CPU: 68040"
 ; (+33 characters, still 211 items), demand 3528, MENU_HEAP_SIZE 3552, headroom 24,
 ; release HEAP_SIZE -32 (the combined total and the stack margin are unchanged).
-MENU_HEAP_SIZE  .EQU 3552
+; Megamiga 0.6.1: " SDCard: inserted" (shared folder toggle) and a line after the
+; profile radio: 213 items, demand 3557, MENU_HEAP_SIZE 3584, headroom 27, release
+; HEAP_SIZE -32 (the combined total is unchanged).
+MENU_HEAP_SIZE  .EQU 3584
 
 #ifndef RELEASE
 
@@ -6618,7 +6712,7 @@ HEAP            .BLOCK 1
 ; Megamiga 0.6.1: the shared folder added 966 words of variables (SHARE_*,
 ; SHR_*), so the combined total went down by 992 to 24064.
 ;HEAP_SIZE       .EQU 21504                      ; 25056 - 3552 = 21504
-HEAP_SIZE       .EQU 20512                      ; 24064 - 3552 = 20512
+HEAP_SIZE       .EQU 20480                      ; 24064 - 3584 = 20480
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

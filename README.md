@@ -850,6 +850,11 @@ its icon again. Switching cards with F1/F3 in the core's file browser
 changes it, too. Long file names work (up to 106 characters, the limit of
 AmigaOS); hidden files and anything outside `/amiga` are not shown.
 
+To eject the volume without touching the card, switch off **SDCard: inserted**
+in the main menu, below the floppy drives; switch it on again to insert it.
+`C:ShareInfo` on the disk shows the state of the volume and counts the card
+changes since the core started.
+
 The volume speaks the protocol of the MiSTer's shared folder, so MiSTer's own
 `MiSTerFileSystem` works too, without the disk-change part. `MegamigaFS` is
 based on it (Alexey Melnikov) and on a314fs (Niklas Ekström).

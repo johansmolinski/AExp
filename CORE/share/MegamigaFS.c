@@ -20,6 +20,9 @@
  *  - The volume is write-protected for now (the firmware refuses every write).
  *  - Fixes: a failed READ or WRITE replies to its packet; ACTION_FH_FROM_LOCK,
  *    ACTION_IS_FILESYSTEM, ACTION_CURRENT_VOLUME, ACTION_FLUSH and ACTION_INHIBIT.
+ *  - Kickstart 2.0 and later: the volume enters and leaves the DOS list under
+ *    LockDosList (AddDosEntry/RemDosEntry), not only under Forbid - dos.library
+ *    and Workbench walk that list holding its semaphore, possibly across a Wait.
  *
  * Built as a BCPL-style module (bcpl_start.asm, bcpl_end.asm and the length patch in
  * build.sh, the a314fs way), so that a mountlist entry starts it on every Kickstart.
@@ -212,6 +215,20 @@ static struct DeviceList *create_volume(void)
     vol->dl_DiskType = ID_MEGAMIGA;
     DateStamp(&vol->dl_VolumeDate);
 
+    if (DOSBase->dl_lib.lib_Version >= 36)
+    {
+        LONG ok;
+        LockDosList(LDF_VOLUMES | LDF_WRITE);
+        ok = AddDosEntry((struct DosList *)vol);
+        UnLockDosList(LDF_VOLUMES | LDF_WRITE);
+        if (!ok)
+        {
+            dos_free(name);
+            dos_free((char *)vol);
+            return NULL;
+        }
+        return vol;
+    }
     root = (struct RootNode *)DOSBase->dl_Root;
     info = (struct DosInfo *)BADDR(root->rn_Info);
     Forbid();
@@ -227,6 +244,15 @@ static void remove_volume(struct DeviceList *vol)
     struct DosInfo *info = (struct DosInfo *)BADDR(root->rn_Info);
     BPTR b = UMKBADDR(vol);
 
+    if (DOSBase->dl_lib.lib_Version >= 36)
+    {
+        LockDosList(LDF_VOLUMES | LDF_WRITE);
+        RemDosEntry((struct DosList *)vol);
+        UnLockDosList(LDF_VOLUMES | LDF_WRITE);
+        dos_free((char *)BADDR(vol->dl_Name));
+        dos_free((char *)vol);
+        return;
+    }
     Forbid();
     if (info->di_DevInfo == b)
         info->di_DevInfo = vol->dl_Next;

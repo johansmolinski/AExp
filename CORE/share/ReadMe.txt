@@ -28,10 +28,18 @@ Using it
   away; when you insert a card, it comes back after a second (Workbench shows
   the icon again). Switching the SD card in the core's file browser (F1/F3)
   changes the volume, too.
+- To eject the volume without touching the card, switch off "SDCard:
+  inserted" in the core's main menu (below the floppy drives); switch it on
+  again to insert it.
 - Long file names work; names longer than 106 characters are cut there.
 - Do not run programs that write to the card's files while the core uses the
   same file as a disk (HDF, ADF): the volume is read-only, so the shared folder
   itself cannot do that.
+
+- C/ShareInfo prints the state of the shared folder: whether the volume is
+  there and how often the card was removed, inserted or switched since the
+  core started. Useful if the volume came and went without you touching the
+  card.
 
 The protocol is MiSTer's shared folder protocol, so MiSTer's own
 MiSTerFileSystem works too (as SHARE:, volume MiSTer:), but without the

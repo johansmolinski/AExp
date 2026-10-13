@@ -26,4 +26,6 @@ python3 -c "
 import struct
 open('dummy.device', 'wb').write(struct.pack('>7L', 0x3F3, 0, 1, 0, 0, 1, 0x3E9) +
     struct.pack('>L', 1) + bytes.fromhex('70014e75') + struct.pack('>L', 0x3F2))"
-ls -l MegamigaFS dummy.device
+# ShareInfo: the firmware status and event counters (diagnostics)
+vc +aos68k ShareInfo.c -O2 -I"$NDK/Include_H" -o ShareInfo
+ls -l MegamigaFS dummy.device ShareInfo
