@@ -1851,6 +1851,22 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   1/8/64, 168 records + final content, date and fsck; `mut.py` 14 mutants, 13
   killed, `no_dotdot_check` equivalent: `..` is always slot 1). Firmware
   patched onto share-d: `mega65_r6_cfg1.bit`. Hardware test pending.
+  (f) The user (2026-10-13): no fallback paths, everything explicit,
+  default nothing loaded; `kick.rom` the one exception (optional now, the
+  Kickstart of a profile without a choice; none at all, or a chosen one that
+  fails = the Amiga held in reset through the Kickstart CSR at LOADING, black
+  screen). `globals.vhd`: kick.rom `C_CRTROMTYPE_OPTIONAL`; boot check via
+  `CRTROM_AUT_LDF` (the auto-load sets no CSR). SPACE on a mounted HDF line
+  also makes the profile forget it (`B2_PROF_FORGET`). FILTER_FILES filters
+  HDF1 like HDF0 (it showed every file). The HDF browser lists the 0x7F
+  partitions with number and size ("Partition 3: 1024 MB", GB from 10000 MB)
+  through the new M2M `BROWSE_EXTRA` hook (part of exception 17), mounted with
+  `HDF_VPART` through the link-file path (`HDF_PART_GET` split out of
+  `HDF_LINK`), remembered as `partition:N`. Variables +45 words: HEAP_SIZE
+  14976 (stack margin 274). cfgstr TB 176 records incl. browser listings
+  (order, flags, PREV links, root without `<..>`, a non-HDF group); mutants
+  22/23 (+9 new, all killed after a 64 GB partition was added for the
+  16-bit overflow of the MB count). Build share-e (`~/aexp-builds/Megamiga-share-e`): R6 WNS +0.008, WHS +0.046, fully routed; NOT hardware-tested.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the

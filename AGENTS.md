@@ -104,7 +104,10 @@ Megamiga fork (johansmolinski):
   write layer (`M2M/QNICE/monitor/fat32_write.asm` bank 1, `fat32_wfile.asm`
   bank 2, tests in `M2M/QNICE/test_programs/fat32_write`), SDCard: read/write
   (protocol 2); text in the settings file (M2M exception 17) so each profile
-  remembers its Kickstart and HDFs by path. Next: `.uaem`.
+  remembers its Kickstart and HDFs by path; everything explicit (no
+  `aNNN.rom/.hdf` defaults; `kick.rom` optional, the one fallback; no
+  Kickstart = Amiga held in reset), SPACE forgets an HDF, 0x7F partitions in
+  the HDF browser (`partition:N`). Next: `.uaem`.
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
@@ -115,9 +118,10 @@ mutant set.
 - **Profiles** A500 (OCS) / A600 (ECS) / A1200 (AGA), each with CPU
   (fx68k 68000, TG68K 68020 or AP68040 68040), chipset, Chip RAM 512K/1M/2M, Slow RAM,
   Z2 Fast RAM (8 MB), Z3 RAM (16 MB, 020/040 only). `prof_decode` in
-  `mega65.vhd`; firmware `PROFILE_APPLY` loads `/amiga/a500.rom|a600.rom|
-  a1200.rom` (fallback `kick.rom`, which is mandatory at boot) and
-  `aNNN.hdf` / `aNNN-1.hdf`. Changes cold-boot via `amiga_cold_boot`.
+  `mega65.vhd`; firmware `PROFILE_APPLY` loads what the user chose for the
+  profile (settings-file text, 0.6.1; before: `aNNN.rom`, `aNNN.hdf`,
+  `aNNN-1.hdf`), else `kick.rom` (optional since 0.6.1). Changes cold-boot via
+  `amiga_cold_boot`.
 - **Memory**: all Amiga memory in the board SDRAM (R4/R5/R6 only), Minimig's
   `sdram_ctrl.v` at 113.5 MHz = 4x the 28.375 MHz core clock (native MMCM;
   the HDMI flicker-free fast twin is disabled in this mode). Bank 0 chip/
@@ -273,7 +277,11 @@ the dated facts.
   (`FAT32$W_SETSIZE`, entry date kept). Megamiga uses it for the files a
   machine profile remembers (`a1200.hdf0=/amiga/disks/work.hdf`, keys
   `a500|a600|a1200` x `.hdf0|.hdf1|.kick`; code in bank 2: `B2_PROF_*`).
-  A file with text is refused by older cores (size check). Emulator TB
+  A file with text is refused by older cores (size check). Also browser
+  entries that are no files: core callback `BROWSE_EXTRA` (dirbrowse.asm lists
+  them behind `<..>`, flag word 2 + id), `SELECT_FILE` sets `SF_VIRTUAL` = id
+  + 1, `LOAD_IMAGE` hands `PREP_LOAD_IMAGE` an empty handle instead of opening
+  a file (Megamiga: the MBR 0x7F partitions in the HDF browser). Emulator TB
   `~/aexp-work/cfgstr` (+ `mut.py`). Added in the JS fork 2026-10-13.
   All other framework fixes
   go into `CORE/CORE.xdc` (constraints) or get documented for upstreaming.
