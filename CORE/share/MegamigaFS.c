@@ -20,6 +20,11 @@
  *  - The volume is write-protected for now (the firmware refuses every write).
  *  - Fixes: a failed READ or WRITE replies to its packet; ACTION_FH_FROM_LOCK,
  *    ACTION_IS_FILESYSTEM, ACTION_CURRENT_VOLUME, ACTION_FLUSH and ACTION_INHIBIT.
+ *  - Read and write (firmware protocol version 2): the volume is writable, the handler
+ *    puts the current DateStamp at SHARE_TIME_ADDR before every request (the firmware
+ *    dates new and changed files with it) and knows ACTION_SET_DATE and
+ *    ACTION_SET_FILE_SIZE. With protocol version 1 (Megamiga 0.6.0 firmware) the volume
+ *    stays write-protected.
  *  - Kickstart 2.0 and later: the volume enters and leaves the DOS list under
  *    LockDosList (AddDosEntry/RemDosEntry), not only under Forbid - dos.library
  *    and Workbench walk that list holding its semaphore, possibly across a Wait.
@@ -66,6 +71,12 @@
 #endif
 #ifndef ACTION_IS_FILESYSTEM
 #define ACTION_IS_FILESYSTEM 1027
+#endif
+#ifndef ACTION_SET_DATE
+#define ACTION_SET_DATE 34
+#endif
+#ifndef ACTION_SET_FILE_SIZE
+#define ACTION_SET_FILE_SIZE 1022
 #endif
 
 struct ExecBase *SysBase;
@@ -161,10 +172,19 @@ static int firmware_present(void)
     return status[0] == STATUS_MAGIC;
 }
 
+/* protocol version 2: the firmware writes */
+static int firmware_writes(void)
+{
+    return firmware_present() && status[2] >= 2;
+}
+
 /* write the request, then wait for the firmware (the request flag protocol of MiSTer) */
 static void write_req_and_wait_for_res(int len)
 {
     unsigned short n;
+    struct DateStamp ds;
+    DateStamp(&ds);
+    copy_mem((void *)SHARE_TIME_ADDR, &ds, sizeof(ds));
     *(int *)request_buffer = len;
     request_flg[1] = 0xA55A;
     n = request_flg[0] + 1;
@@ -919,6 +939,59 @@ static void action_set_comment(struct DosPacket *dp)
     reply_packet(dp);
 }
 
+static void action_set_date(struct DosPacket *dp)
+{
+    struct FileLock *lock = (struct FileLock *)BADDR(dp->dp_Arg2);
+    unsigned char *name = (unsigned char *)BADDR(dp->dp_Arg3);
+    struct DateStamp *date = (struct DateStamp *)dp->dp_Arg4;
+    struct SetDateRequest *req = (struct SetDateRequest *)request_buffer;
+    struct SetDateResponse *res = (struct SetDateResponse *)request_buffer;
+    int nlen = *name;
+
+    if (lock_ok(dp, lock))
+    {
+        req->type = dp->dp_Type;
+        req->key = lock_key(lock);
+        req->date[0] = date->ds_Days;
+        req->date[1] = date->ds_Minute;
+        req->date[2] = date->ds_Tick;
+        copy_mem(req->name, name, nlen + 1);
+        write_req_and_wait_for_res(sizeof(struct SetDateRequest) + nlen);
+        dp->dp_Res1 = res->success ? DOSTRUE : DOSFALSE;
+        dp->dp_Res2 = res->success ? 0 : res->error_code;
+    }
+    reply_packet(dp);
+}
+
+static void action_set_file_size(struct DosPacket *dp)
+{
+    struct SetFileSizeRequest *req = (struct SetFileSizeRequest *)request_buffer;
+    struct SetFileSizeResponse *res = (struct SetFileSizeResponse *)request_buffer;
+
+    if (!lock_ok(dp, NULL))
+    {
+        dp->dp_Res1 = -1;
+        reply_packet(dp);
+        return;
+    }
+    req->type = dp->dp_Type;
+    req->arg1 = dp->dp_Arg1;
+    req->offset = dp->dp_Arg2;
+    req->mode = dp->dp_Arg3;
+    write_req_and_wait_for_res(sizeof(struct SetFileSizeRequest));
+    if (!res->success)
+    {
+        dp->dp_Res1 = -1;
+        dp->dp_Res2 = res->error_code;
+    }
+    else
+    {
+        dp->dp_Res1 = res->new_size;
+        dp->dp_Res2 = 0;
+    }
+    reply_packet(dp);
+}
+
 static void action_same_lock(struct DosPacket *dp)
 {
     struct FileLock *lock1 = (struct FileLock *)BADDR(dp->dp_Arg1);
@@ -954,6 +1027,7 @@ static void fill_info_data(struct DosPacket *dp, struct InfoData *id)
         id->id_DiskType = ID_NO_DISK_PRESENT;
         return;
     }
+    id->id_DiskState = firmware_writes() ? ID_VALIDATED : ID_WRITE_PROTECTED;
     {
         struct DiskInfoRequest *req = (struct DiskInfoRequest *)request_buffer;
         struct DiskInfoResponse *res = (struct DiskInfoResponse *)request_buffer;
@@ -968,7 +1042,6 @@ static void fill_info_data(struct DosPacket *dp, struct InfoData *id)
             id->id_NumBlocksUsed = res->used;
         }
     }
-    id->id_DiskState = ID_WRITE_PROTECTED;
     id->id_DiskType = cur_vol->dl_DiskType;
     id->id_VolumeNode = UMKBADDR(cur_vol);
     id->id_InUse = cur_vol->dl_Lock ? DOSTRUE : DOSFALSE;
@@ -1116,6 +1189,8 @@ void start(__reg("a0") struct DosPacket *startup_packet)
             case ACTION_SET_PROTECT: action_set_protect(dp); break;
             case ACTION_SET_COMMENT: action_set_comment(dp); break;
             case ACTION_SAME_LOCK: action_same_lock(dp); break;
+            case ACTION_SET_DATE: action_set_date(dp); break;
+            case ACTION_SET_FILE_SIZE: action_set_file_size(dp); break;
             case ACTION_DISK_INFO: action_disk_info(dp); break;
             case ACTION_INFO: action_info(dp); break;
             case ACTION_CURRENT_VOLUME:

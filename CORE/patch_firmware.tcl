@@ -90,7 +90,7 @@ if {$bnk_new ne "-"} {
    if {$bnk_ref eq "-"} {
       error "PATCH: the firmware has code banks, but this build was saved without a bank image (older build): synthesize"
    }
-   if {[patch_mem "code banks" "*QNICE_SOC/codebanks/*" $bnk_ref $bnk_new] == 0} {
+   if {[patch_mem "code banks" "*QNICE_SOC/g_codebanks.codebanks/*" $bnk_ref $bnk_new] == 0} {
       error "PATCH: the firmware has code banks, but this build has no code bank ROM: synthesize"
    }
 }

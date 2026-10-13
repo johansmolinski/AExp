@@ -2535,6 +2535,58 @@ SHARE_STEP      RSUB    FAR_CALL, 1
                 .DW     BANK_SHARE, B0_SHARE_STEP
 
 ; ----------------------------------------------------------------------------
+; The FAT32 write layer (M2M/QNICE/monitor/fat32_write.asm, fat32_wfile.asm):
+; the core is code bank BANK_F32W, writing files is BANK_F32F. These stubs are
+; their entry points - the names that fat32_wglue.asm gives them in a flat
+; program - including the core routines that the file part calls.
+; ----------------------------------------------------------------------------
+
+FAT32$W_CREATE  RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_CREATE
+FAT32$W_DELETE  RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_DELETE
+FAT32$W_SETDE   RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_SETDE
+FAT32$W_MKDIR   RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_MKDIR
+FAT32$W_RENAME  RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_RENAME
+FAT32$W_FDH     RSUB    FAR_CALL, 1
+                .DW     BANK_F32F, _F32W_FDH
+FAT32$W_PUT     RSUB    FAR_CALL, 1
+                .DW     BANK_F32F, _F32W_PUT
+FAT32$W_ADV     RSUB    FAR_CALL, 1
+                .DW     BANK_F32F, _F32W_ADV
+FAT32$W_SYNC    RSUB    FAR_CALL, 1
+                .DW     BANK_F32F, _F32W_SYNC
+FAT32$W_SETSIZE RSUB    FAR_CALL, 1
+                .DW     BANK_F32F, _F32W_SETSIZE
+_F32WX_BEGIN    RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_BEGIN
+_F32WX_END      RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_END
+_F32WX_SCAN     RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_SCAN
+_F32WX_FATGET   RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_FATGET
+_F32WX_FATSET   RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_FATSET
+_F32WX_ISDATA   RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_ISDATA
+_F32WX_ALLOC    RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_ALLOC
+_F32WX_FREE     RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_FREE
+_F32WX_ZEROCL   RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_ZEROCL
+_F32WX_CLSEC    RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_CLSEC
+_F32WX_SEC      RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_SEC
+_F32WX_SETDE    RSUB    FAR_CALL, 1
+                .DW     BANK_F32W, _F32W_SETDE
+
+; ----------------------------------------------------------------------------
 ; FAR_CALL: call a routine in a code bank (Megamiga, M2M-UPSTREAM code-banks).
 ;
 ; The QNICE address space is 64K words, so code that does not fit into the
@@ -4561,7 +4613,8 @@ IDE_LIDE_AUTO_ID .EQU   1                   ; lide.rom = auto-load ROM 1
 IDE_ASCII_SPACE .EQU    0x0020
 HDF_MIN_SIZE_HI .EQU    1                   ; at least 64 KB
 HDF_MAP_WORDS   .EQU    257                 ; extent map: 64 extents
-HDF_BLK_WORDS   .EQU    279                 ; FDH (12) + 10 + HDF_MAP_WORDS
+HDF_BLK_WORDS   .EQU    282                 ; FDH (15 since the FAT32 write
+                                            ; layer) + 10 + HDF_MAP_WORDS
 
 ; commands that need no data and no action: answered with DRDY right away
 ; (INITIALIZE DEVICE PARAMETERS, SET FEATURES, RECALIBRATE, READ VERIFY,
@@ -4745,6 +4798,8 @@ END_OF_ROM      .DW 0
 ; ----------------------------------------------------------------------------
 
 BANK_SHARE      .EQU    0                       ; the shared folder
+BANK_F32W       .EQU    1                       ; FAT32 write layer: core
+BANK_F32F       .EQU    2                       ; FAT32 write layer: files
 
 #ifdef RELEASE
                 .ORG    0x9000                  ; M2M$CODE_WIN (.ORG takes no symbol)
@@ -4813,12 +4868,11 @@ SHR_W_RSTC      .EQU    0x8000                  ; window 1: the reset counter
 SHR_W_BYTES     .EQU    0x8000                  ; byte 0 of the shared memory
 SHR_ST_UP       .EQU    0x8000                  ; status: volume present
 SHR_LOCKS_N     .EQU    64                      ; lock slots
-SHR_LOCK_SZ     .EQU    4                       ; type, cluster lo/hi, index
-SHR_FILES_N     .EQU    8                       ; open files
-SHR_FILE_SZ     .EQU    16                      ; FDH (12), cluster lo/hi,
-SHR_F_CLUS      .EQU    12                      ; index, used
-SHR_F_IDX       .EQU    14
-SHR_F_USED      .EQU    15
+SHR_LOCK_SZ     .EQU    8                       ; an object (see SHR_OT)
+SHR_FILES_N     .EQU    8                       ; open files: the FDH (15
+SHR_FILE_SZ     .EQU    24                      ; words, FAT32$FDH_STRUCT_SIZE),
+SHR_F_OBJ       .EQU    15                      ; its object (8 words) and
+SHR_F_USED      .EQU    23                      ; "used" (1: read, 2: write)
 SHR_DEBOUNCE    .EQU    768                     ; IO$CYC_MID ticks: ~1 s
 SHR_DET_DEB     .EQU    77                      ; card-detect: ~100 ms
 SHR_EVC_N       .EQU    6                       ; event counters:
@@ -4828,7 +4882,8 @@ SHR_EV_IN       .EQU    2                       ; card inserted
 SHR_EV_SDCH     .EQU    3                       ; SD_CHANGED rising
 SHR_EV_SLOT     .EQU    4                       ; slot switch
 SHR_EV_MOUNT    .EQU    5                       ; mount attempts
-SHR_PROTO       .EQU    1                       ; protocol version
+SHR_PROTO       .EQU    2                       ; protocol version (2: writes)
+SHR_W_TIME      .EQU    0x87F0                  ; the Amiga time of a request
 SHR_MAXNAME     .EQU    106                     ; fib_FileName: 108 bytes
 
 SHR_T_ROOT      .EQU    1                       ; object types
@@ -4863,6 +4918,11 @@ SHR_A_EXFH      .EQU    1034
 
 ; AmigaOS DOS error codes
 SHR_E_NOMEM     .EQU    103                     ; ERROR_NO_FREE_STORE
+SHR_E_INUSE     .EQU    202                     ; ERROR_OBJECT_IN_USE
+SHR_E_EXISTS    .EQU    203                     ; ERROR_OBJECT_EXISTS
+SHR_E_NAME      .EQU    210                     ; ERROR_INVALID_COMPONENT_NAME
+SHR_E_DIRNE     .EQU    216                     ; ERROR_DIRECTORY_NOT_EMPTY
+SHR_E_FULL      .EQU    221                     ; ERROR_DISK_FULL
 SHR_E_NOTFOUND  .EQU    205                     ; ERROR_OBJECT_NOT_FOUND
 SHR_E_UNKNOWN   .EQU    209                     ; ERROR_ACTION_NOT_KNOWN
 SHR_E_LOCK      .EQU    211                     ; ERROR_INVALID_LOCK
@@ -4892,16 +4952,16 @@ SHR_ACTIONS     .DW     SHR_A_LOCATE,    SHR_DO_LOCATE
                 .DW     SHR_A_SAMELOCK,  SHR_DO_SAMELOCK
                 .DW     SHR_A_INFO,      SHR_DO_INFO
                 .DW     SHR_A_DISKINFO,  SHR_DO_INFO
-                .DW     SHR_A_FINDOUT,   SHR_DO_WPROT
-                .DW     SHR_A_FINDUPD,   SHR_DO_WPROT
-                .DW     SHR_A_WRITE,     SHR_DO_WPROT
-                .DW     SHR_A_DELETE,    SHR_DO_WPROT
-                .DW     SHR_A_RENAME,    SHR_DO_WPROT
-                .DW     SHR_A_CREATEDIR, SHR_DO_WPROT
-                .DW     SHR_A_SETPROT,   SHR_DO_WPROT
-                .DW     SHR_A_SETCOMM,   SHR_DO_WPROT
-                .DW     SHR_A_SETDATE,   SHR_DO_WPROT
-                .DW     SHR_A_TRUNCATE,  SHR_DO_WPROT
+                .DW     SHR_A_FINDOUT,   SHR_DO_FINDOUT
+                .DW     SHR_A_FINDUPD,   SHR_DO_FINDUPD
+                .DW     SHR_A_WRITE,     SHR_DO_WRITE
+                .DW     SHR_A_DELETE,    SHR_DO_DELETE
+                .DW     SHR_A_RENAME,    SHR_DO_RENAME
+                .DW     SHR_A_CREATEDIR, SHR_DO_MKDIR
+                .DW     SHR_A_SETPROT,   SHR_DO_SETPROT
+                .DW     SHR_A_SETCOMM,   SHR_DO_SETCOMM
+                .DW     SHR_A_SETDATE,   SHR_DO_SETDATE
+                .DW     SHR_A_TRUNCATE,  SHR_DO_SETSIZE
                 .DW     0xFFFF
 
 ; days before the month (no leap day)
@@ -5248,7 +5308,10 @@ SHR_MOUNT       SYSCALL(enter, 1)
                 MOVE    SHR_T_ROOT, @R1++
                 MOVE    @R0++, @R1++            ; (AD_1STCLUS_HI follows LO)
                 MOVE    @R0, @R1++
-                MOVE    0, @R1
+                MOVE    5, R2                   ; no entry address, no parent
+_SMT_RL         MOVE    0, @R1++
+                SUB     1, R2
+                RBRA    _SMT_RL, !Z
                 RSUB    SHR_CLOSE_ALL, 1
                 RSUB    SHR_SPACE, 1
                 MOVE    SHR_UP, R0
@@ -5528,8 +5591,8 @@ _SLG_SLOT       SUB     1, R9
                 CMP     SHR_LOCKS_N, R9
                 RBRA    _SLG_INV, !N            ; (SHR_LOCKS_N <= R9 unsigned)
                 MOVE    R9, R8
-                AND     0xFFFD, SR              ; (x 4: clear X)
-                SHL     2, R8
+                AND     0xFFFD, SR              ; (x 8: clear X)
+                SHL     3, R8
                 ADD     SHR_LOCKS, R8
                 CMP     0, @R8
                 RBRA    _SLG_OK, !Z
@@ -5554,10 +5617,8 @@ _SLN_L          CMP     0, @R11
                 RET
 _SLN_F          MOVE    R8, @--SP
                 MOVE    SHR_OT, R8
-                MOVE    @R8++, @R11++
-                MOVE    @R8++, @R11++
-                MOVE    @R8++, @R11++
-                MOVE    @R8, @R11
+                MOVE    R11, R9
+                RSUB    SHR_OBJ_CPY, 1
                 MOVE    @SP++, R8
                 ADD     1, R10
                 MOVE    SHR_GEN, R9
@@ -5565,24 +5626,36 @@ _SLN_F          MOVE    R8, @--SP
                 AND     0xFFFB, SR              ; C=0
                 RET
 
-; SHR_OBJ_LOAD: the object of the lock slot R8 -> SHR_OT. R8 clobbered.
+; SHR_OBJ_CPY: copy the object (lock slot layout, 8 words) R8 to R9.
+; All registers preserved.
+SHR_OBJ_CPY     INCRB
+                MOVE    R8, R0
+                MOVE    R9, R1
+                MOVE    SHR_LOCK_SZ, R2
+_SOC_L          MOVE    @R0++, @R1++
+                SUB     1, R2
+                RBRA    _SOC_L, !Z
+                DECRB
+                RET
+
+; SHR_OBJ_LOAD: the object of the lock slot R8 -> SHR_OT. R8 preserved.
 SHR_OBJ_LOAD    MOVE    R9, @--SP
                 MOVE    SHR_OT, R9
-                MOVE    @R8++, @R9++
-                MOVE    @R8++, @R9++
-                MOVE    @R8++, @R9++
-                MOVE    @R8, @R9
+                RSUB    SHR_OBJ_CPY, 1
                 MOVE    @SP++, R9
                 RET
 
 ; SHR_OBJ_DIR: SHR_OT := the directory with the first cluster R9:R8 (the
-; root if that is /amiga). All registers preserved.
+; root if that is /amiga), its entry address unknown. All registers kept.
 SHR_OBJ_DIR     INCRB
                 MOVE    SHR_OT, R0
                 MOVE    SHR_T_DIR, @R0++
                 MOVE    R8, @R0++
                 MOVE    R9, @R0++
-                MOVE    0, @R0
+                MOVE    5, R1
+_SOD_Z          MOVE    0, @R0++
+                SUB     1, R1
+                RBRA    _SOD_Z, !Z
                 MOVE    SHR_ROOTLOCK, R0
                 ADD     1, R0
                 CMP     @R0++, R8
@@ -5607,26 +5680,27 @@ _SKO_RET        RET
 ; Shared folder: directories and names
 ; ----------------------------------------------------------------------------
 
-; SHR_DIR_AT: position the directory cursor so that the next SHR_DIR_NEXT
-; returns entry R10 (counting from 0, without "." and "..") of the directory
-; with the first cluster R9:R8. Continues from the cursor where it can.
-; C=1 on a FAT32 error. R8..R12 clobbered.
-SHR_DIR_AT      INCRB
+; SHR_DIR_GET: the first entry of the directory with the first cluster R9:R8
+; whose slot number is R10 or higher (hidden entries, "." and ".." skipped)
+; -> SHR_DE, SHR_CEA, SHR_CORD, R8 = 1; R8 = 0 if there is none. The
+; directory cursor continues where it can. C=1 on a FAT32 error. R9..R12
+; clobbered.
+SHR_DIR_GET     INCRB
                 MOVE    R8, R0
                 MOVE    R9, R1
-                MOVE    R10, R2
+                MOVE    R10, R2                 ; R2: the slot number
                 MOVE    SHR_CVAL, R3
                 CMP     0, @R3
-                RBRA    _SDA_OPEN, Z
+                RBRA    _SDG_OPEN, Z
                 MOVE    SHR_CCLO, R3            ; (SHR_CCHI follows)
                 CMP     @R3++, R0
-                RBRA    _SDA_OPEN, !Z
+                RBRA    _SDG_OPEN, !Z
                 CMP     @R3, R1
-                RBRA    _SDA_OPEN, !Z
-                MOVE    SHR_CIDX, R3
+                RBRA    _SDG_OPEN, !Z
+                MOVE    SHR_CIDX, R3            ; not past it yet?
                 CMP     @R3, R2
-                RBRA    _SDA_SKIP, !N           ; (SHR_CIDX <= R2)
-_SDA_OPEN       MOVE    SHARE_DEV, R8           ; the directory becomes the
+                RBRA    _SDG_L, !N              ; (SHR_CIDX <= R2)
+_SDG_OPEN       MOVE    SHARE_DEV, R8           ; the directory becomes the
                 MOVE    R8, R3                  ; current one of SHARE_DEV
                 ADD     FAT32$DEV_AD_1STCLUS_LO, R3
                 MOVE    R0, @R3++               ; (AD_1STCLUS_HI follows)
@@ -5634,33 +5708,38 @@ _SDA_OPEN       MOVE    SHARE_DEV, R8           ; the directory becomes the
                 MOVE    SHR_CFDH, R9
                 RSUB    FAT32$DIR_OPEN, 1
                 CMP     0, R9
-                RBRA    _SDA_ERR, !Z
+                RBRA    _SDG_ERR, !Z
                 MOVE    SHR_CCLO, R3
                 MOVE    R0, @R3++
                 MOVE    R1, @R3
                 MOVE    SHR_CIDX, R3
                 MOVE    0, @R3
+                MOVE    SHR_CCIX, R3            ; cluster 0 of the directory
+                MOVE    0, @R3++
+                MOVE    R0, @R3++               ; (SHR_CLCL)
+                MOVE    R1, @R3
                 MOVE    SHR_CVAL, R3
                 MOVE    1, @R3
-_SDA_SKIP       MOVE    SHR_CIDX, R3
-                CMP     @R3, R2
-                RBRA    _SDA_OK, Z
-                RSUB    SHR_DIR_NEXT, 1
-                RBRA    _SDA_ERR, C
+_SDG_L          RSUB    SHR_DIR_NEXT, 1
+                RBRA    _SDG_ERR, C
                 CMP     0, R8
-                RBRA    _SDA_SKIP, !Z           ; (at the end: stay there)
-_SDA_OK         AND     0xFFFB, SR              ; C=0
+                RBRA    _SDG_OK, Z              ; (the end)
+                MOVE    SHR_CORD, R3
+                CMP     R2, @R3                 ; slot number < R2: on
+                RBRA    _SDG_L, N               ; (R2 > SHR_CORD)
+_SDG_OK         AND     0xFFFB, SR              ; C=0
                 DECRB
                 RET
-_SDA_ERR        MOVE    SHR_CVAL, R3
+_SDG_ERR        MOVE    SHR_CVAL, R3
                 MOVE    0, @R3
                 OR      0x0004, SR              ; C=1
                 DECRB
                 RET
 
 ; SHR_DIR_NEXT: the next entry of the directory cursor (hidden entries and
-; "." and ".." skipped) -> SHR_DE, R8 = 1; R8 = 0 at the end. C=1 on a
-; FAT32 error. R9..R12 clobbered.
+; "." and ".." skipped) -> SHR_DE, its entry address SHR_CEA and slot number
+; SHR_CORD, R8 = 1; R8 = 0 at the end. C=1 on a FAT32 error. R9..R12
+; clobbered.
 SHR_DIR_NEXT    INCRB
 _SDN_L          MOVE    SHR_CFDH, R8
                 MOVE    SHR_DE, R9
@@ -5670,10 +5749,54 @@ _SDN_L          MOVE    SHR_CFDH, R8
                 RBRA    _SDN_ERR, !Z
                 CMP     0, R10
                 RBRA    _SDN_END, Z
+
+                ; where it is: the cursor's handle points behind its short
+                ; name slot (DIR_LIST moves the index on by 32)
+                MOVE    SHR_CFDH, R0
+                ADD     FAT32$FDH_CLUSTER_LO, R0
+                MOVE    @R0++, R1               ; R2:R1: cluster
+                MOVE    @R0++, R2
+                MOVE    @R0++, R3               ; R3: sector (FDH_SECTOR)
+                MOVE    @R0, R4                 ; R4: slot = (index - 32) / 32
+                SUB     32, R4
+                SHR     5, R4
+                AND     0x000F, R4
+                MOVE    SHR_CLCL, R0            ; a new cluster: count it
+                CMP     @R0++, R1
+                RBRA    _SDN_NC, !Z
+                CMP     @R0, R2
+                RBRA    _SDN_C, Z
+_SDN_NC         RSUB    _SHR_CLSTEP, 1          ; count the clusters on the
+                MOVE    SHR_CLCL, R0            ; way (DIR_LIST skips whole
+                MOVE    R1, @R0++               ; clusters of deleted
+                MOVE    R2, @R0                 ; entries)
+_SDN_C          MOVE    SHR_CEA, R0             ; the entry address
+                MOVE    R1, @R0++
+                MOVE    R2, @R0++
+                MOVE    R3, R5
+                AND     0xFFFD, SR
+                SHL     4, R5
+                OR      R4, R5
+                MOVE    R5, @R0
+                MOVE    SHR_CCIX, R8            ; the slot number:
+                MOVE    @R8, R8                 ; ((clusters x spc) +
+                MOVE    SHARE_DEV, R9           ; sector) x 16 + slot
+                ADD     FAT32$DEV_SECT_PER_CLUS, R9
+                MOVE    @R9, R9
+                SYSCALL(mulu, 1)                ; R10 (16 bits suffice:
+                ADD     R3, R10                 ; FAT allows 65536 slots)
+                AND     0xFFFD, SR
+                SHL     4, R10
+                OR      R4, R10
+                MOVE    SHR_CORD, R0
+                MOVE    R10, @R0
                 RSUB    SHR_ISDOT, 1
                 RBRA    _SDN_L, C
+                MOVE    SHR_CORD, R0            ; the next slot number to
+                MOVE    @R0, R1                 ; look at
+                ADD     1, R1
                 MOVE    SHR_CIDX, R0
-                ADD     1, @R0
+                MOVE    R1, @R0
                 MOVE    1, R8
                 AND     0xFFFB, SR              ; C=0
                 DECRB
@@ -5686,6 +5809,39 @@ _SDN_ERR        MOVE    SHR_CVAL, R0
                 MOVE    0, @R0
                 OR      0x0004, SR              ; C=1
                 DECRB
+                RET
+
+; _SHR_CLSTEP: SHR_CCIX += the number of steps in the cluster chain from
+; SHR_CLCL to the cluster R2:R1 of the caller (SHR_DIR_NEXT). The FAT
+; sectors pass through the sector buffer: the directory handle re-reads its
+; sector on its next access. R8..R12 clobbered.
+_SHR_CLSTEP     MOVE    SHR_CLCL, R8
+                MOVE    @R8++, R5               ; R6:R5: the chain so far
+                MOVE    @R8, R6
+                MOVE    SHR_CFDH, R8            ; the buffer: nobody's
+                RSUB    _F32_RELEASE_BUF, 1
+                MOVE    0xFFFF, @--SP           ; the FAT sector cache of
+                MOVE    0xFFFF, @--SP           ; _F32_FATNEXT
+_SCS_L          MOVE    SHARE_DEV, R8
+                MOVE    R5, R9
+                MOVE    R6, R10
+                MOVE    SP, R11
+                RSUB    _F32_FATNEXT, 1         ; R11:R10: the next one
+                MOVE    SHR_CCIX, R8
+                ADD     1, @R8
+                CMP     0, R9                   ; the end, or broken: stop
+                RBRA    _SCS_E, !Z
+                MOVE    R10, R5
+                MOVE    R11, R6
+                CMP     R5, R1
+                RBRA    _SCS_L, !Z
+                CMP     R6, R2
+                RBRA    _SCS_L, !Z
+_SCS_E          ADD     2, SP
+                MOVE    SHR_CFDH, R8            ; (DIR_LIST owned it)
+                MOVE    SHARE_DEV, R9
+                ADD     FAT32$DEV_BUFFERED_FDH, R9
+                MOVE    0, @R9
                 RET
 
 ; SHR_ISDOT: C=1 if SHR_DE is "." or "..". R9 clobbered.
@@ -5791,22 +5947,19 @@ _SNE_NO         AND     0xFFFB, SR              ; C=0
                 RET
 
 ; SHR_FIND: look up the component SHR_CPOS, SHR_CLEN in the directory R9:R8.
-; Found: C=0, SHR_DE = its entry, R8 = its index. Else C=1, R8 = error code.
-; R9..R12 clobbered.
+; Found: C=0, SHR_DE = its entry, SHR_CEA its entry address. Else C=1, R8 =
+; error code. R9..R12 clobbered.
 SHR_FIND        INCRB
                 XOR     R10, R10
-                RSUB    SHR_DIR_AT, 1
-                RBRA    _SFI_NF, C
-_SFI_L          RSUB    SHR_DIR_NEXT, 1
-                RBRA    _SFI_NF, C
+                RSUB    SHR_DIR_GET, 1
+_SFI_L          RBRA    _SFI_NF, C
                 CMP     0, R8
                 RBRA    _SFI_NF, Z
                 RSUB    SHR_NAMEEQ, 1
-                RBRA    _SFI_L, !C
-                MOVE    SHR_CIDX, R8
-                MOVE    @R8, R8
-                SUB     1, R8
-                AND     0xFFFB, SR              ; C=0
+                RBRA    _SFI_OK, C
+                RSUB    SHR_DIR_NEXT, 1
+                RBRA    _SFI_L, 1
+_SFI_OK         AND     0xFFFB, SR              ; C=0
                 DECRB
                 RET
 _SFI_NF         MOVE    SHR_E_NOTFOUND, R8
@@ -5842,9 +5995,12 @@ _SPA_NF         MOVE    SHR_E_NOTFOUND, R8
 ; the path in SHR_PATH. AmigaDOS paths: "x:" anywhere means the root when
 ; nothing stands before the colon (":c/d"), otherwise the key's directory (a
 ; device, volume or assign name); "/" alone is the parent; a component is
-; looked up ignoring case. C=1 and R8 = error code on a failure. R8..R12
-; clobbered.
+; looked up ignoring case. C=1 and R8 = error code on a failure; if only the
+; last component is missing, SHR_MISS = 1, SHR_OT is its directory and
+; SHR_CPOS, SHR_CLEN is the component. R8..R12 clobbered.
 SHR_RESOLVE     INCRB
+                MOVE    SHR_MISS, R1
+                MOVE    0, @R1
                 RSUB    SHR_KEY_OBJ, 1
                 RBRA    _SRS_ERR, C
                 MOVE    SHR_PATH_LEN, R1
@@ -5901,23 +6057,39 @@ _SRS_INDIR      MOVE    SHR_OC, R6
                 MOVE    @R6++, R8
                 MOVE    @R6, R9
                 RSUB    SHR_FIND, 1
-                RBRA    _SRS_ERR, C
-                MOVE    SHR_DE, R6              ; a directory or a file?
-                ADD     FAT32$DE_ATTRIB, R6
-                MOVE    @R6, R6
-                AND     FAT32$FA_DIR, R6
+                RBRA    _SRS_MISS, C
+                MOVE    SHR_OC, R0              ; the directory searched:
+                MOVE    @R0++, R7               ; R7 low, R6 high word
+                MOVE    @R0, R6
+                MOVE    SHR_DE, R0              ; a directory or a file?
+                ADD     FAT32$DE_ATTRIB, R0
+                MOVE    @R0, R0
+                AND     FAT32$FA_DIR, R0
                 RBRA    _SRS_FILE, Z
-                MOVE    SHR_DE, R6
-                ADD     FAT32$DE_CLUS_LO, R6
-                MOVE    @R6++, R8
-                MOVE    @R6, R9
+                MOVE    SHR_DE, R0
+                ADD     FAT32$DE_CLUS_LO, R0
+                MOVE    @R0++, R8
+                MOVE    @R0, R9
                 RSUB    SHR_OBJ_DIR, 1
+                RBRA    _SRS_EA, 1
+_SRS_FILE       MOVE    SHR_OT, R0              ; a file in the directory
+                MOVE    SHR_T_FILE, @R0         ; (SHR_OC stays)
+_SRS_EA         MOVE    SHR_OEA, R0             ; its entry address and
+                MOVE    SHR_CEA, R8             ; directory
+                MOVE    @R8++, @R0++
+                MOVE    @R8++, @R0++
+                MOVE    @R8, @R0++
+                MOVE    R7, @R0++               ; (SHR_OPC follows SHR_OEA)
+                MOVE    R6, @R0
                 RBRA    _SRS_LOOP, 1
-_SRS_FILE       MOVE    SHR_OT, R6              ; a file in the directory
-                MOVE    SHR_T_FILE, @R6         ; SHR_OC, index R8
-                ADD     3, R6
-                MOVE    R8, @R6
-                RBRA    _SRS_LOOP, 1
+
+_SRS_MISS       CMP     SHR_E_NOTFOUND, R8      ; the last component is
+                RBRA    _SRS_ERR, !Z            ; missing?
+                CMP     R2, R1
+                RBRA    _SRS_ERR, !Z
+                MOVE    SHR_MISS, R0
+                MOVE    1, @R0
+                RBRA    _SRS_ERR, 1
 
 _SRS_OK         AND     0xFFFB, SR              ; C=0
                 DECRB
@@ -5927,48 +6099,69 @@ _SRS_ERR        OR      0x0004, SR              ; C=1
                 RET
 
 ; SHR_OBJ_DE: the directory entry of the object SHR_OT (not the root) ->
-; SHR_DE. C=1 and R8 = error code if it is not there (any more). R8..R12
-; clobbered.
+; SHR_DE; SHR_OEA and SHR_OPC are known afterwards. C=1 and R8 = error code
+; if it is not there (any more). R8..R12 clobbered.
 SHR_OBJ_DE      INCRB
-                MOVE    SHR_OT, R0
-                CMP     SHR_T_FILE, @R0
-                RBRA    _SOE_DIR, !Z
-                MOVE    SHR_OC, R0              ; a file: entry SHR_OI of its
-                MOVE    @R0++, R8               ; directory
-                MOVE    @R0++, R9
-                MOVE    @R0, R10
-                RSUB    SHR_DIR_AT, 1
-                RBRA    _SOE_NF, C
-                RSUB    SHR_DIR_NEXT, 1
-                RBRA    _SOE_NF, C
+                MOVE    SHR_OEA, R0             ; the entry address known:
+                MOVE    @R0++, R1               ; find it in its directory
+                OR      @R0, R1
+                RBRA    _SOE_DIR, Z
+                MOVE    SHR_OPC, R0
+                MOVE    @R0++, R8
+                MOVE    @R0, R9
+                XOR     R10, R10
+                RSUB    SHR_DIR_GET, 1
+_SOE_FL         RBRA    _SOE_NF, C
                 CMP     0, R8
                 RBRA    _SOE_NF, Z
-                RBRA    _SOE_OK, 1
-_SOE_DIR        MOVE    SHR_OC, R0              ; a directory: the entry of
-                MOVE    @R0++, R8               ; its parent that has its
-                MOVE    @R0, R9                 ; cluster
+                MOVE    SHR_CEA, R0
+                MOVE    SHR_OEA, R1
+                CMP     @R0++, @R1++
+                RBRA    _SOE_FN, !Z
+                CMP     @R0++, @R1++
+                RBRA    _SOE_FN, !Z
+                CMP     @R0, @R1
+                RBRA    _SOE_OK, Z
+_SOE_FN         RSUB    SHR_DIR_NEXT, 1
+                RBRA    _SOE_FL, 1
+
+_SOE_DIR        MOVE    SHR_OT, R0              ; a directory (address not
+                CMP     SHR_T_FILE, @R0         ; known): the entry of its
+                RBRA    _SOE_NF, Z              ; parent that has its cluster
+                MOVE    SHR_OC, R0
+                MOVE    @R0++, R8
+                MOVE    @R0, R9
                 MOVE    R8, R4
                 MOVE    R9, R5
                 RSUB    SHR_DOTDOT, 1
                 RBRA    _SOE_NF, C
+                MOVE    R8, R6                  ; R7:R6: the parent
+                MOVE    R9, R7
                 XOR     R10, R10
-                RSUB    SHR_DIR_AT, 1
-                RBRA    _SOE_NF, C
-_SOE_L          RSUB    SHR_DIR_NEXT, 1
-                RBRA    _SOE_NF, C
+                RSUB    SHR_DIR_GET, 1
+_SOE_L          RBRA    _SOE_NF, C
                 CMP     0, R8
                 RBRA    _SOE_NF, Z
                 MOVE    SHR_DE, R0
                 ADD     FAT32$DE_ATTRIB, R0
                 MOVE    @R0, R1
                 AND     FAT32$FA_DIR, R1
-                RBRA    _SOE_L, Z
+                RBRA    _SOE_N, Z
                 ADD     FAT32$DE_CLUS_LO, R0    ; (DE_CLUS_LO = DE_ATTRIB + 9)
                 SUB     FAT32$DE_ATTRIB, R0
                 CMP     @R0++, R4
-                RBRA    _SOE_L, !Z
+                RBRA    _SOE_N, !Z
                 CMP     @R0, R5
-                RBRA    _SOE_L, !Z
+                RBRA    _SOE_FD, Z
+_SOE_N          RSUB    SHR_DIR_NEXT, 1
+                RBRA    _SOE_L, 1
+_SOE_FD         MOVE    SHR_OEA, R0             ; found: remember where
+                MOVE    SHR_CEA, R1
+                MOVE    @R1++, @R0++
+                MOVE    @R1++, @R0++
+                MOVE    @R1, @R0++
+                MOVE    R6, @R0++               ; (SHR_OPC)
+                MOVE    R7, @R0
 _SOE_OK         AND     0xFFFB, SR              ; C=0
                 DECRB
                 RET
@@ -6133,9 +6326,13 @@ SHR_FILE_GET    MOVE    2, R8
 _SFG_SLOT       SUB     1, R9
                 CMP     SHR_FILES_N, R9
                 RBRA    _SFG_INV, !N            ; (SHR_FILES_N <= R9)
-                MOVE    R9, R8
-                AND     0xFFFD, SR              ; (x 16: clear X)
-                SHL     4, R8
+                MOVE    R9, R8                  ; x 24 = x 16 + x 8
+                AND     0xFFFD, SR
+                SHL     3, R8
+                MOVE    R8, R10
+                AND     0xFFFD, SR
+                SHL     1, R8
+                ADD     R10, R8
                 ADD     SHR_FILES, R8
                 MOVE    R8, R10
                 ADD     SHR_F_USED, R10
@@ -6145,6 +6342,276 @@ _SFG_SLOT       SUB     1, R9
                 RET
 _SFG_INV        MOVE    SHR_E_NOTFOUND, R8
 _SFG_ERR        OR      0x0004, SR              ; C=1
+                RET
+
+; ----------------------------------------------------------------------------
+; Shared folder: writing (the FAT32 write layer, fat32_write.asm)
+; ----------------------------------------------------------------------------
+
+; SHR_TIMEFAT: the Amiga time of the request (a DateStamp the handler puts at
+; SHR_W_TIME: days since 1978, minutes, ticks) -> SHR_FDATE as FAT date and
+; time. Dates before 1980 become 1980-01-01. R8..R12 clobbered.
+SHR_TIMEFAT     INCRB
+                RSUB    SHR_SEL, 1
+                MOVE    SHR_W_TIME, R0
+                ADD     1, R0
+                MOVE    @R0, R1                 ; R1: days (low word)
+                ADD     2, R0
+                MOVE    @R0, R2                 ; R2: minutes
+                ADD     2, R0
+                MOVE    @R0, R3                 ; R3: ticks
+                SUB     2, R0                   ; (days >= 65536: far future,
+                SUB     3, R0                   ;  treated like 2157)
+                MOVE    1978, R4                ; R4: year
+_STF_Y          MOVE    365, R5                 ; R5: days of the year
+                MOVE    R4, R6
+                AND     3, R6
+                RBRA    _STF_Y1, !Z
+                CMP     2100, R4
+                RBRA    _STF_Y1, Z
+                ADD     1, R5
+_STF_Y1         CMP     R5, R1                  ; days < year: this year
+                RBRA    _STF_M, N               ; (R5 > R1)
+                SUB     R5, R1
+                ADD     1, R4
+                CMP     2107, R4                ; FAT ends with 2107
+                RBRA    _STF_Y, !Z
+                MOVE    364, R1
+_STF_M          XOR     R6, R6                  ; R6: month 0..11
+_STF_ML         MOVE    SHR_MDAYS, R7           ; days in month R6: the
+                ADD     R6, R7                  ; next start - this start,
+                CMP     11, R6                  ; December: 31
+                RBRA    _STF_DEC, Z
+                MOVE    R7, R9
+                ADD     1, R9
+                MOVE    @R9, R8
+                SUB     @R7, R8
+                RBRA    _STF_M3, 1
+_STF_DEC        MOVE    31, R8
+_STF_M3         CMP     1, R6                   ; February in a leap year
+                RBRA    _STF_M4, !Z
+                CMP     365, R5
+                RBRA    _STF_M4, Z
+                ADD     1, R8
+_STF_M4         CMP     R8, R1                  ; day in this month?
+                RBRA    _STF_DT, N              ; (R8 > R1)
+                SUB     R8, R1
+                ADD     1, R6
+                RBRA    _STF_ML, 1
+_STF_DT         CMP     1980, R4                ; before 1980: 1980-01-01
+                RBRA    _STF_D2, !N             ; (1980 <= R4)
+                MOVE    1980, R4
+                XOR     R6, R6
+                XOR     R1, R1
+_STF_D2         SUB     1980, R4                ; date = year << 9 | month
+                AND     0xFFFD, SR              ; << 5 | day
+                SHL     9, R4
+                ADD     1, R6
+                AND     0xFFFD, SR
+                SHL     5, R6
+                ADD     1, R1
+                OR      R6, R4
+                OR      R1, R4
+                MOVE    SHR_FDATE, R0
+                MOVE    R4, @R0++
+                XOR     R4, R4                  ; hours = minutes / 60
+_STF_H          CMP     60, R2
+                RBRA    _STF_H1, N              ; (60 > R2)
+                SUB     60, R2
+                ADD     1, R4
+                RBRA    _STF_H, 1
+_STF_H1         XOR     R5, R5                  ; seconds / 2 = ticks / 100
+_STF_S          CMP     100, R3
+                RBRA    _STF_S1, N
+                SUB     100, R3
+                ADD     1, R5
+                RBRA    _STF_S, 1
+_STF_S1         AND     0x001F, R4              ; time = h << 11 | m << 5 |
+                AND     0xFFFD, SR              ; s / 2
+                SHL     11, R4
+                AND     0xFFFD, SR
+                SHL     5, R2
+                OR      R2, R4
+                AND     0x001F, R5
+                OR      R5, R4
+                MOVE    R4, @R0
+                DECRB
+                RET
+
+; SHR_PB_SET: SHR_PB for the directory R9:R8: the device, the directory, the
+; time of the request; everything else 0. R8..R12 clobbered.
+SHR_PB_SET      INCRB
+                MOVE    R8, R0
+                MOVE    R9, R1
+                MOVE    SHR_PB, R8              ; all 0 first
+                MOVE    FAT32$PB_WS, R9
+                XOR     R10, R10
+                SYSCALL(memset, 1)
+                MOVE    SHR_PB, R2
+                MOVE    SHARE_DEV, @R2++        ; PB_DEV
+                MOVE    R0, @R2++               ; PB_DIR
+                MOVE    R1, @R2
+                RSUB    SHR_TIMEFAT, 1
+                MOVE    SHR_FDATE, R0
+                MOVE    SHR_PB, R2
+                ADD     FAT32$PB_DATE, R2
+                MOVE    @R0++, @R2++
+                MOVE    @R0, @R2
+                MOVE    SHR_SPDIRTY, R0         ; something will change
+                MOVE    1, @R0
+                DECRB
+                RET
+
+; SHR_WERR: the FAT32 error code R9 as an AmigaDOS error code -> R8.
+SHR_WERR        MOVE    SHR_E_FULL, R8
+                CMP     FAT32$ERR_DISKFULL, R9
+                RBRA    _SWE_RET, Z
+                CMP     FAT32$ERR_DIRFULL, R9
+                RBRA    _SWE_RET, Z
+                MOVE    SHR_E_EXISTS, R8
+                CMP     FAT32$ERR_EXISTS, R9
+                RBRA    _SWE_RET, Z
+                MOVE    SHR_E_NAME, R8
+                CMP     FAT32$ERR_NAME, R9
+                RBRA    _SWE_RET, Z
+                MOVE    SHR_E_DIRNE, R8
+                CMP     FAT32$ERR_NOTEMPTY, R9
+                RBRA    _SWE_RET, Z
+                MOVE    SHR_E_INUSE, R8
+                CMP     FAT32$ERR_LOOP, R9
+                RBRA    _SWE_RET, Z
+                MOVE    SHR_E_NOTFOUND, R8
+_SWE_RET        RET
+
+; SHR_NAMECP: the path component SHR_CPOS, SHR_CLEN -> SHR_NAME (zero-
+; terminated). R8..R10 clobbered.
+SHR_NAMECP      MOVE    SHR_CPOS, R8
+                MOVE    @R8, R8
+                ADD     SHR_PATH, R8
+                MOVE    SHR_CLEN, R9
+                MOVE    @R9, R9
+                MOVE    SHR_NAME, R10
+_SNC_L          CMP     0, R9
+                RBRA    _SNC_E, Z
+                MOVE    @R8++, @R10++
+                SUB     1, R9
+                RBRA    _SNC_L, 1
+_SNC_E          MOVE    0, @R10
+                RET
+
+; SHR_INUSE: C=1 if the object SHR_OT is in use: the Amiga has a lock on it
+; or it is open (files: the same entry address, directories: the same
+; cluster), or the core uses the file (SHR_COREUSE, SHR_DE must hold its
+; entry). R8..R12 clobbered.
+SHR_INUSE       INCRB
+                MOVE    SHR_LOCKS, R0           ; the locks
+                MOVE    SHR_LOCKS_N, R1
+_SIU_L          CMP     0, @R0
+                RBRA    _SIU_N, Z
+                MOVE    R0, R8
+                RSUB    _SHR_SAMEOBJ, 1
+                RBRA    _SIU_YES, C
+_SIU_N          ADD     SHR_LOCK_SZ, R0
+                SUB     1, R1
+                RBRA    _SIU_L, !Z
+                MOVE    SHR_FILES, R0           ; the open files
+                MOVE    SHR_FILES_N, R1
+_SIU_F          MOVE    R0, R8
+                ADD     SHR_F_USED, R8
+                CMP     0, @R8
+                RBRA    _SIU_FN, Z
+                MOVE    R0, R8
+                ADD     SHR_F_OBJ, R8
+                RSUB    _SHR_SAMEOBJ, 1
+                RBRA    _SIU_YES, C
+_SIU_FN         ADD     SHR_FILE_SZ, R0
+                SUB     1, R1
+                RBRA    _SIU_F, !Z
+                MOVE    SHR_DE, R8              ; the core
+                ADD     FAT32$DE_CLUS_LO, R8
+                MOVE    @R8++, R9
+                MOVE    @R8, R10
+                RSUB    SHR_COREUSE, 1
+                DECRB
+                RET
+_SIU_YES        DECRB
+                OR      0x0004, SR              ; C=1
+                RET
+
+; _SHR_SAMEOBJ: C=1 if the object R8 (lock slot layout) is SHR_OT: a file
+; with the same entry address, a directory with the same cluster.
+; R8..R10 clobbered.
+_SHR_SAMEOBJ    MOVE    SHR_OT, R9
+                CMP     @R8, @R9                ; the same type?
+                RBRA    _SSO_NO, !Z
+                CMP     SHR_T_FILE, @R9
+                RBRA    _SSO_DIR, !Z
+                ADD     3, R8                   ; files: the entry address
+                ADD     3, R9
+                MOVE    3, R10
+                RBRA    _SSO_L, 1
+_SSO_DIR        ADD     1, R8                   ; directories: the cluster
+                ADD     1, R9
+                MOVE    2, R10
+_SSO_L          CMP     @R8++, @R9++
+                RBRA    _SSO_NO, !Z
+                SUB     1, R10
+                RBRA    _SSO_L, !Z
+                OR      0x0004, SR              ; C=1
+                RET
+_SSO_NO         AND     0xFFFB, SR              ; C=0
+                RET
+
+; SHR_COREUSE: C=1 if the core uses the file with the first cluster R10:R9
+; (0: never): a mounted disk image, a hard disk (or its link file), the
+; settings file. All files of the core are on the same card (the shared
+; folder follows the active card). R8..R12 clobbered.
+SHR_COREUSE     INCRB
+                MOVE    R9, R0
+                MOVE    R10, R1
+                MOVE    R0, R2
+                OR      R1, R2
+                RBRA    _SCU_NO, Z
+                XOR     R2, R2                  ; the disk images
+_SCU_ADF        MOVE    ADF_FDH_VALID, R3
+                ADD     R2, R3
+                CMP     0, @R3
+                RBRA    _SCU_AN, Z
+                MOVE    ADF_FDH_TAB, R8
+                ADD     R2, R8
+                MOVE    @R8, R8
+                RSUB    _SCU_FDH, 1
+                RBRA    _SCU_YES, C
+_SCU_AN         ADD     1, R2
+                CMP     ADF_DRIVES, R2
+                RBRA    _SCU_ADF, !Z
+                MOVE    HDF_UNITS, R3           ; the hard disks: the active
+                CMP     0, @R3                  ; drive in HDF_FDH, the other
+                RBRA    _SCU_CFG, Z             ; one in HDF_SAVE
+                MOVE    HDF_FDH, R8
+                RSUB    _SCU_FDH, 1
+                RBRA    _SCU_YES, C
+                MOVE    HDF_SAVE, R8
+                RSUB    _SCU_FDH, 1
+                RBRA    _SCU_YES, C
+_SCU_CFG        MOVE    CONFIG_FILE, R8         ; the settings file
+                RSUB    _SCU_FDH, 1
+                RBRA    _SCU_YES, C
+_SCU_NO         DECRB
+                AND     0xFFFB, SR              ; C=0
+                RET
+_SCU_YES        DECRB
+                OR      0x0004, SR              ; C=1
+                RET
+; _SCU_FDH: C=1 if the file handle R8 starts at cluster R1:R0 (caller's bank)
+_SCU_FDH        ADD     FAT32$FDH_START_CLUS_LO, R8
+                CMP     @R8++, R0
+                RBRA    _SCF_NO, !Z
+                CMP     @R8, R1
+                RBRA    _SCF_NO, !Z
+                OR      0x0004, SR
+                RET
+_SCF_NO         AND     0xFFFB, SR
                 RET
 
 ; ----------------------------------------------------------------------------
@@ -6205,10 +6672,12 @@ _SDP_UP         RSUB    SHR_PARENT, 1
 SHR_DO_EXAMINE  MOVE    2, R8
                 RSUB    SHR_KEY_OBJ, 1
                 RBRA    _SDL_RET, C
-                XOR     R8, R8                  ; the first ExNext: entry 0
+                XOR     R8, R8                  ; the first ExNext: slot 0
                 RBRA    SHR_EXFILL, 1           ; (returns from there)
 
-; EXAMINE_NEXT: key, disk key (the index of the next entry) -> the entry
+; EXAMINE_NEXT: key, disk key (the slot number to go on from) -> the entry.
+; Slot numbers do not change when entries are deleted or created, so a
+; directory can be changed while it is examined (Delete #?).
 SHR_DO_EXNEXT   MOVE    2, R8
                 RSUB    SHR_KEY_OBJ, 1
                 RBRA    _SDL_RET, C
@@ -6217,51 +6686,107 @@ SHR_DO_EXNEXT   MOVE    2, R8
                 RBRA    _SDX_DIR, !Z
 _SDX_END        MOVE    SHR_E_NOMORE, R8
                 RET
-_SDX_DIR        MOVE    3, R8                   ; the index
+_SDX_DIR        MOVE    3, R8                   ; the slot number
                 RSUB    SHR_RL, 1
                 CMP     0, R9
                 RBRA    _SDX_END, !Z
-                MOVE    R10, @--SP
                 MOVE    SHR_OC, R8
                 MOVE    @R8++, R11
                 MOVE    @R8, R9
                 MOVE    R11, R8
-                RSUB    SHR_DIR_AT, 1
-                MOVE    @SP++, R12              ; R12: the index
-                RBRA    _SDX_END, C
-                RSUB    SHR_DIR_NEXT, 1
+                RSUB    SHR_DIR_GET, 1
                 RBRA    _SDX_END, C
                 CMP     0, R8
                 RBRA    _SDX_END, Z
-                MOVE    R12, R8                 ; the next ExNext: the entry
-                ADD     1, R8                   ; after this one
+                MOVE    SHR_CORD, R8            ; the next ExNext: behind it
+                MOVE    @R8, R8
+                ADD     1, R8
                 RBRA    SHR_EXFILL_DE, 1        ; (returns from there)
 
 ; EXAMINE_FH: file handle -> FileInfoBlock fields
 SHR_DO_EXFH     RSUB    SHR_FILE_GET, 1
                 RBRA    _SDL_RET, C
-                MOVE    SHR_OT, R9
-                MOVE    SHR_T_FILE, @R9++
-                ADD     SHR_F_CLUS, R8
-                MOVE    @R8++, @R9++
-                MOVE    @R8++, @R9++
-                MOVE    @R8, @R9
+                MOVE    R8, R9                  ; write back what is buffered
+                RSUB    _SHR_FSYNC, 1
+                ADD     SHR_F_OBJ, R8
+                RSUB    SHR_OBJ_LOAD, 1
                 XOR     R8, R8
                 RBRA    SHR_EXFILL, 1           ; (returns from there)
 
+; _SHR_FSYNC: write back the file slot R9 (its buffer and, if it changed,
+; its size). R8 preserved; R9..R12 clobbered.
+_SHR_FSYNC      MOVE    R8, @--SP
+                MOVE    R9, @--SP
+                MOVE    SHR_FDATE, R8           ; dated with this request
+                RSUB    SHR_TIMEFAT, 1
+                MOVE    SHR_PB, R8
+                ADD     FAT32$PB_DATE, R8
+                MOVE    SHR_FDATE, R9
+                MOVE    @R9++, @R8++
+                MOVE    @R9, @R8
+                MOVE    @SP++, R8
+                MOVE    SHR_PB, R9
+                RSUB    FAT32$W_SYNC, 1
+                MOVE    @SP++, R8
+                RET
+
 ; FINDINPUT (Open MODE_OLDFILE): key, name -> file handle
-SHR_DO_FINDIN   MOVE    16, R8
+SHR_DO_FINDIN   XOR     R12, R12                ; R12: 0 = existing only
+                RBRA    _SDI_GO, 1
+; FINDUPDATE (Open MODE_READWRITE): key, name -> file handle; a new file if
+; there is none
+SHR_DO_FINDUPD  MOVE    1, R12
+                RBRA    _SDI_GO, 1
+; FINDOUTPUT (Open MODE_NEWFILE): key, name -> file handle; an existing file
+; becomes empty
+SHR_DO_FINDOUT  MOVE    2, R12                  ; R12: 2 = make it empty
+_SDI_GO         INCRB
+                MOVE    R12, R7                 ; R7: the mode
+                MOVE    16, R8
                 RSUB    SHR_GETNAME, 1
                 MOVE    2, R8
                 RSUB    SHR_RESOLVE, 1
-                RBRA    _SDL_RET, C
-                MOVE    SHR_OT, R8
+                RBRA    _SDI_MISS, !C
+                CMP     0, R7                   ; not there: create it?
+                RBRA    _SDI_RET, Z
+                MOVE    SHR_MISS, R0
+                CMP     0, @R0
+                RBRA    _SDI_RET, Z
+                RSUB    SHR_NAMECP, 1
+                MOVE    SHR_OC, R0              ; in the directory SHR_OT
+                MOVE    @R0++, R8
+                MOVE    @R0, R9
+                RSUB    SHR_PB_SET, 1
+                MOVE    SHR_PB, R8
+                ADD     FAT32$PB_NAME, R8
+                MOVE    SHR_NAME, @R8++
+                MOVE    FAT32$FA_ARCHIVE, @R8   ; (PB_ATTR)
+                MOVE    SHR_PB, R8
+                RSUB    FAT32$W_CREATE, 1
+                CMP     0, R9
+                RBRA    _SDI_NEW, Z
+                RSUB    SHR_WERR, 1
+                RBRA    _SDI_RET, 1
+_SDI_NEW        MOVE    SHR_OT, R0              ; the new file: its object
+                MOVE    SHR_OC, R1
+                MOVE    SHR_T_FILE, @R0
+                MOVE    SHR_OEA, R0
+                MOVE    SHR_PB, R2
+                ADD     FAT32$PB_EA, R2
+                MOVE    @R2++, @R0++
+                MOVE    @R2++, @R0++
+                MOVE    @R2, @R0++
+                MOVE    @R1++, @R0++            ; SHR_OPC := SHR_OC
+                MOVE    @R1, @R0
+                XOR     R7, R7                  ; (it is empty already)
+                RBRA    _SDI_FILE, 1
+_SDI_MISS       MOVE    SHR_OT, R8              ; it is there: a file?
                 CMP     SHR_T_FILE, @R8
                 RBRA    _SDI_FILE, Z
                 MOVE    SHR_E_TYPE, R8
-                RET
-_SDI_FILE       INCRB
-                MOVE    SHR_FILES, R0           ; a free file slot
+                RBRA    _SDI_RET, 1
+
+_SDI_FILE       MOVE    SHR_FILES, R0           ; a free file slot
                 XOR     R1, R1
 _SDI_L          MOVE    R0, R2
                 ADD     SHR_F_USED, R2
@@ -6273,34 +6798,59 @@ _SDI_L          MOVE    R0, R2
                 RBRA    _SDI_L, !Z
                 MOVE    SHR_E_NOMEM, R8
                 RBRA    _SDI_RET, 1
-_SDI_F          RSUB    SHR_OBJ_DE, 1           ; its exact name
-                RBRA    _SDI_RET, C
-                MOVE    SHR_DE, R8              ; copy it: FAT32$FILE_OPEN
-                MOVE    SHR_PATH, R9            ; takes a path
-_SDI_C          MOVE    @R8++, @R9
-                CMP     0, @R9++
-                RBRA    _SDI_C, !Z
-                MOVE    SHR_OC, R2              ; its directory becomes the
-                MOVE    SHARE_DEV, R3           ; current one of SHARE_DEV
-                ADD     FAT32$DEV_AD_1STCLUS_LO, R3
+_SDI_F          MOVE    SHR_OPC, R2             ; open it from its address
+                MOVE    @R2++, R8
+                MOVE    @R2, R9
+                CMP     2, R7
+                RBRA    _SDI_F1, Z
+                MOVE    SHR_PB, R2              ; (no PB_SET: no time needed)
+                MOVE    SHARE_DEV, @R2++
+                MOVE    R8, @R2++
+                MOVE    R9, @R2
+                RBRA    _SDI_F2, 1
+_SDI_F1         RSUB    SHR_PB_SET, 1
+_SDI_F2         MOVE    SHR_OEA, R2
+                MOVE    SHR_PB, R3
+                ADD     FAT32$PB_EA, R3
+                MOVE    @R2++, @R3++
                 MOVE    @R2++, @R3++
                 MOVE    @R2, @R3
-                MOVE    SHR_CVAL, R2            ; (FILE_OPEN moves through
-                MOVE    0, @R2                  ;  that directory)
-                MOVE    SHARE_DEV, R8
+                MOVE    SHR_PB, R8
                 MOVE    R0, R9
-                MOVE    SHR_PATH, R10
+                RSUB    FAT32$W_FDH, 1
+                CMP     0, R9
+                RBRA    _SDI_OPEN, Z
+                RSUB    SHR_WERR, 1
+                RBRA    _SDI_RET, 1
+_SDI_OPEN       MOVE    1, R6                   ; R6: "used": 1, 3 = the core
+                MOVE    R0, R8                  ; uses the file (read only)
+                ADD     FAT32$FDH_START_CLUS_LO, R8
+                MOVE    @R8++, R9
+                MOVE    @R8, R10
+                RSUB    SHR_COREUSE, 1
+                RBRA    _SDI_O1, !C
+                MOVE    3, R6
+_SDI_O1         CMP     2, R7                   ; make it empty?
+                RBRA    _SDI_O2, !Z
+                MOVE    SHR_E_INUSE, R8
+                CMP     3, R6
+                RBRA    _SDI_RET, Z
+                MOVE    R0, R8
+                MOVE    SHR_PB, R9
+                XOR     R10, R10
                 XOR     R11, R11
-                RSUB    FAT32$FILE_OPEN, 1
-                CMP     0, R10
-                RBRA    _SDI_NF, !Z
-                MOVE    SHR_OC, R2              ; the object, for EXAMINE_FH
-                MOVE    R0, R3
-                ADD     SHR_F_CLUS, R3
-                MOVE    @R2++, @R3++
-                MOVE    @R2++, @R3++
-                MOVE    @R2, @R3++
-                MOVE    1, @R3                  ; (SHR_F_USED)
+                RSUB    FAT32$W_SETSIZE, 1
+                CMP     0, R9
+                RBRA    _SDI_O2, Z
+                RSUB    SHR_WERR, 1
+                RBRA    _SDI_RET, 1
+_SDI_O2         MOVE    SHR_OT, R8              ; the object, for EXAMINE_FH
+                MOVE    R0, R9
+                ADD     SHR_F_OBJ, R9
+                RSUB    SHR_OBJ_CPY, 1
+                MOVE    R0, R8
+                ADD     SHR_F_USED, R8
+                MOVE    R6, @R8
                 RSUB    SHR_SEL, 1
                 MOVE    3, R8
                 MOVE    SHR_GEN, R9
@@ -6309,8 +6859,6 @@ _SDI_C          MOVE    @R8++, @R9
                 ADD     1, R10
                 RSUB    SHR_WL, 1
                 XOR     R8, R8
-                RBRA    _SDI_RET, 1
-_SDI_NF         MOVE    SHR_E_NOTFOUND, R8
 _SDI_RET        DECRB
                 RET
 
@@ -6409,38 +6957,90 @@ _SDR_ERR        MOVE    SHR_E_NOTFOUND, R8
                 DECRB
                 RET
 
+; WRITE: file handle, buffer address (ignored), length -> bytes written, from
+; the data buffer at word 0x800. Like READ the other way round: FAT32$W_PUT
+; puts the sector of the position into the sector buffer of the SD
+; controller (and adds a cluster at the end of the file), the bytes go
+; straight in, FAT32$W_ADV moves the position on. At the end, the new size
+; goes into the directory entry (FAT32$W_SYNC).
+SHR_DO_WRITE    RSUB    SHR_FILE_GET, 1
+                RBRA    _SDL_RET, C
+                INCRB
+                MOVE    R8, R0                  ; R0: the file handle
+                MOVE    R8, R1
+                ADD     SHR_F_USED, R1
+                MOVE    SHR_E_INUSE, R8         ; the core uses it
+                CMP     3, @R1
+                RBRA    _SDW_RET, Z
+                MOVE    SHR_SPDIRTY, R1
+                MOVE    1, @R1
+                MOVE    4, R8                   ; R1: length, at most 4 KB
+                RSUB    SHR_RL, 1
+                MOVE    R10, R1
+                CMP     0, R9
+                RBRA    _SDW_MAX, !Z
+                CMP     R1, 0x1000
+                RBRA    _SDW_GO, !N             ; (R1 <= 0x1000)
+_SDW_MAX        MOVE    0x1000, R1
+_SDW_GO         XOR     R2, R2                  ; R2: bytes written
+                MOVE    SHR_W_DATA, R3          ; R3: next word
+_SDW_SECT       CMP     R2, R1                  ; done?
+                RBRA    _SDW_DONE, Z
+                MOVE    R0, R8
+                MOVE    SHR_PB, R9
+                RSUB    FAT32$W_PUT, 1          ; R10: index, R11: room
+                CMP     0, R9
+                RBRA    _SDW_ERR, !Z
+                MOVE    R1, R5                  ; R5: bytes now: the room,
+                SUB     R2, R5                  ; at most what is left
+                CMP     R5, R11
+                RBRA    _SDW_N1, !N             ; (R5 <= R11)
+                MOVE    R11, R5
+_SDW_N1         MOVE    R5, R6                  ; R6: bytes of this sector
+                MOVE    R10, R7                 ; R7: index in the sector
+                MOVE    IO$SD_DATA_POS, R10
+                MOVE    IO$SD_DATA, R11
+_SDW_B          MOVE    R2, R12                 ; the byte: even = bits
+                AND     1, R12                  ; 15:8 of the word
+                RBRA    _SDW_ODD, !Z
+                MOVE    @R3, R9
+                SWAP    R9, R9
+                RBRA    _SDW_W, 1
+_SDW_ODD        MOVE    @R3++, R9
+_SDW_W          AND     0x00FF, R9
+                MOVE    R7, @R10
+                MOVE    R9, @R11
+                ADD     1, R7
+                ADD     1, R2
+                SUB     1, R5
+                RBRA    _SDW_B, !Z
+                MOVE    R0, R8
+                MOVE    R6, R9
+                RSUB    FAT32$W_ADV, 1
+                RBRA    _SDW_SECT, 1
+_SDW_DONE       MOVE    R0, R9                  ; the size, durable
+                RSUB    _SHR_FSYNC, 1
+                CMP     0, R9
+                RBRA    _SDW_ERR, !Z
+                MOVE    3, R8
+                XOR     R9, R9
+                MOVE    R2, R10
+                RSUB    SHR_SEL, 1
+                RSUB    SHR_WL, 1
+                XOR     R8, R8
+                RBRA    _SDW_RET, 1
+_SDW_ERR        RSUB    SHR_WERR, 1
+_SDW_RET        DECRB
+                RET
+
 ; SEEK: file handle, position, mode (-1 start, 0 current, 1 end) -> the old
 ; position
 SHR_DO_SEEK     RSUB    SHR_FILE_GET, 1
                 RBRA    _SDL_RET, C
                 INCRB
                 MOVE    R8, R0                  ; R0: the file handle
-                MOVE    R0, R1
-                ADD     FAT32$FDH_SIZE_LO, R1
-                MOVE    @R1++, R4               ; R5:R4: size (SIZE_HI
-                MOVE    @R1++, R5               ; follows, then ACCESS_LO/HI)
-                MOVE    @R1++, R6               ; R7:R6: position
-                MOVE    @R1, R7
-                MOVE    4, R8                   ; mode
-                RSUB    SHR_RL, 1
-                MOVE    R10, R3
-                MOVE    3, R8                   ; R2:R1 = offset
-                RSUB    SHR_RL, 1
-                MOVE    R10, R1
-                MOVE    R9, R2
-                CMP     0xFFFF, R3              ; OFFSET_BEGINNING
-                RBRA    _SDS_ADD, Z
-                CMP     0, R3                   ; OFFSET_CURRENT
-                RBRA    _SDS_CUR, Z
-                CMP     1, R3                   ; OFFSET_END
-                RBRA    _SDS_ERR, !Z
-                ADD     R4, R1
-                ADDC    R5, R2
-                RBRA    _SDS_ADD, 1
-_SDS_CUR        ADD     R6, R1
-                ADDC    R7, R2
-_SDS_ADD        CMP     0, R2                   ; before the start?
-                RBRA    _SDS_ERR, V             ; (signed 0 > R2)
+                RSUB    _SHR_NEWPOS, 1          ; R2:R1: the new position
+                RBRA    _SDS_ERR, C
                 CMP     R2, R5                  ; past the end?
                 RBRA    _SDS_ERR, N             ; (R2 > R5)
                 RBRA    _SDS_GO, !Z
@@ -6463,9 +7063,92 @@ _SDS_ERR        MOVE    SHR_E_SEEK, R8
                 DECRB
                 RET
 
+; _SHR_NEWPOS: for the file handle R0 (caller's bank): R5:R4 := size, R7:R6
+; := position, R2:R1 := the position that fields 3 (offset) and 4 (mode)
+; of the request ask for; C=1 if the mode is unknown or the position is
+; before the start. R3, R8..R10 clobbered.
+_SHR_NEWPOS     MOVE    R0, R1
+                ADD     FAT32$FDH_SIZE_LO, R1
+                MOVE    @R1++, R4               ; R5:R4: size (SIZE_HI
+                MOVE    @R1++, R5               ; follows, then ACCESS_LO/HI)
+                MOVE    @R1++, R6               ; R7:R6: position
+                MOVE    @R1, R7
+                MOVE    4, R8                   ; mode
+                RSUB    SHR_RL, 1
+                MOVE    R10, R3
+                MOVE    3, R8                   ; R2:R1 = offset
+                RSUB    SHR_RL, 1
+                MOVE    R10, R1
+                MOVE    R9, R2
+                CMP     0xFFFF, R3              ; OFFSET_BEGINNING
+                RBRA    _SNP_ADD, Z
+                CMP     0, R3                   ; OFFSET_CURRENT
+                RBRA    _SNP_CUR, Z
+                CMP     1, R3                   ; OFFSET_END
+                RBRA    _SNP_ERR, !Z
+                ADD     R4, R1
+                ADDC    R5, R2
+                RBRA    _SNP_ADD, 1
+_SNP_CUR        ADD     R6, R1
+                ADDC    R7, R2
+_SNP_ADD        CMP     0, R2                   ; before the start?
+                RBRA    _SNP_ERR, V             ; (signed 0 > R2)
+                AND     0xFFFB, SR              ; C=0
+                RET
+_SNP_ERR        OR      0x0004, SR              ; C=1
+                RET
+
+; SET_FILE_SIZE: file handle, offset, mode -> the new size. The position
+; stays, unless it is behind the new end (then it is the end).
+SHR_DO_SETSIZE  RSUB    SHR_FILE_GET, 1
+                RBRA    _SDL_RET, C
+                INCRB
+                MOVE    R8, R0                  ; R0: the file handle
+                MOVE    R8, R1
+                ADD     SHR_F_USED, R1
+                MOVE    SHR_E_INUSE, R8         ; the core uses it
+                CMP     3, @R1
+                RBRA    _SDZ_RET, Z
+                RSUB    _SHR_NEWPOS, 1          ; R2:R1: the new size
+                MOVE    SHR_E_SEEK, R8
+                RBRA    _SDZ_RET, C
+                CMP     R2, R7                  ; the position stays, or is
+                RBRA    _SDZ_P, N               ; the new end (R2 > R7)
+                RBRA    _SDZ_PE, !Z
+                CMP     R6, R1
+                RBRA    _SDZ_P, !N              ; (position <= new size)
+_SDZ_PE         MOVE    R1, R6
+                MOVE    R2, R7
+_SDZ_P          XOR     R8, R8                  ; (PB_SET for the time; the
+                XOR     R9, R9                  ;  directory does not matter)
+                RSUB    SHR_PB_SET, 1
+                MOVE    R0, R8
+                MOVE    SHR_PB, R9
+                MOVE    R1, R10
+                MOVE    R2, R11
+                RSUB    FAT32$W_SETSIZE, 1
+                CMP     0, R9
+                RBRA    _SDZ_SK, Z
+                RSUB    SHR_WERR, 1
+                RBRA    _SDZ_RET, 1
+_SDZ_SK         MOVE    R0, R8                  ; back to the position
+                MOVE    R6, R9
+                MOVE    R7, R10
+                RSUB    FAT32$FILE_SEEK, 1
+                RSUB    SHR_SEL, 1
+                MOVE    3, R8
+                MOVE    R2, R9
+                MOVE    R1, R10
+                RSUB    SHR_WL, 1
+                XOR     R8, R8
+_SDZ_RET        DECRB
+                RET
+
 ; END (Close): file handle
 SHR_DO_END      RSUB    SHR_FILE_GET, 1
                 RBRA    _SDE_RET, C
+                MOVE    R8, R9
+                RSUB    _SHR_FSYNC, 1
                 ADD     SHR_F_USED, R8
                 MOVE    0, @R8
 _SDE_RET        XOR     R8, R8
@@ -6478,16 +7161,13 @@ SHR_DO_SAMELOCK INCRB
                 RSUB    SHR_KEY, 1
                 RSUB    SHR_LOCK_GET, 1
                 RBRA    _SDM_DIFF, C
-                MOVE    R8, R0
+                RSUB    SHR_OBJ_LOAD, 1
                 MOVE    3, R8
                 RSUB    SHR_KEY, 1
                 RSUB    SHR_LOCK_GET, 1
                 RBRA    _SDM_DIFF, C
-                MOVE    4, R1                   ; type, cluster and index
-_SDM_L          CMP     @R0++, @R8++
-                RBRA    _SDM_VOL, !Z
-                SUB     1, R1
-                RBRA    _SDM_L, !Z
+                RSUB    _SHR_SAMEOBJ, 1
+                RBRA    _SDM_VOL, !C
                 XOR     R8, R8
                 DECRB
                 RET
@@ -6499,7 +7179,12 @@ _SDM_DIFF       MOVE    0xFFFF, R8
                 RET
 
 ; INFO, DISK_INFO: -> total and used blocks
-SHR_DO_INFO     RSUB    SHR_SEL, 1
+SHR_DO_INFO     MOVE    SHR_SPDIRTY, R8         ; changed: count again
+                CMP     0, @R8
+                RBRA    _SDN_S, Z
+                MOVE    0, @R8
+                RSUB    SHR_SPACE, 1
+_SDN_S          RSUB    SHR_SEL, 1
                 MOVE    SHR_TOTAL, R11
                 MOVE    3, R8
                 MOVE    @R11++, R10
@@ -6517,11 +7202,392 @@ SHR_DO_INFO     RSUB    SHR_SEL, 1
                 XOR     R8, R8
                 RET
 
-; everything that writes: the volume is write-protected
-SHR_DO_WPROT    MOVE    SHR_E_WPROT, R8
+; DELETE_OBJECT: key, name. Not the root, nothing in use, no directory with
+; entries; the clusters are freed.
+SHR_DO_DELETE   MOVE    16, R8
+                RSUB    SHR_GETNAME, 1
+                MOVE    2, R8
+                RSUB    SHR_RESOLVE, 1
+                RBRA    _SDD_RET, C
+                RSUB    _SHR_WOBJ, 1            ; its entry, not in use
+                RBRA    _SDD_RET, C
+                MOVE    SHR_OT, R8              ; a directory: empty?
+                CMP     SHR_T_DIR, @R8
+                RBRA    _SDD_GO, !Z
+                MOVE    SHR_OC, R8
+                MOVE    @R8++, R11
+                MOVE    @R8, R9
+                MOVE    R11, R8
+                XOR     R10, R10
+                RSUB    SHR_DIR_GET, 1
+                RBRA    _SDD_GO, C
+                CMP     0, R8
+                RBRA    _SDD_GO, Z
+                MOVE    SHR_E_DIRNE, R8
+                RET
+_SDD_GO         RSUB    _SHR_PBOBJ, 1           ; PB: its directory, entry
+                MOVE    SHR_PB, R8
+                ADD     FAT32$PB_FLAGS, R8
+                MOVE    FAT32$WDF_FREE, @R8
+                MOVE    SHR_PB, R8
+                RSUB    FAT32$W_DELETE, 1
+                MOVE    SHR_CVAL, R8            ; (the cursor saw it)
+                MOVE    0, @R8
+                XOR     R8, R8
+                CMP     0, R9
+                RBRA    _SDD_RET, Z
+                RSUB    SHR_WERR, 1
+_SDD_RET        RET
+
+; _SHR_WOBJ: the object SHR_OT is about to change: not the root, its entry
+; (SHR_DE, SHR_OEA, SHR_OPC), not in use. C=1 and R8 = error code if not.
+; R8..R12 clobbered.
+_SHR_WOBJ       MOVE    SHR_OT, R8
+                CMP     SHR_T_ROOT, @R8
+                RBRA    _SWO_ROOT, Z
+                RSUB    SHR_OBJ_DE, 1
+                RBRA    _SWO_RET, C
+                RSUB    SHR_INUSE, 1
+                RBRA    _SWO_USE, C
+                AND     0xFFFB, SR              ; C=0
+_SWO_RET        RET
+_SWO_USE        MOVE    SHR_E_INUSE, R8
+                OR      0x0004, SR
+                RET
+_SWO_ROOT       MOVE    SHR_E_WPROT, R8         ; (the volume itself)
+                OR      0x0004, SR
+                RET
+
+; _SHR_PBOBJ: SHR_PB for the entry of the object SHR_OT: its directory
+; SHR_OPC, its entry address SHR_OEA. R8..R12 clobbered.
+_SHR_PBOBJ      MOVE    SHR_OPC, R8
+                MOVE    @R8++, R11
+                MOVE    @R8, R9
+                MOVE    R11, R8
+                RSUB    SHR_PB_SET, 1
+                MOVE    SHR_OEA, R8
+                MOVE    SHR_PB, R9
+                ADD     FAT32$PB_EA, R9
+                MOVE    @R8++, @R9++
+                MOVE    @R8++, @R9++
+                MOVE    @R8, @R9
+                RET
+
+; CREATE_DIR: key, name -> the key of a lock on the new directory
+SHR_DO_MKDIR    MOVE    16, R8
+                RSUB    SHR_GETNAME, 1
+                MOVE    2, R8
+                RSUB    SHR_RESOLVE, 1
+                RBRA    _SDK_MISS, C
+                MOVE    SHR_E_EXISTS, R8
+                RET
+_SDK_MISS       MOVE    SHR_MISS, R9
+                CMP     0, @R9
+                RBRA    _SDK_RET, Z
+                RSUB    SHR_NAMECP, 1
+                MOVE    SHR_OC, R8
+                MOVE    @R8++, R11
+                MOVE    @R8, R9
+                MOVE    R11, R8
+                RSUB    SHR_PB_SET, 1
+                MOVE    SHR_PB, R8
+                ADD     FAT32$PB_NAME, R8
+                MOVE    SHR_NAME, @R8
+                MOVE    SHR_PB, R8
+                RSUB    FAT32$W_MKDIR, 1
+                CMP     0, R9
+                RBRA    _SDK_NEW, Z
+                RSUB    SHR_WERR, 1
+_SDK_RET        RET
+_SDK_NEW        MOVE    SHR_OC, R8              ; the object: the new
+                MOVE    SHR_OPC, R9             ; directory, in SHR_OC
+                MOVE    @R8++, @R9++
+                MOVE    @R8, @R9
+                MOVE    SHR_OT, R8
+                MOVE    SHR_T_DIR, @R8++
+                MOVE    SHR_PB, R9
+                ADD     FAT32$PB_CL_LO, R9
+                MOVE    @R9++, @R8++            ; SHR_OC
+                MOVE    @R9, @R8++
+                MOVE    SHR_PB, R9              ; SHR_OEA
+                ADD     FAT32$PB_EA, R9
+                MOVE    @R9++, @R8++
+                MOVE    @R9++, @R8++
+                MOVE    @R9, @R8
+                MOVE    SHR_CVAL, R8
+                MOVE    0, @R8
+                RBRA    _SDL_NEW, 1
+
+; SET_PROTECT: key, mask, name. FAT knows "read-only" only: it is set when
+; the file must not be written or deleted (FIBF_WRITE or FIBF_DELETE).
+SHR_DO_SETPROT  MOVE    20, R8
+                RSUB    SHR_GETNAME, 1
+                MOVE    2, R8
+                RSUB    SHR_RESOLVE, 1
+                RBRA    _SDT_RET, C
+                MOVE    SHR_OT, R8              ; (the volume: nothing)
+                CMP     SHR_T_ROOT, @R8
+                RBRA    _SDT_OK, Z
+                RSUB    SHR_OBJ_DE, 1
+                RBRA    _SDT_RET, C
+                RSUB    _SHR_PBOBJ, 1
+                MOVE    SHR_DE, R8              ; the attributes: read-only?
+                ADD     FAT32$DE_ATTRIB, R8
+                MOVE    @R8, R10
+                AND     0x00FE, R10
+                MOVE    3, R8                   ; the mask
+                RSUB    SHR_RL, 1
+                AND     0x0005, R10             ; (R10: mask low word)
+                RBRA    _SDT_RW, Z
+                MOVE    SHR_DE, R8
+                ADD     FAT32$DE_ATTRIB, R8
+                MOVE    @R8, R10
+                OR      FAT32$FA_READ_ONLY, R10
+                RBRA    _SDT_SET, 1
+_SDT_RW         MOVE    SHR_DE, R8
+                ADD     FAT32$DE_ATTRIB, R8
+                MOVE    @R8, R10
+                AND     0x00FE, R10
+_SDT_SET        AND     0x00FF, R10             ; PB_FLAGS: the attributes in
+                SWAP    R10, R10                ; the high byte
+                OR      FAT32$WSF_ATTR, R10
+                MOVE    SHR_PB, R8
+                ADD     FAT32$PB_FLAGS, R8
+                MOVE    R10, @R8
+                MOVE    SHR_PB, R8
+                RSUB    FAT32$W_SETDE, 1
+                CMP     0, R9
+                RBRA    _SDT_OK, Z
+                RSUB    SHR_WERR, 1
+                RET
+_SDT_OK         XOR     R8, R8
+_SDT_RET        RET
+
+; SET_COMMENT: key, name, comment. FAT has no comments: the object has to
+; exist, the comment is not kept (until the .uaem files).
+SHR_DO_SETCOMM  MOVE    16, R8                  ; the name: length at byte
+                RSUB    SHR_GETB, 1             ; 16, characters from 18
+                MOVE    SHR_PATH_LEN, R8
+                MOVE    R9, @R8
+                MOVE    18, R8
+                RSUB    _SHR_GETCH, 1
+                MOVE    2, R8
+                RSUB    SHR_RESOLVE, 1
+                RBRA    _SDT_RET, C
+                XOR     R8, R8
+                RET
+
+; _SHR_GETCH: SHR_PATH_LEN characters from byte R8 of the shared memory ->
+; SHR_PATH. R8..R12 clobbered.
+_SHR_GETCH      INCRB
+                MOVE    R8, R0
+                MOVE    SHR_PATH_LEN, R1
+                MOVE    @R1, R1
+                MOVE    SHR_PATH, R2
+_SGC_L          CMP     0, R1
+                RBRA    _SGC_RET, Z
+                MOVE    R0, R8
+                RSUB    SHR_GETB, 1
+                MOVE    R9, @R2++
+                ADD     1, R0
+                SUB     1, R1
+                RBRA    _SGC_L, 1
+_SGC_RET        DECRB
+                RET
+
+; SET_DATE: key, DateStamp (fields 3..5), name (BSTR at byte 28)
+SHR_DO_SETDATE  MOVE    28, R8
+                RSUB    SHR_GETNAME, 1
+                MOVE    2, R8
+                RSUB    SHR_RESOLVE, 1
+                RBRA    _SDT_RET, C
+                MOVE    SHR_OT, R8
+                CMP     SHR_T_ROOT, @R8
+                RBRA    _SDT_OK, Z
+                RSUB    SHR_OBJ_DE, 1
+                RBRA    _SDT_RET, C
+                RSUB    _SHR_PBOBJ, 1
+                RSUB    SHR_SEL, 1              ; the date of the request
+                MOVE    SHR_W_REQ, R8           ; (fields 3..5) where
+                ADD     6, R8                   ; SHR_TIMEFAT expects one
+                MOVE    SHR_W_TIME, R9
+                MOVE    @R8++, @R9++
+                MOVE    @R8++, @R9++
+                MOVE    @R8++, @R9++
+                MOVE    @R8++, @R9++
+                MOVE    @R8++, @R9++
+                MOVE    @R8, @R9
+                RSUB    SHR_TIMEFAT, 1
+                MOVE    SHR_FDATE, R8
+                MOVE    SHR_PB, R9
+                ADD     FAT32$PB_DATE, R9
+                MOVE    @R8++, @R9++
+                MOVE    @R8, @R9
+                MOVE    SHR_PB, R8
+                ADD     FAT32$PB_FLAGS, R8
+                MOVE    FAT32$WSF_TIME, @R8
+                MOVE    SHR_PB, R8
+                RSUB    FAT32$W_SETDE, 1
+                CMP     0, R9
+                RBRA    _SDT_OK, Z
+                RSUB    SHR_WERR, 1
+                RET
+
+; RENAME_OBJECT: key, target directory key, name length (byte 20), new name
+; length (21), the names (from byte 22). The object keeps its locks and open files.
+SHR_DO_RENAME   INCRB
+                MOVE    20, R8                  ; the old name
+                RSUB    SHR_GETB, 1
+                MOVE    R9, R0                  ; R0: its length
+                MOVE    SHR_PATH_LEN, R8
+                MOVE    R9, @R8
+                MOVE    22, R8
+                RSUB    _SHR_GETCH, 1
+                MOVE    2, R8
+                RSUB    SHR_RESOLVE, 1
+                RBRA    _SDO_RET, C
+                MOVE    SHR_OT, R8
+                CMP     SHR_T_ROOT, @R8
+                RBRA    _SDO_WP, Z
+                RSUB    SHR_OBJ_DE, 1
+                RBRA    _SDO_RET, C
+                MOVE    SHR_DE, R8              ; R7:R6: its first cluster
+                ADD     FAT32$DE_CLUS_LO, R8
+                MOVE    @R8++, R6
+                MOVE    @R8, R7
+                MOVE    SHR_OT, R8              ; keep the object
+                MOVE    SHR_RNOBJ, R9
+                RSUB    SHR_OBJ_CPY, 1
+
+                MOVE    21, R8                  ; the new name
+                RSUB    SHR_GETB, 1
+                MOVE    SHR_PATH_LEN, R8
+                MOVE    R9, @R8
+                MOVE    22, R8
+                ADD     R0, R8
+                RSUB    _SHR_GETCH, 1
+                MOVE    3, R8
+                RSUB    SHR_RESOLVE, 1
+                RBRA    _SDO_MISS, C
+                MOVE    SHR_RNOBJ, R8          ; it exists: only allowed if
+                RSUB    _SHR_SAMEOBJ, 1         ; it is the object itself
+                RBRA    _SDO_EX, !C             ; (another case of letters)
+                MOVE    SHR_OT, R8              ; then: its directory, its
+                CMP     SHR_T_FILE, @R8         ; name from the path
+                RBRA    _SDO_SD, Z
+                MOVE    SHR_OPC, R8
+                MOVE    SHR_OC, R9
+                MOVE    @R8++, @R9++
+                MOVE    @R8, @R9
+_SDO_SD         RSUB    SHR_NAMECP, 1
+                RBRA    _SDO_GO, 1
+_SDO_EX         MOVE    SHR_E_EXISTS, R8
+                RBRA    _SDO_RET, 1
+_SDO_MISS       MOVE    SHR_MISS, R9
+                CMP     0, @R9
+                RBRA    _SDO_RET, Z
+                RSUB    SHR_NAMECP, 1
+
+                ; SHR_OC: the target directory, SHR_NAME: the new name
+_SDO_GO         MOVE    SHR_OC, R1
+                MOVE    @R1++, R2               ; R3:R2: the target directory
+                MOVE    @R1, R3
+                MOVE    SHR_RNOBJ, R8           ; back to the object; only
+                RSUB    SHR_OBJ_LOAD, 1         ; the core matters (locks
+                MOVE    R6, R9                  ; and open files move along)
+                MOVE    R7, R10
+                RSUB    SHR_COREUSE, 1
+                RBRA    _SDO_CHK, !C
+                MOVE    SHR_E_INUSE, R8
+                RBRA    _SDO_RET, 1
+_SDO_CHK        RSUB    _SHR_PBOBJ, 1
+                MOVE    SHR_PB, R8
+                ADD     FAT32$PB_NAME, R8
+                MOVE    SHR_NAME, @R8
+                MOVE    SHR_PB, R8
+                ADD     FAT32$PB_DIR2_LO, R8
+                MOVE    R2, @R8++
+                MOVE    R3, @R8
+                MOVE    SHR_PB, R8
+                RSUB    FAT32$W_RENAME, 1
+                CMP     0, R9
+                RBRA    _SDO_UPD, Z
+                RSUB    SHR_WERR, 1
+                RBRA    _SDO_RET, 1
+
+                ; locks and open files of the object follow it: new entry
+                ; address and directory (files: also SHR_OC; open files:
+                ; also the entry address in their FDH)
+_SDO_UPD        MOVE    SHR_LOCKS, R4
+                MOVE    SHR_LOCKS_N, R5
+_SDO_UL         CMP     0, @R4
+                RBRA    _SDO_UN, Z
+                MOVE    R4, R8
+                RSUB    _SHR_SAMEOBJ, 1
+                RBRA    _SDO_UN, !C
+                MOVE    R4, R8
+                RSUB    _SHR_RNSET, 1
+_SDO_UN         ADD     SHR_LOCK_SZ, R4
+                SUB     1, R5
+                RBRA    _SDO_UL, !Z
+                MOVE    SHR_FILES, R4
+                MOVE    SHR_FILES_N, R5
+_SDO_FL         MOVE    R4, R8
+                ADD     SHR_F_USED, R8
+                CMP     0, @R8
+                RBRA    _SDO_FN, Z
+                MOVE    R4, R8
+                ADD     SHR_F_OBJ, R8
+                RSUB    _SHR_SAMEOBJ, 1
+                RBRA    _SDO_FN, !C
+                MOVE    R4, R8
+                ADD     SHR_F_OBJ, R8
+                RSUB    _SHR_RNSET, 1
+                MOVE    SHR_PB, R8              ; the FDH: FDH_EA
+                ADD     FAT32$PB_EA, R8
+                MOVE    R4, R9
+                ADD     FAT32$FDH_EA_CL_LO, R9
+                MOVE    @R8++, @R9++
+                MOVE    @R8++, @R9++
+                MOVE    @R8, @R9
+_SDO_FN         ADD     SHR_FILE_SZ, R4
+                SUB     1, R5
+                RBRA    _SDO_FL, !Z
+                MOVE    SHR_CVAL, R8
+                MOVE    0, @R8
+                XOR     R8, R8
+                RBRA    _SDO_RET, 1
+_SDO_WP         MOVE    SHR_E_WPROT, R8
+_SDO_RET        DECRB
+                RET
+
+; _SHR_RNSET: the object R8 (a lock slot or the object of a file) is now at
+; PB_EA in the directory R3:R2 of the caller (SHR_DO_RENAME). R8, R9 used.
+_SHR_RNSET      CMP     SHR_T_FILE, @R8
+                RBRA    _SRN_D, !Z
+                ADD     1, R8                   ; a file: SHR_OC too
+                MOVE    R2, @R8++
+                MOVE    R3, @R8++
+                RBRA    _SRN_E, 1
+_SRN_D          ADD     3, R8
+_SRN_E          MOVE    SHR_PB, R9              ; the entry address
+                ADD     FAT32$PB_EA, R9
+                MOVE    @R9++, @R8++
+                MOVE    @R9++, @R8++
+                MOVE    @R9, @R8++
+                MOVE    R2, @R8++               ; SHR_OPC
+                MOVE    R3, @R8
                 RET
 
 ; End of the shared folder bank
+
+                .ORG    0x9000                  ; M2M$CODE_WIN
+                .DW     0x4B01                  ; bank 1: BANK_F32W
+#include "../../M2M/QNICE/monitor/fat32_write.asm"
+
+                .ORG    0x9000                  ; M2M$CODE_WIN
+                .DW     0x4B02                  ; bank 2: BANK_F32F
+#include "../../M2M/QNICE/monitor/fat32_wfile.asm"
 #endif
 
 ; ----------------------------------------------------------------------------
@@ -6649,22 +7715,37 @@ SHR_MNT_PEND    .BLOCK 1                        ; 1: mount after SHR_MNT_T
 SHR_MNT_T       .BLOCK 1                        ; IO$CYC_MID at the event
 SHR_TOTAL       .BLOCK 2                        ; blocks of the volume (lo, hi)
 SHR_USED        .BLOCK 2                        ; used blocks (lo, hi)
-SHR_ROOTLOCK    .BLOCK 4                        ; the lock of key 0 (/amiga)
+SHR_ROOTLOCK    .BLOCK 8                        ; the lock of key 0 (/amiga)
 SHR_OT          .BLOCK 1                        ; the current object: type,
-SHR_OC          .BLOCK 2                        ; cluster (lo, hi) and index
-SHR_OI          .BLOCK 1                        ; (the layout of a lock slot)
+SHR_OC          .BLOCK 2                        ; cluster (a directory: its own,
+                                                ; a file: its directory),
+SHR_OEA         .BLOCK 3                        ; entry address (0: unknown),
+SHR_OPC         .BLOCK 2                        ; the directory of the entry
+                                                ; (the layout of a lock slot)
 SHR_CVAL        .BLOCK 1                        ; directory cursor: valid,
-SHR_CCLO        .BLOCK 1                        ; cluster, index of the next
-SHR_CCHI        .BLOCK 1                        ; entry, directory handle
-SHR_CIDX        .BLOCK 1
+SHR_CCLO        .BLOCK 1                        ; cluster, number of entries
+SHR_CCHI        .BLOCK 1                        ; returned, slot number of the
+SHR_CIDX        .BLOCK 1                        ; last one, its entry address,
+SHR_CORD        .BLOCK 1                        ; the directory's cluster count
+SHR_CEA         .BLOCK 3                        ; and the cluster seen last
+SHR_CCIX        .BLOCK 1
+SHR_CLCL        .BLOCK 2
 SHR_CFDH        .BLOCK  FAT32$FDH_STRUCT_SIZE
 SHR_PATH_LEN    .BLOCK 1                        ; the path of the request
 SHR_CPOS        .BLOCK 1                        ; the component being looked up
 SHR_CLEN        .BLOCK 1
 SHR_PATH        .BLOCK 256                      ; one character per word
 SHR_DE          .BLOCK  FAT32$DE_STRUCT_SIZE    ; directory entry
-SHR_LOCKS       .BLOCK 256                      ; SHR_LOCKS_N x SHR_LOCK_SZ
-SHR_FILES       .BLOCK 128                      ; SHR_FILES_N x SHR_FILE_SZ
+SHR_LOCKS       .BLOCK 512                      ; SHR_LOCKS_N x SHR_LOCK_SZ
+SHR_FILES       .BLOCK 192                      ; SHR_FILES_N x SHR_FILE_SZ
+SHR_PB          .BLOCK  FAT32$PB_SIZE           ; FAT32 write layer parameters
+SHR_NAME        .BLOCK 108                      ; a name for the write layer
+SHR_FDATE       .BLOCK 2                        ; the request time as FAT date,
+                                                ; time
+SHR_MISS        .BLOCK 1                        ; SHR_RESOLVE: 1 = only the last
+                                                ; component is missing
+SHR_SPDIRTY     .BLOCK 1                        ; 1: SHR_TOTAL/USED are stale
+SHR_RNOBJ       .BLOCK 8                        ; RENAME: the object
 
 ; M2M Shell variables (only include, if you included "shell.asm" above)
 #include "../../M2M/rom/shell_vars.asm"
@@ -6772,7 +7853,10 @@ HEAP            .BLOCK 1
 ; Megamiga, M2M-UPSTREAM code-banks: the code window takes 0x9000-0x9FFF, so
 ; the variables start at 0xA000 and the combined total is 4096 words smaller:
 ; 19968 (the stack margin stays the same).
-HEAP_SIZE       .EQU 16384                      ; 19968 - 3584 = 16384
+; Megamiga 0.6.1: the shared folder writes (locks and open files grew, the
+; write layer's parameter block, names, the larger device handles) - the
+; combined total is 640 words smaller: 19328, stack margin 256 words.
+HEAP_SIZE       .EQU 15744                      ; 19328 - 3584 = 15744
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

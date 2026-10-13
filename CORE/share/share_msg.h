@@ -306,4 +306,42 @@ struct DiskInfoResponse
 	long update;
 };
 
+/* Megamiga extensions (protocol version 2, see MegamigaFS.c) */
+
+/* the current Amiga time, written by the handler before every request */
+#define SHARE_TIME_ADDR 0xDD4FE0
+
+struct SetDateRequest
+{
+	long sz;
+	long type;
+	long key;
+	long date[3];           /* DateStamp: days, minute, tick */
+	char name[1];           /* BSTR */
+};
+
+struct SetDateResponse
+{
+	long sz;
+	long success;
+	long error_code;
+};
+
+struct SetFileSizeRequest
+{
+	long sz;
+	long type;
+	long arg1;              /* the file handle */
+	long offset;
+	long mode;              /* OFFSET_BEGINNING, OFFSET_CURRENT, OFFSET_END */
+};
+
+struct SetFileSizeResponse
+{
+	long sz;
+	long success;
+	long error_code;
+	long new_size;
+};
+
 #endif

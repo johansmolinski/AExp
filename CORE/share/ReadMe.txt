@@ -2,7 +2,8 @@ Megamiga shared folder (MegamigaFS)
 ===================================
 
 The folder /amiga of the MEGA65's SD card as an Amiga volume, "SDCard:" (the
-device is "SD:"). Read-only for now: copy files from it, not to it.
+device is "SD:"). It can be read and written: copy files to it and from it,
+create, rename and delete files and drawers.
 
 Install (Kickstart 2.0 and later)
 ---------------------------------
@@ -32,9 +33,13 @@ Using it
   inserted" in the core's main menu (below the floppy drives); switch it on
   again to insert it.
 - Long file names work; names longer than 106 characters are cut there.
-- Do not run programs that write to the card's files while the core uses the
-  same file as a disk (HDF, ADF): the volume is read-only, so the shared folder
-  itself cannot do that.
+- Files the core uses itself (a mounted ADF or HDF, the settings file) cannot
+  be written, deleted or renamed through SDCard: ("object in use").
+- FAT keeps less than an Amiga disk: of the protection bits only "read-only"
+  (set when a file must not be written or deleted), no comments, dates to two
+  seconds. Names may not contain " * / : < > ? \ | (FAT does not allow them).
+- Pull the card only when nothing is being written (like a floppy while its
+  light is on).
 
 - C/ShareInfo prints the state of the shared folder: whether the volume is
   there and how often the card was removed, inserted or switched since the

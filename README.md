@@ -828,8 +828,9 @@ Ekström's a314eth.device; the design is described in
 
 The folder `/amiga` of the SD card can be an Amiga volume, `SDCard:`, so that
 files you copy onto the card on your computer reach the Amiga without disk
-images. It is read-only for now: copy files from it, not to it. It works in
-every profile and with every CPU.
+images, and from the Amiga back to the card. It can be read and written
+(files and drawers: create, copy, rename, delete). It works in every profile
+and with every CPU.
 
 The handler `MegamigaFS` is on the `Megamiga_Share.adf` disk of the release
 (or build it from `CORE/share/`). With Kickstart 2.0 or newer:
@@ -849,6 +850,13 @@ away; insert one and it comes back about a second later, and Workbench shows
 its icon again. Switching cards with F1/F3 in the core's file browser
 changes it, too. Long file names work (up to 106 characters, the limit of
 AmigaOS); hidden files and anything outside `/amiga` are not shown.
+
+FAT is not an Amiga file system: of the protection bits only "read-only" is
+kept (set when a file must not be written or deleted), comments are not kept,
+dates have a resolution of two seconds, and names cannot contain
+`" * / : < > ? \ |`. Files the core uses itself (a mounted ADF or HDF, the
+settings file) cannot be written, deleted or renamed through `SDCard:`. Pull
+the card only while nothing is being written to it.
 
 To eject the volume without touching the card, switch off **SDCard: inserted**
 in the main menu, below the floppy drives; switch it on again to insert it.
