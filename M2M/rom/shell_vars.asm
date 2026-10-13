@@ -78,6 +78,11 @@ HANDLE_DEV      .BLOCK  FAT32$DEV_STRUCT_SIZE
 CONFIG_DEVH     .BLOCK  FAT32$DEV_STRUCT_SIZE
 CONFIG_FILE     .BLOCK  FAT32$FDH_STRUCT_SIZE
 OLD_SETTINGS    .BLOCK  16
+; M2M-UPSTREAM cfg-strings (cfgstr.asm): the text behind the menu bytes
+CFGS_LEN        .BLOCK  1                       ; its length
+CFGS_DIRTY      .BLOCK  1                       ; 1: changed since loaded/saved
+CFGS_BUF        .BLOCK  CFGS_MAX                ; one character per word
+CFGS_PB         .BLOCK  FAT32$PB_SIZE           ; FAT32 write layer parameters
 INITIAL_SD      .BLOCK  1
 
 SD_ACTIVE       .BLOCK 1                        ; currently active SD card

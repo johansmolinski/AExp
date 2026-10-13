@@ -170,13 +170,25 @@ PREP_LOAD_IMAGE INCRB
                 MOVE    1, R9                   ; slave
                 RBRA    _PREP_LI_HDF, 1
 _PREP_LI_H0     XOR     R9, R9                  ; master
-_PREP_LI_HDF    RSUB    HDF_PREP, 1             ; R8/R9: result
-                DECRB
-                RET
+_PREP_LI_HDF    MOVE    R8, R5                  ; R5: the file, R6: its ROM id
+                MOVE    R9, R6
+                ADD     PROF_HDF_ID, R6
+                RSUB    HDF_PREP, 1             ; R8/R9: result
+                RBRA    _PREP_LI_REM, 1
 _PREP_LI_NHDF   CMP     AEXP_OPTM_G_KICK, R10   ; the Kickstart selector: own path
                 RBRA    _PREP_LI_NKCK, !Z
+                MOVE    R8, R5
+                MOVE    PROF_KICK_ID, R6
                 RSUB    KICK_PREP, 1            ; R8/R9: result
-                DECRB
+_PREP_LI_REM    CMP     0, R8                   ; loaded: the profile remembers
+                RBRA    _PREP_LI_RR, !Z         ; the file (cfg text)
+                MOVE    R5, R8
+                MOVE    R9, R4
+                MOVE    R6, R9
+                RSUB    PROF_REMEMBER, 1
+                XOR     R8, R8
+                MOVE    R4, R9
+_PREP_LI_RR     DECRB
                 RET
 _PREP_LI_NKCK   MOVE    R8, R5                  ; R5: keep the new file handle
                 MOVE    R10, R8                 ; one of the three mount items?
@@ -660,6 +672,11 @@ _PA_MNT         MOVE    0, @R8
                 ; the Kickstart: hold the Amiga while the ROM is replaced
 _PA_KICK        MOVE    FL_NOBAR, R2            ; no progress bar: the menu
                 MOVE    1, @R2                  ; is on screen
+                MOVE    R0, R8                  ; one the profile remembers?
+                MOVE    PROF_KICK_ID, R9        ; (C=1: open, R8: its name)
+                RSUB    PROF_SAVED, 1
+                MOVE    R8, R3
+                RBRA    _PA_KLD, C
                 MOVE    PROF_KICK_TAB, R8
                 ADD     R0, R8
                 MOVE    @R8, R8
@@ -691,7 +708,13 @@ _PA_KLD
 
                 ; the hard disks: R4 = drive, 0 master, 1 slave
 _PA_HDF         XOR     R4, R4
-_PA_HL          MOVE    PROF_HDF_TAB, R8        ; masters, then slaves
+_PA_HL          MOVE    R0, R8                  ; one the profile remembers?
+                MOVE    PROF_HDF_ID, R9
+                ADD     R4, R9
+                RSUB    PROF_SAVED, 1
+                MOVE    R8, R3                  ; R3: its name
+                RBRA    _PA_HOP, C
+                MOVE    PROF_HDF_TAB, R8        ; masters, then slaves
                 ADD     R0, R8
                 CMP     0, R4
                 RBRA    _PA_HU, Z
@@ -700,7 +723,7 @@ _PA_HU          MOVE    @R8, R8
                 MOVE    R8, R3                  ; R3: the label of the path
                 RSUB    PROF_OPEN, 1
                 RBRA    _PA_HNO, !C
-                MOVE    PROF_FDH, R8
+_PA_HOP         MOVE    PROF_FDH, R8
                 MOVE    R4, R9
                 RSUB    HDF_PREP, 1             ; mounts, restarts the Amiga
                 CMP     0, R8
@@ -795,9 +818,13 @@ PROF_NAME       SYSCALL(enter, 1)
                 MOVE    PROF_PENDF, R0
                 MOVE    1, @R0
                 RBRA    _PN_RET, 1
-_PN_SHOW        RSUB    RODATA_STR, 1           ; the path in RAM
+_PN_SHOW        MOVE    R8, R2                  ; a name in RAM (a file the
+                AND     0xF000, R2              ; profile remembers, PROF_SAVED)
+                CMP     0x8000, R2              ; or a read-only data label
+                RBRA    _PN_RAM, !Z
+                RSUB    RODATA_STR, 1           ; the path in RAM
                 ADD     PROF_DIR_LEN, R8        ; skip "/amiga/"
-                MOVE    R8, R2                  ; R2: the name
+_PN_RAM         MOVE    R8, R2                  ; R2: the name
                 MOVE    CRTROM_MAN_LDF, R0      ; "loaded"
                 ADD     R9, R0
                 MOVE    1, @R0
@@ -2533,6 +2560,12 @@ SHARE_INIT      RSUB    FAR_CALL, 1
                 .DW     BANK_SHARE, B0_SHARE_INIT
 SHARE_STEP      RSUB    FAR_CALL, 1
                 .DW     BANK_SHARE, B0_SHARE_STEP
+
+; the files a machine profile remembers (in code bank BANK_F32F)
+PROF_REMEMBER   RSUB    FAR_CALL, 1
+                .DW     BANK_F32F, B2_PROF_REMEMBER
+PROF_SAVED      RSUB    FAR_CALL, 1
+                .DW     BANK_F32F, B2_PROF_SAVED
 
 ; ----------------------------------------------------------------------------
 ; The FAT32 write layer (M2M/QNICE/monitor/fat32_write.asm, fat32_wfile.asm):
@@ -4668,6 +4701,7 @@ PROF_HDF_ID     .EQU    3                       ; OPTM_G_LOAD_ROM lines); the
                                                 ; slave HDF is PROF_HDF_ID + 1
 PROF_DIR_LEN    .EQU    7                       ; strlen("/amiga/")
 PROF_PEND_NUM   .EQU    3                       ; PROF_HDF_ID..PROF_KICK_ID
+PROF_PN_LEN     .EQU    21                      ; a name in PROF_PNAME (+ zero)
 KICK_256K_HI    .EQU    0x0004
 KICK_512K_HI    .EQU    0x0008
 
@@ -6438,22 +6472,22 @@ _STF_S1         AND     0x001F, R4              ; time = h << 11 | m << 5 |
                 DECRB
                 RET
 
-; SHR_PB_SET: SHR_PB for the directory R9:R8: the device, the directory, the
+; CFGS_PBSET_TMP: CFGS_PB for the directory R9:R8: the device, the directory, the
 ; time of the request; everything else 0. R8..R12 clobbered.
-SHR_PB_SET      INCRB
+CFGS_PBSET_TMP      INCRB
                 MOVE    R8, R0
                 MOVE    R9, R1
-                MOVE    SHR_PB, R8              ; all 0 first
+                MOVE    CFGS_PB, R8              ; all 0 first
                 MOVE    FAT32$PB_WS, R9
                 XOR     R10, R10
                 SYSCALL(memset, 1)
-                MOVE    SHR_PB, R2
+                MOVE    CFGS_PB, R2
                 MOVE    SHARE_DEV, @R2++        ; PB_DEV
                 MOVE    R0, @R2++               ; PB_DIR
                 MOVE    R1, @R2
                 RSUB    SHR_TIMEFAT, 1
                 MOVE    SHR_FDATE, R0
-                MOVE    SHR_PB, R2
+                MOVE    CFGS_PB, R2
                 ADD     FAT32$PB_DATE, R2
                 MOVE    @R0++, @R2++
                 MOVE    @R0, @R2
@@ -6719,13 +6753,13 @@ _SHR_FSYNC      MOVE    R8, @--SP
                 MOVE    R9, @--SP
                 MOVE    SHR_FDATE, R8           ; dated with this request
                 RSUB    SHR_TIMEFAT, 1
-                MOVE    SHR_PB, R8
+                MOVE    CFGS_PB, R8
                 ADD     FAT32$PB_DATE, R8
                 MOVE    SHR_FDATE, R9
                 MOVE    @R9++, @R8++
                 MOVE    @R9, @R8
                 MOVE    @SP++, R8
-                MOVE    SHR_PB, R9
+                MOVE    CFGS_PB, R9
                 RSUB    FAT32$W_SYNC, 1
                 MOVE    @SP++, R8
                 RET
@@ -6756,12 +6790,12 @@ _SDI_GO         INCRB
                 MOVE    SHR_OC, R0              ; in the directory SHR_OT
                 MOVE    @R0++, R8
                 MOVE    @R0, R9
-                RSUB    SHR_PB_SET, 1
-                MOVE    SHR_PB, R8
+                RSUB    CFGS_PBSET_TMP, 1
+                MOVE    CFGS_PB, R8
                 ADD     FAT32$PB_NAME, R8
                 MOVE    SHR_NAME, @R8++
                 MOVE    FAT32$FA_ARCHIVE, @R8   ; (PB_ATTR)
-                MOVE    SHR_PB, R8
+                MOVE    CFGS_PB, R8
                 RSUB    FAT32$W_CREATE, 1
                 CMP     0, R9
                 RBRA    _SDI_NEW, Z
@@ -6771,7 +6805,7 @@ _SDI_NEW        MOVE    SHR_OT, R0              ; the new file: its object
                 MOVE    SHR_OC, R1
                 MOVE    SHR_T_FILE, @R0
                 MOVE    SHR_OEA, R0
-                MOVE    SHR_PB, R2
+                MOVE    CFGS_PB, R2
                 ADD     FAT32$PB_EA, R2
                 MOVE    @R2++, @R0++
                 MOVE    @R2++, @R0++
@@ -6803,19 +6837,19 @@ _SDI_F          MOVE    SHR_OPC, R2             ; open it from its address
                 MOVE    @R2, R9
                 CMP     2, R7
                 RBRA    _SDI_F1, Z
-                MOVE    SHR_PB, R2              ; (no PB_SET: no time needed)
+                MOVE    CFGS_PB, R2              ; (no PB_SET: no time needed)
                 MOVE    SHARE_DEV, @R2++
                 MOVE    R8, @R2++
                 MOVE    R9, @R2
                 RBRA    _SDI_F2, 1
-_SDI_F1         RSUB    SHR_PB_SET, 1
+_SDI_F1         RSUB    CFGS_PBSET_TMP, 1
 _SDI_F2         MOVE    SHR_OEA, R2
-                MOVE    SHR_PB, R3
+                MOVE    CFGS_PB, R3
                 ADD     FAT32$PB_EA, R3
                 MOVE    @R2++, @R3++
                 MOVE    @R2++, @R3++
                 MOVE    @R2, @R3
-                MOVE    SHR_PB, R8
+                MOVE    CFGS_PB, R8
                 MOVE    R0, R9
                 RSUB    FAT32$W_FDH, 1
                 CMP     0, R9
@@ -6836,7 +6870,7 @@ _SDI_O1         CMP     2, R7                   ; make it empty?
                 CMP     3, R6
                 RBRA    _SDI_RET, Z
                 MOVE    R0, R8
-                MOVE    SHR_PB, R9
+                MOVE    CFGS_PB, R9
                 XOR     R10, R10
                 XOR     R11, R11
                 RSUB    FAT32$W_SETSIZE, 1
@@ -6987,7 +7021,7 @@ _SDW_GO         XOR     R2, R2                  ; R2: bytes written
 _SDW_SECT       CMP     R2, R1                  ; done?
                 RBRA    _SDW_DONE, Z
                 MOVE    R0, R8
-                MOVE    SHR_PB, R9
+                MOVE    CFGS_PB, R9
                 RSUB    FAT32$W_PUT, 1          ; R10: index, R11: room
                 CMP     0, R9
                 RBRA    _SDW_ERR, !Z
@@ -7121,9 +7155,9 @@ _SDZ_PE         MOVE    R1, R6
                 MOVE    R2, R7
 _SDZ_P          XOR     R8, R8                  ; (PB_SET for the time; the
                 XOR     R9, R9                  ;  directory does not matter)
-                RSUB    SHR_PB_SET, 1
+                RSUB    CFGS_PBSET_TMP, 1
                 MOVE    R0, R8
-                MOVE    SHR_PB, R9
+                MOVE    CFGS_PB, R9
                 MOVE    R1, R10
                 MOVE    R2, R11
                 RSUB    FAT32$W_SETSIZE, 1
@@ -7225,11 +7259,11 @@ SHR_DO_DELETE   MOVE    16, R8
                 RBRA    _SDD_GO, Z
                 MOVE    SHR_E_DIRNE, R8
                 RET
-_SDD_GO         RSUB    _SHR_PBOBJ, 1           ; PB: its directory, entry
-                MOVE    SHR_PB, R8
+_SDD_GO         RSUB    _CFGS_PBOBJ, 1           ; PB: its directory, entry
+                MOVE    CFGS_PB, R8
                 ADD     FAT32$PB_FLAGS, R8
                 MOVE    FAT32$WDF_FREE, @R8
-                MOVE    SHR_PB, R8
+                MOVE    CFGS_PB, R8
                 RSUB    FAT32$W_DELETE, 1
                 MOVE    SHR_CVAL, R8            ; (the cursor saw it)
                 MOVE    0, @R8
@@ -7258,15 +7292,15 @@ _SWO_ROOT       MOVE    SHR_E_WPROT, R8         ; (the volume itself)
                 OR      0x0004, SR
                 RET
 
-; _SHR_PBOBJ: SHR_PB for the entry of the object SHR_OT: its directory
+; _CFGS_PBOBJ: CFGS_PB for the entry of the object SHR_OT: its directory
 ; SHR_OPC, its entry address SHR_OEA. R8..R12 clobbered.
-_SHR_PBOBJ      MOVE    SHR_OPC, R8
+_CFGS_PBOBJ      MOVE    SHR_OPC, R8
                 MOVE    @R8++, R11
                 MOVE    @R8, R9
                 MOVE    R11, R8
-                RSUB    SHR_PB_SET, 1
+                RSUB    CFGS_PBSET_TMP, 1
                 MOVE    SHR_OEA, R8
-                MOVE    SHR_PB, R9
+                MOVE    CFGS_PB, R9
                 ADD     FAT32$PB_EA, R9
                 MOVE    @R8++, @R9++
                 MOVE    @R8++, @R9++
@@ -7289,11 +7323,11 @@ _SDK_MISS       MOVE    SHR_MISS, R9
                 MOVE    @R8++, R11
                 MOVE    @R8, R9
                 MOVE    R11, R8
-                RSUB    SHR_PB_SET, 1
-                MOVE    SHR_PB, R8
+                RSUB    CFGS_PBSET_TMP, 1
+                MOVE    CFGS_PB, R8
                 ADD     FAT32$PB_NAME, R8
                 MOVE    SHR_NAME, @R8
-                MOVE    SHR_PB, R8
+                MOVE    CFGS_PB, R8
                 RSUB    FAT32$W_MKDIR, 1
                 CMP     0, R9
                 RBRA    _SDK_NEW, Z
@@ -7305,11 +7339,11 @@ _SDK_NEW        MOVE    SHR_OC, R8              ; the object: the new
                 MOVE    @R8, @R9
                 MOVE    SHR_OT, R8
                 MOVE    SHR_T_DIR, @R8++
-                MOVE    SHR_PB, R9
+                MOVE    CFGS_PB, R9
                 ADD     FAT32$PB_CL_LO, R9
                 MOVE    @R9++, @R8++            ; SHR_OC
                 MOVE    @R9, @R8++
-                MOVE    SHR_PB, R9              ; SHR_OEA
+                MOVE    CFGS_PB, R9              ; SHR_OEA
                 ADD     FAT32$PB_EA, R9
                 MOVE    @R9++, @R8++
                 MOVE    @R9++, @R8++
@@ -7330,7 +7364,7 @@ SHR_DO_SETPROT  MOVE    20, R8
                 RBRA    _SDT_OK, Z
                 RSUB    SHR_OBJ_DE, 1
                 RBRA    _SDT_RET, C
-                RSUB    _SHR_PBOBJ, 1
+                RSUB    _CFGS_PBOBJ, 1
                 MOVE    SHR_DE, R8              ; the attributes: read-only?
                 ADD     FAT32$DE_ATTRIB, R8
                 MOVE    @R8, R10
@@ -7351,10 +7385,10 @@ _SDT_RW         MOVE    SHR_DE, R8
 _SDT_SET        AND     0x00FF, R10             ; PB_FLAGS: the attributes in
                 SWAP    R10, R10                ; the high byte
                 OR      FAT32$WSF_ATTR, R10
-                MOVE    SHR_PB, R8
+                MOVE    CFGS_PB, R8
                 ADD     FAT32$PB_FLAGS, R8
                 MOVE    R10, @R8
-                MOVE    SHR_PB, R8
+                MOVE    CFGS_PB, R8
                 RSUB    FAT32$W_SETDE, 1
                 CMP     0, R9
                 RBRA    _SDT_OK, Z
@@ -7406,7 +7440,7 @@ SHR_DO_SETDATE  MOVE    28, R8
                 RBRA    _SDT_OK, Z
                 RSUB    SHR_OBJ_DE, 1
                 RBRA    _SDT_RET, C
-                RSUB    _SHR_PBOBJ, 1
+                RSUB    _CFGS_PBOBJ, 1
                 RSUB    SHR_SEL, 1              ; the date of the request
                 MOVE    SHR_W_REQ, R8           ; (fields 3..5) where
                 ADD     6, R8                   ; SHR_TIMEFAT expects one
@@ -7419,14 +7453,14 @@ SHR_DO_SETDATE  MOVE    28, R8
                 MOVE    @R8, @R9
                 RSUB    SHR_TIMEFAT, 1
                 MOVE    SHR_FDATE, R8
-                MOVE    SHR_PB, R9
+                MOVE    CFGS_PB, R9
                 ADD     FAT32$PB_DATE, R9
                 MOVE    @R8++, @R9++
                 MOVE    @R8, @R9
-                MOVE    SHR_PB, R8
+                MOVE    CFGS_PB, R8
                 ADD     FAT32$PB_FLAGS, R8
                 MOVE    FAT32$WSF_TIME, @R8
-                MOVE    SHR_PB, R8
+                MOVE    CFGS_PB, R8
                 RSUB    FAT32$W_SETDE, 1
                 CMP     0, R9
                 RBRA    _SDT_OK, Z
@@ -7500,15 +7534,15 @@ _SDO_GO         MOVE    SHR_OC, R1
                 RBRA    _SDO_CHK, !C
                 MOVE    SHR_E_INUSE, R8
                 RBRA    _SDO_RET, 1
-_SDO_CHK        RSUB    _SHR_PBOBJ, 1
-                MOVE    SHR_PB, R8
+_SDO_CHK        RSUB    _CFGS_PBOBJ, 1
+                MOVE    CFGS_PB, R8
                 ADD     FAT32$PB_NAME, R8
                 MOVE    SHR_NAME, @R8
-                MOVE    SHR_PB, R8
+                MOVE    CFGS_PB, R8
                 ADD     FAT32$PB_DIR2_LO, R8
                 MOVE    R2, @R8++
                 MOVE    R3, @R8
-                MOVE    SHR_PB, R8
+                MOVE    CFGS_PB, R8
                 RSUB    FAT32$W_RENAME, 1
                 CMP     0, R9
                 RBRA    _SDO_UPD, Z
@@ -7543,7 +7577,7 @@ _SDO_FL         MOVE    R4, R8
                 MOVE    R4, R8
                 ADD     SHR_F_OBJ, R8
                 RSUB    _SHR_RNSET, 1
-                MOVE    SHR_PB, R8              ; the FDH: FDH_EA
+                MOVE    CFGS_PB, R8              ; the FDH: FDH_EA
                 ADD     FAT32$PB_EA, R8
                 MOVE    R4, R9
                 ADD     FAT32$FDH_EA_CL_LO, R9
@@ -7570,7 +7604,7 @@ _SHR_RNSET      CMP     SHR_T_FILE, @R8
                 MOVE    R3, @R8++
                 RBRA    _SRN_E, 1
 _SRN_D          ADD     3, R8
-_SRN_E          MOVE    SHR_PB, R9              ; the entry address
+_SRN_E          MOVE    CFGS_PB, R9              ; the entry address
                 ADD     FAT32$PB_EA, R9
                 MOVE    @R9++, @R8++
                 MOVE    @R9++, @R8++
@@ -7588,6 +7622,311 @@ _SRN_E          MOVE    SHR_PB, R9              ; the entry address
                 .ORG    0x9000                  ; M2M$CODE_WIN
                 .DW     0x4B02                  ; bank 2: BANK_F32F
 #include "../../M2M/QNICE/monitor/fat32_wfile.asm"
+
+; ----------------------------------------------------------------------------
+; Machine profiles: the files a profile remembers (Megamiga 0.6.1)
+;
+; The settings file keeps text (M2M-UPSTREAM cfg-strings, cfgstr.asm): per
+; profile the Kickstart and the two hard disks the user loaded through the
+; menu, as paths ("a1200.hdf0=/amiga/disks/work.hdf"). PROFILE_APPLY loads
+; them instead of the profile's standard files (a1200.rom, a1200.hdf, ...),
+; which stay the fallback. This code is in code bank BANK_F32F (with the
+; FAT32 write layer's file part, which has room), behind FAR_CALL stubs.
+; ----------------------------------------------------------------------------
+
+; the keys: profile x 3 + (ROM id - PROF_HDF_ID): hdf0, hdf1, kick
+PROF_KEYTAB     .DW     _PK_500H0, _PK_500H1, _PK_500K
+                .DW     _PK_600H0, _PK_600H1, _PK_600K
+                .DW     _PK_1200H0, _PK_1200H1, _PK_1200K
+_PK_500H0       .ASCII_W "a500.hdf0"
+_PK_500H1       .ASCII_W "a500.hdf1"
+_PK_500K        .ASCII_W "a500.kick"
+_PK_600H0       .ASCII_W "a600.hdf0"
+_PK_600H1       .ASCII_W "a600.hdf1"
+_PK_600K        .ASCII_W "a600.kick"
+_PK_1200H0      .ASCII_W "a1200.hdf0"
+_PK_1200H1      .ASCII_W "a1200.hdf1"
+_PK_1200K       .ASCII_W "a1200.kick"
+
+; _PR_KEY: the key of profile R8 and ROM id R9 -> R8. Other registers kept.
+_PR_KEY         INCRB
+                MOVE    R8, R0                  ; x 3
+                ADD     R8, R0
+                ADD     R8, R0
+                ADD     R9, R0
+                SUB     PROF_HDF_ID, R0
+                ADD     PROF_KEYTAB, R0
+                MOVE    @R0, R8
+                DECRB
+                RET
+
+; _PR_CUR: the profile that is selected in the menu -> R8 (0..2). R9 used.
+_PR_CUR         MOVE    R10, @--SP
+                MOVE    AEXP_OSM_PROF_A600, R8
+                RSUB    M2M$GET_SETTING, 1
+                MOVE    R9, R10
+                MOVE    AEXP_OSM_PROF_A1200, R8
+                RSUB    M2M$GET_SETTING, 1
+                ADD     R9, R10
+                ADD     R9, R10
+                MOVE    R10, R8
+                MOVE    @SP++, R10
+                RET
+
+; B2_PROF_REMEMBER: the user loaded the file handle R8 (opened through
+; HANDLE_DEV from its current directory) as ROM id R9 (PROF_HDF_ID ..
+; PROF_KICK_ID): the selected profile remembers its path. All registers
+; preserved.
+B2_PROF_REMEMBER SYSCALL(enter, 1)
+                MOVE    R9, R1                  ; R1: ROM id
+                RSUB    _PR_PATHOF, 1           ; PROF_PATH
+                RBRA    _PRR_OK, C
+                MOVE    PROF_PATH, R0           ; unknown: forget it (the
+                MOVE    0, @R0                  ; standard file then)
+_PRR_OK         RSUB    _PR_CUR, 1
+                MOVE    R1, R9
+                RSUB    _PR_KEY, 1
+                MOVE    PROF_PATH, R9
+                RSUB    CFGS_SET, 1
+                SYSCALL(leave, 1)
+                RET
+
+; B2_PROF_SAVED: profile R8 remembers a file for ROM id R9 and it opens:
+; C=1, PROF_FDH is open, R8 = its name (for the menu line, in PROF_PNAME);
+; C=0 otherwise. R9..R12 preserved.
+B2_PROF_SAVED   INCRB
+                MOVE    R9, R0                  ; R0: ROM id
+                MOVE    R10, R1
+                MOVE    R11, R2
+                MOVE    R12, R3
+                RSUB    _PR_KEY, 1
+                MOVE    PROF_PATH, R9
+                MOVE    128, R10
+                RSUB    CFGS_GET, 1
+                RBRA    _PRS_NO, !C
+                MOVE    PROF_PATH, R10
+                CMP     0, @R10
+                RBRA    _PRS_NO, Z
+                MOVE    HANDLE_DEV, R8
+                MOVE    PROF_FDH, R9
+                XOR     R11, R11                ; "/" separator
+                SYSCALL(f32_fopen, 1)
+                CMP     0, R10
+                RBRA    _PRS_NO, !Z
+                MOVE    PROF_PATH, R4           ; the name: behind the last
+                MOVE    R4, R5                  ; "/"
+_PRS_SL         CMP     0, @R4
+                RBRA    _PRS_SE, Z
+                CMP     0x002F, @R4++
+                RBRA    _PRS_SL, !Z
+                MOVE    R4, R5
+                RBRA    _PRS_SL, 1
+_PRS_SE         MOVE    R0, R4                  ; PROF_PNAME + (id - HDF id)
+                SUB     PROF_HDF_ID, R4         ; x PROF_PN_LEN
+                MOVE    R4, R8
+                MOVE    PROF_PN_LEN, R9
+                SYSCALL(mulu, 1)                ; R11:R10 = R8 x R9
+                MOVE    R10, R6
+                ADD     PROF_PNAME, R6
+                MOVE    R6, R8                  ; R8: the name
+                MOVE    PROF_PN_LEN, R7         ; (at most PROF_PN_LEN - 1
+                SUB     1, R7                   ; characters: the menu line)
+_PRS_NC         CMP     0, @R5
+                RBRA    _PRS_NE, Z
+                MOVE    @R5++, @R6++
+                SUB     1, R7
+                RBRA    _PRS_NC, !Z
+_PRS_NE         MOVE    0, @R6
+                MOVE    R1, R10
+                MOVE    R2, R11
+                MOVE    R3, R12
+                MOVE    R0, R9
+                DECRB
+                OR      0x0004, SR              ; C=1
+                RET
+_PRS_NO         MOVE    R0, R9
+                MOVE    R1, R10
+                MOVE    R2, R11
+                MOVE    R3, R12
+                DECRB
+                AND     0xFFFB, SR              ; C=0
+                RET
+
+; _PR_PATHOF: the path of the file handle R8 (opened through HANDLE_DEV from
+; its current directory, FDH_EA set by FAT32$FILE_OPEN) -> PROF_PATH, C=1;
+; C=0 if it cannot be found or is longer than 127 characters. The names come
+; from directory listings (PROF_FDH as the directory handle, SHR_DE as the
+; entry): the file's own entry, then upwards through ".." - each directory
+; by its cluster in its parent. All registers preserved.
+_PR_PATHOF      SYSCALL(enter, 1)
+                MOVE    R8, R7                  ; R7: the file handle
+                MOVE    HANDLE_DEV, R6
+                ADD     FAT32$DEV_AD_1STCLUS_LO, R6
+                MOVE    @R6++, R0               ; R1:R0: the current directory
+                MOVE    @R6, R1                 ; (restored at the end)
+                MOVE    R0, R2                  ; R3:R2: the directory now
+                MOVE    R1, R3
+                MOVE    PROF_PATH, R4           ; R4: the path, built from
+                ADD     127, R4                 ; the end backwards
+                MOVE    0, @R4
+
+                ; the file's own name: the entry at its address
+                RSUB    _PP_OPEN, 1
+                RBRA    _PP_FAIL, !C
+_PP_FL          RSUB    _PP_NEXT, 1
+                RBRA    _PP_FAIL, !C
+                MOVE    PROF_FDH, R8            ; its address (behind its
+                ADD     FAT32$FDH_CLUSTER_LO, R8 ; short name slot)
+                MOVE    R7, R9
+                ADD     FAT32$FDH_EA_CL_LO, R9
+                CMP     @R8++, @R9++
+                RBRA    _PP_FL, !Z
+                CMP     @R8++, @R9++
+                RBRA    _PP_FL, !Z
+                MOVE    @R8++, R10              ; sector << 4 | slot
+                AND     0xFFFD, SR
+                SHL     4, R10
+                MOVE    @R8, R11
+                SUB     32, R11
+                SHR     5, R11
+                AND     0x000F, R11
+                OR      R11, R10
+                CMP     @R9, R10
+                RBRA    _PP_FL, !Z
+                RSUB    _PP_PUT, 1
+                RBRA    _PP_FAIL, !C
+
+                ; the directories up to the root
+_PP_UP          MOVE    HANDLE_DEV, R8
+                ADD     FAT32$DEV_RD_1STCLUS_LO, R8
+                CMP     @R8++, R2
+                RBRA    _PP_PAR, !Z
+                CMP     @R8, R3
+                RBRA    _PP_DONE, Z
+_PP_PAR         RSUB    _PP_OPEN, 1             ; its parent: ".."
+                RBRA    _PP_FAIL, !C
+_PP_DD          RSUB    _PP_NEXT, 1
+                RBRA    _PP_FAIL, !C
+                MOVE    SHR_DE, R8
+                CMP     0x002E, @R8++
+                RBRA    _PP_DD, !Z
+                CMP     0x002E, @R8++
+                RBRA    _PP_DD, !Z
+                CMP     0, @R8
+                RBRA    _PP_DD, !Z
+                MOVE    R2, R5                  ; R6:R5: the directory
+                MOVE    R3, R6
+                MOVE    SHR_DE, R8
+                ADD     FAT32$DE_CLUS_LO, R8
+                MOVE    @R8++, R2               ; the parent (0: the root)
+                MOVE    @R8, R3
+                MOVE    R2, R8
+                OR      R3, R8
+                RBRA    _PP_P1, !Z
+                MOVE    HANDLE_DEV, R8
+                ADD     FAT32$DEV_RD_1STCLUS_LO, R8
+                MOVE    @R8++, R2
+                MOVE    @R8, R3
+_PP_P1          RSUB    _PP_OPEN, 1             ; the directory's name in it
+                RBRA    _PP_FAIL, !C
+_PP_DN          RSUB    _PP_NEXT, 1
+                RBRA    _PP_FAIL, !C
+                MOVE    SHR_DE, R8
+                ADD     FAT32$DE_ATTRIB, R8
+                MOVE    @R8, R9
+                AND     FAT32$FA_DIR, R9
+                RBRA    _PP_DN, Z
+                MOVE    SHR_DE, R8
+                ADD     FAT32$DE_CLUS_LO, R8
+                CMP     @R8++, R5
+                RBRA    _PP_DN, !Z
+                CMP     @R8, R6
+                RBRA    _PP_DN, !Z
+                RSUB    _PP_PUT, 1
+                RBRA    _PP_FAIL, !C
+                RBRA    _PP_UP, 1
+
+                ; done: the path to the start of PROF_PATH
+_PP_DONE        MOVE    PROF_PATH, R8
+_PP_MV          MOVE    @R4++, R9
+                MOVE    R9, @R8++
+                CMP     0, R9
+                RBRA    _PP_MV, !Z
+                RSUB    _PP_END, 1
+                SYSCALL(leave, 1)
+                OR      0x0004, SR              ; C=1
+                RET
+_PP_FAIL        RSUB    _PP_END, 1
+                SYSCALL(leave, 1)
+                AND     0xFFFB, SR              ; C=0
+                RET
+
+; _PP_OPEN: the directory R3:R2 (caller's bank) as the current directory of
+; HANDLE_DEV, open in PROF_FDH. C=1 if OK. R8..R12 used.
+_PP_OPEN        MOVE    HANDLE_DEV, R8
+                ADD     FAT32$DEV_AD_1STCLUS_LO, R8
+                MOVE    R2, @R8++
+                MOVE    R3, @R8
+                MOVE    HANDLE_DEV, R8
+                MOVE    PROF_FDH, R9
+                RSUB    FAT32$DIR_OPEN, 1
+                CMP     0, R9
+                RBRA    _PPO_NO, !Z
+                OR      0x0004, SR
+                RET
+_PPO_NO         AND     0xFFFB, SR
+                RET
+
+; _PP_NEXT: the next entry (also hidden ones) -> SHR_DE. C=1 if there is one.
+; R8..R12 used.
+_PP_NEXT        MOVE    PROF_FDH, R8
+                MOVE    SHR_DE, R9
+                MOVE    FAT32$FA_ALL, R10
+                RSUB    FAT32$DIR_LIST, 1
+                CMP     0, R11
+                RBRA    _PPN_NO, !Z
+                CMP     0, R10
+                RBRA    _PPN_NO, Z
+                OR      0x0004, SR
+                RET
+_PPN_NO         AND     0xFFFB, SR
+                RET
+
+; _PP_PUT: "/" and the name in SHR_DE in front of the path at R4 (caller's
+; bank). C=0 if it does not fit. R8..R10 used.
+_PP_PUT         MOVE    SHR_DE, R8
+                SYSCALL(strlen, 1)              ; R9: its length
+                MOVE    R4, R10                 ; room: R4 - PROF_PATH
+                SUB     PROF_PATH, R10
+                SUB     1, R10
+                CMP     R9, R10
+                RBRA    _PPP_NO, N              ; (R9 > R10)
+                SUB     R9, R4
+                MOVE    R4, R10
+                MOVE    SHR_DE, R8
+_PPP_C          CMP     0, @R8
+                RBRA    _PPP_E, Z
+                MOVE    @R8++, @R10++
+                RBRA    _PPP_C, 1
+_PPP_E          SUB     1, R4
+                MOVE    0x002F, @R4
+                OR      0x0004, SR
+                RET
+_PPP_NO         AND     0xFFFB, SR
+                RET
+
+; _PP_END: the current directory of HANDLE_DEV back to R1:R0 (caller's bank);
+; the sector buffer is nobody's if PROF_FDH has it. R8, R9 used.
+_PP_END         MOVE    HANDLE_DEV, R8
+                ADD     FAT32$DEV_AD_1STCLUS_LO, R8
+                MOVE    R0, @R8++
+                MOVE    R1, @R8
+                MOVE    HANDLE_DEV, R8
+                ADD     FAT32$DEV_BUFFERED_FDH, R8
+                CMP     PROF_FDH, @R8
+                RBRA    _PPE_RET, !Z
+                MOVE    0, @R8
+_PPE_RET        RET
 #endif
 
 ; ----------------------------------------------------------------------------
@@ -7634,6 +7973,9 @@ FL_NOBAR        .BLOCK 1                        ; PROFILE_APPLY: FAST_LOAD witho
 PROF_FDH        .BLOCK FAT32$FDH_STRUCT_SIZE    ; PROFILE_APPLY: the Kickstart / HDF file
 PROF_PENDF      .BLOCK 1                        ; PROF_NAME: a name waits for the menu
 PROF_PEND       .BLOCK PROF_PEND_NUM            ; its path labels (0 = none), by ROM id
+PROF_PATH       .BLOCK 128                      ; a remembered path (cfg text)
+PROF_PNAME      .BLOCK 63                       ; PROF_PEND_NUM x PROF_PN_LEN:
+                                                ; the names of remembered files
 FL_BAR_TOTAL    .BLOCK 1                        ; FAST_LOAD progress bar: sectors
 FL_BAR_WIDTH    .BLOCK 1                        ; bar width in characters
 FL_BAR_ACC      .BLOCK 1                        ; Bresenham accumulator
@@ -7738,7 +8080,6 @@ SHR_PATH        .BLOCK 256                      ; one character per word
 SHR_DE          .BLOCK  FAT32$DE_STRUCT_SIZE    ; directory entry
 SHR_LOCKS       .BLOCK 512                      ; SHR_LOCKS_N x SHR_LOCK_SZ
 SHR_FILES       .BLOCK 192                      ; SHR_FILES_N x SHR_FILE_SZ
-SHR_PB          .BLOCK  FAT32$PB_SIZE           ; FAT32 write layer parameters
 SHR_NAME        .BLOCK 108                      ; a name for the write layer
 SHR_FDATE       .BLOCK 2                        ; the request time as FAT date,
                                                 ; time
@@ -7856,7 +8197,10 @@ HEAP            .BLOCK 1
 ; Megamiga 0.6.1: the shared folder writes (locks and open files grew, the
 ; write layer's parameter block, names, the larger device handles) - the
 ; combined total is 640 words smaller: 19328, stack margin 256 words.
-HEAP_SIZE       .EQU 15744                      ; 19328 - 3584 = 15744
+; Megamiga 0.6.1: text in the settings file (M2M-UPSTREAM cfg-strings: CFGS_*)
+; and the files a profile remembers (PROF_PATH, PROF_PNAME) added 705 words:
+; the combined total is 736 words smaller: 18592, stack margin 287 words.
+HEAP_SIZE       .EQU 15008                      ; 18592 - 3584 = 15008
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

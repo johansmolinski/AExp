@@ -356,6 +356,14 @@ _HLP_START      MOVE    OPTM_START, R8
                 MOVE    LOG_STR_CONFIG, R8
                 SYSCALL(puts, 1)
 
+                ; M2M-UPSTREAM cfg-strings: no text yet (see cfgstr.asm)
+                MOVE    CFGS_LEN, R1
+                MOVE    0, @R1
+                MOVE    CFGS_DIRTY, R1
+                MOVE    0, @R1
+                MOVE    CFGS_BUF, R1
+                MOVE    0, @R1
+
                 ; Is SAVE_SETTINGS (config.vhd) true?
                 ; If no, then we proceed with Case (b)
                 MOVE    M2M$RAMROM_DEV, R0
@@ -419,9 +427,12 @@ _HLP_CA_5       MOVE    R9, R8                  ; R9: file handle
                 RBRA    _HLP_CA_CCF, !Z         ; yes: corrupt config file
                 MOVE    R9, R8
                 ADD     FAT32$FDH_SIZE_LO, R8
-                CMP     R7, @R8                 ; filesize = menu size?
-                RBRA    _HLP_CA_CCF, !Z         ; no: corrupt config file
-                RBRA    _HLP_CA_6, 1            ; yes
+                ; M2M-UPSTREAM cfg-strings: text may follow the menu bytes
+                ; CMP     R7, @R8                 ; filesize = menu size?
+                ; RBRA    _HLP_CA_CCF, !Z         ; no: corrupt config file
+                CMP     R7, @R8                 ; filesize < menu size?
+                RBRA    _HLP_CA_CCF, N          ; yes: corrupt config file
+                RBRA    _HLP_CA_6, 1            ; no
 
 _HLP_CA_CCF     MOVE    LOG_STR_CFG_E4, R8      ; corrupt config file
                 RBRA    _HLP_CA_NCF, 1          ; use factory defaults
@@ -500,7 +511,8 @@ _HLP_CA_14      SUB     1, R3                   ; done reading config file?
                 CMP     16, R2
                 RBRA    _HLP_CA_9, !Z
 
-_HLP_CA_15      RBRA    _HLP_S3, 1              ; Case (a) successful
+_HLP_CA_15      RSUB    CFGS_LOAD, 1            ; M2M-UPSTREAM cfg-strings
+                RBRA    _HLP_S3, 1              ; Case (a) successful
 
                 ; ------------------------------------------------------------
                 ; Case (b): Use standard selectors from config.vhd
@@ -842,7 +854,14 @@ _ROSMS_NOWR     MOVE    LOG_STR_CFG_NO, R8
 _ROSMS_1        ; Iterate through the 16 windows of M2M$CFM_DATA to detect
                 ; changes because we only save if there are changes
                 RSUB    ROSM_CHANGES, 1
-                RBRA    _ROSMS_RET, !C
+                ; M2M-UPSTREAM cfg-strings: or if the text changed
+                ; RBRA    _ROSMS_RET, !C
+                RBRA    _ROSMS_1A, C
+                MOVE    CFGS_DIRTY, R8
+                CMP     0, @R8
+                RBRA    _ROSMS_RET, Z
+_ROSMS_1A       MOVE    CONFIG_FILE, R8         ; the file: menu bytes + text
+                RSUB    CFGS_SIZE, 1
 
                 ; Start at the beginning of the config file
                 MOVE    CONFIG_FILE, R8
@@ -922,9 +941,12 @@ _ROSMS_6        ADD     1, R3                   ; all menu items written?
                 CMP     16, R0
                 RBRA    _ROSMS_3, !Z
 
+                ; M2M-UPSTREAM cfg-strings: the text behind the menu bytes
+_ROSMS_7        RSUB    CFGS_WRITE, 1
+
                 ; Flush SD card write buffer (R8: file handle) to write
                 ; the file to the actual hardware.
-_ROSMS_7        SYSCALL(f32_fflush, 1)          ; flush SD write buffer
+                SYSCALL(f32_fflush, 1)          ; flush SD write buffer
                 CMP     0, R9                   ; error?
                 RBRA    _ROSMS_8, Z             ; no: proceed
                 MOVE    ERR_FATAL_ROSMF, R8     ; yes: fatal; R9: error code
@@ -933,6 +955,11 @@ _ROSMS_7        SYSCALL(f32_fflush, 1)          ; flush SD write buffer
                 ; Log success message
 _ROSMS_8        MOVE    LOG_STR_CFG_REM, R8
                 SYSCALL(puts, 1)
+                MOVE    CFGS_DIRTY, R8          ; M2M-UPSTREAM cfg-strings
+                MOVE    0, @R8
+                MOVE    CONFIG_DEVH, R8         ; (nobody owns the buffer:
+                ADD     FAT32$DEV_BUFFERED_FDH, R8  ; the other handles read
+                MOVE    0, @R8                  ;  their sectors again)
 
 _ROSMS_RET      SYSCALL(leave, 1)
                 RET
@@ -1888,3 +1915,6 @@ _OPTM_CBS_REPL  MOVE    R8, R10
 
                 RSUB    M2M$RPL_S, 1
                 RET
+
+; M2M-UPSTREAM cfg-strings
+#include "cfgstr.asm"

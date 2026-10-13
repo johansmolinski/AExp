@@ -1813,6 +1813,43 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   `~/aexp-builds/Megamiga-share-a`. Hardware test pending. Also on this branch: patch_firmware.* from `gayle`
   with the rodata RAM in block RAM; CORE_VERSION 0.6.1 (settings file
   megamiga-0.6.1.cfg, layout unchanged).
+- **Megamiga 0.6.1-dev, step 2: code banks, FAT32 write layer, SDCard:
+  read/write, profile files in the settings file (branch `share`,
+  2026-10-13).** (a) `cbf9e45`: menu toggle "SDCard: inserted"
+  (`C_MENU_SHARE` 8, line after the profile radio, default on), card-detect
+  debounce (~100 ms), event counters at `$DD4FEC`, MegamigaFS edits the DOS
+  list under LockDosList, `C:ShareInfo`. (b) `9674380` = M2M exception 16
+  `code-banks` (see AGENTS): 8 x 4K banks behind the window `0x9000`, RAM
+  from `0xA000`, `FAR_CALL` stubs, `make_banks.py`; ghdl TB `~/aexp-work/banks`
+  (3 HDL mutants killed). R6 build share-d: WNS +0.022, WHS +0.036, BRAM
+  111.5/365, saved in `~/aexp-builds/Megamiga-share-d`. (c) FAT32 write layer
+  in the QNICE submodule (`6162e43`): `fat32_write.asm` (bank 1: sessions,
+  both FATs + FSInfo, alloc/free, directory walker with entry addresses,
+  scan by name/LFN/alias, create (LFN + numeric tail), delete, set entry,
+  mkdir, rename) and `fat32_wfile.asm` (bank 2: write handle, put, advance,
+  sync, set size); errors EE24..EE29. Tests
+  `M2M/QNICE/test_programs/fat32_write` (phases A-E, spc 1/8/64; `mutants.py`
+  27 mutants: 25 killed in the last full run, the other two had stale
+  patterns after the bank split and were refreshed). (d) `7a0cc54`: SDCard:
+  read/write, protocol 2 (FINDOUTPUT/FINDUPDATE, WRITE, SETSIZE, DELETE,
+  RENAME, CREATEDIR, SETPROTECT, SETCOMMENT (accepted, ignored), SETDATE;
+  time from the handler's DateStamp at `$DD4FE0`); share fw harness 1216
+  records + fsck/mtools image check PASS at spc 1/8/64. (e) M2M exception
+  17 `cfg-strings` (see AGENTS): `key=value` text behind the menu bytes of
+  the settings file; `ROSM_SAVE` resizes it (entry date kept: W_SYNC leaves
+  the date alone when PB_DATE = 0); FAT32$FILE_OPEN now records the entry
+  address (`FDH_EA_*`, FDH 15 words). A manual Kickstart/HDF load makes the
+  selected profile remember the file by path (`B2_PROF_REMEMBER`: the path is
+  rebuilt from the entry address and `..` walks, at most 127 characters, or
+  the key is dropped); `PROFILE_APPLY` loads the remembered file first
+  (`B2_PROF_SAVED`, name in the menu line cut to 20 characters) and falls back
+  to `aNNN.rom`/`aNNN.hdf`/`aNNN-1.hdf`. HDF link files keep working (the link
+  file is what is remembered). Variables +705 words: release HEAP_SIZE 15008
+  (combined 18592, stack margin 287). ROM 29529/32768, banks 3932/3621/1276.
+  TB `~/aexp-work/cfgstr` (cfgstr.asm + the bank code in the emulator, spc
+  1/8/64, 168 records + final content, date and fsck; `mut.py` 14 mutants, 13
+  killed, `no_dotdot_check` equivalent: `..` is always slot 1). Firmware
+  patched onto share-d: `mega65_r6_cfg1.bit`. Hardware test pending.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the

@@ -100,9 +100,11 @@ Megamiga fork (johansmolinski):
   protocol at `$DD4000`, `share_buf.vhd`, QNICE device 0x010B, firmware
   `SHARE_STEP`, Amiga handler `CORE/share/MegamigaFS`, removable volume);
   "SDCard: inserted" menu toggle, card-detect debounce, `C:ShareInfo`; QNICE
-  code banks (M2M exception 16; the shared folder is bank 0). Next: the FAT32
-  write layer (`M2M/QNICE/monitor/fat32_write.asm`, tests in
-  `M2M/QNICE/test_programs/fat32_write`), read/write SDCard:, `.uaem`.
+  code banks (M2M exception 16; the shared folder is bank 0); the FAT32
+  write layer (`M2M/QNICE/monitor/fat32_write.asm` bank 1, `fat32_wfile.asm`
+  bank 2, tests in `M2M/QNICE/test_programs/fat32_write`), SDCard: read/write
+  (protocol 2); text in the settings file (M2M exception 17) so each profile
+  remembers its Kickstart and HDFs by path. Next: `.uaem`.
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
@@ -137,7 +139,7 @@ the dated facts.
 
 ## Repository map
 
-- `M2M/` — the framework. **NEVER modify**, with SIXTEEN sanctioned
+- `M2M/` — the framework. **NEVER modify**, with SEVENTEEN sanctioned
   exceptions (all testbeds for a later M2M upstream merge, tagged
   `M2M-UPSTREAM <name>` in-code, greppable): (1) `interlace` — new
   `video_fl_i` input through framework → av_pipeline → digital_pipeline
@@ -262,6 +264,17 @@ the dated facts.
   the bank ROM too. Bank 0 = the shared folder. ghdl TB `~/aexp-work/banks`.
   Added in the JS fork 2026-10-13; the user: this fork's M2M changes will not
   go upstream.
+  (17) `cfg-strings` — text in the settings file: behind the `OPTM_SIZE` menu
+  bytes the file may hold `key=value\n` lines (new `M2M/rom/cfgstr.asm`:
+  `CFGS_LOAD/FIND/GET/SET/SIZE/WRITE`, vars `CFGS_*` in `shell_vars.asm`,
+  `CFGS_MAX` 512 in `M2M/rom/sysdef.asm`). `HELP_MENU_INIT` accepts a file
+  >= `OPTM_SIZE` and loads the text; `ROSM_SAVE` also saves when only the text
+  changed (`CFGS_DIRTY`) and resizes the file with the FAT32 write layer
+  (`FAT32$W_SETSIZE`, entry date kept). Megamiga uses it for the files a
+  machine profile remembers (`a1200.hdf0=/amiga/disks/work.hdf`, keys
+  `a500|a600|a1200` x `.hdf0|.hdf1|.kick`; code in bank 2: `B2_PROF_*`).
+  A file with text is refused by older cores (size check). Emulator TB
+  `~/aexp-work/cfgstr` (+ `mut.py`). Added in the JS fork 2026-10-13.
   All other framework fixes
   go into `CORE/CORE.xdc` (constraints) or get documented for upstreaming.
   Git remote `upstream` = sy2002/MiSTer2MEGA65 (master = V2.0.1).

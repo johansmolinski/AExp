@@ -207,6 +207,10 @@ M2M$SDRAM           .EQU 0x0005     ; @TODO/RESERVED for future R4 boards
 
 M2M$SYS_INFO        .EQU 0x00FF     ; Device for System Info
 
+; M2M-UPSTREAM cfg-strings (cfgstr.asm): text in the settings file
+CFGS_MAX            .EQU 512        ; buffer size (words), and the most text:
+CFGS_MAXC           .EQU 511        ; CFGS_MAX - 1 characters
+
 M2M$RAMROM_4KWIN    .EQU 0xFFF5     ; 4k window selector
 M2M$RAMROM_DATA     .EQU 0x8000     ; 4k MMIO window to read/write
 
