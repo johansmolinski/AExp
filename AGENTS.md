@@ -98,7 +98,11 @@ Megamiga fork (johansmolinski):
 - 0.6.1-dev (branch `share`, from main without Gayle): shared folder - `/amiga`
   of the SD card as the read-only volume `SDCard:` (MiSTer's shared-folder
   protocol at `$DD4000`, `share_buf.vhd`, QNICE device 0x010B, firmware
-  `SHARE_STEP`, Amiga handler `CORE/share/MegamigaFS`, removable volume).
+  `SHARE_STEP`, Amiga handler `CORE/share/MegamigaFS`, removable volume);
+  "SDCard: inserted" menu toggle, card-detect debounce, `C:ShareInfo`; QNICE
+  code banks (M2M exception 16; the shared folder is bank 0). Next: the FAT32
+  write layer (`M2M/QNICE/monitor/fat32_write.asm`, tests in
+  `M2M/QNICE/test_programs/fat32_write`), read/write SDCard:, `.uaem`.
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
@@ -133,7 +137,7 @@ the dated facts.
 
 ## Repository map
 
-- `M2M/` — the framework. **NEVER modify**, with FIFTEEN sanctioned
+- `M2M/` — the framework. **NEVER modify**, with SIXTEEN sanctioned
   exceptions (all testbeds for a later M2M upstream merge, tagged
   `M2M-UPSTREAM <name>` in-code, greppable): (1) `interlace` — new
   `video_fl_i` input through framework → av_pipeline → digital_pipeline
@@ -247,6 +251,17 @@ the dated facts.
   develop-mode `.ORG` in `main.asm` is `0x9000`. The firmware gets the whole
   32,768-word ROM, the RAM gives up 4,096 words. Added in the JS fork
   2026-10-10, hardware-confirmed, NOT maintainer-approved yet.
+  (16) `code-banks` — firmware code beyond the 32K ROM: `qnice.vhd` maps a
+  4K-word code window at `0x9000`-`0x9FFF` in front of a block ROM of 8 banks
+  x 4K (`G_CODE_BANKS`, image `CORE/m2m-rom/m2m-banks.rom` via
+  `QNICE_CODE_BANKS` in globals.vhd; "" = no banks), selected by the register
+  `0xFFE6` (`M2M$CODE_BANK`); the RAM starts at `0xA000` (develop-mode `.ORG`
+  in `main.asm` too). Bank code is entered only through `FAR_CALL` stubs in the
+  fixed ROM (m2m-rom.asm); `make_rom.sh` (`make_banks.py`) splits the banks out
+  of the assembly and checks their marker words; `patch_firmware.sh` patches
+  the bank ROM too. Bank 0 = the shared folder. ghdl TB `~/aexp-work/banks`.
+  Added in the JS fork 2026-10-13; the user: this fork's M2M changes will not
+  go upstream.
   All other framework fixes
   go into `CORE/CORE.xdc` (constraints) or get documented for upstreaming.
   Git remote `upstream` = sy2002/MiSTer2MEGA65 (master = V2.0.1).
