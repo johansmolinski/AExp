@@ -230,7 +230,7 @@ ASM_RC=$?
 # later (in Vivado).
 #
 # qasm2rom serializes every word of the .out file in source order and ignores
-# addresses, so the words that ".ORG 0x9000" and ".ORG 0xFEE0" reserve for the
+# addresses, so the words that ".ORG 0xA000" and ".ORG 0xFED0" reserve for the
 # variables get appended to the ROM image as zero words. They land at ROM
 # addresses the CPU can never read, but they inflate the image and made a plain
 # "wc -l" report a full ROM ~600 words too early.
@@ -239,7 +239,8 @@ ASM_RC=$?
 # M2M/QNICE/vhdl/block_rom.vhd) loads file line N into ROM address N. So inside
 # the ROM the address of a record always equals its line number minus one, and
 # the ROM image is exactly the leading run of .out records for which that holds.
-# Everything after that run has to be a variable (address >= 0x9000); anything
+# Everything after that run has to be a code bank (0x9000-0x9FFF, Megamiga
+# code-banks) or a variable (address >= 0xA000); anything
 # else means the source layout changed in a way qasm2rom cannot serialize
 # correctly at all, so fail loudly instead of truncating something real.
 #
@@ -311,7 +312,7 @@ case "$EOR_ADDR" in
     0x[0-9A-Fa-f]*) ;;
     *)  echo "ERROR: END_OF_ROM not found in the label list of m2m-rom.lis."
         echo "       It has to stay the last ROM item, directly before the"
-        echo "       variables section (.ORG 0x9000) in m2m-rom.asm."
+        echo "       code banks (.ORG 0x9000) and variables (.ORG 0xA000) in m2m-rom.asm."
         exit 1 ;;
 esac
 
@@ -327,6 +328,11 @@ if [ "$(wc -l < m2m-rom.out | tr -d ' ')" -ne "$(wc -l < m2m-rom.rom | tr -d ' '
     echo "ERROR: m2m-rom.out and m2m-rom.rom differ in length; cannot map words to addresses."
     exit 1
 fi
+
+# Megamiga (M2M-UPSTREAM code-banks): the code banks behind the window 0x9000-0x9FFF
+# come after END_OF_ROM in the same assembly; make_banks.py sorts them out of the
+# .out/.rom pair into m2m-banks.rom (the image of the bank ROM, see there).
+python3 make_banks.py m2m-rom.out m2m-rom.rom "$ROM_WORDS" m2m-banks.rom || exit 1
 
 head -n "$ROM_WORDS" m2m-rom.rom > m2m-rom.rom.tmp && mv m2m-rom.rom.tmp m2m-rom.rom
 

@@ -211,6 +211,17 @@ M2M$RAMROM_4KWIN    .EQU 0xFFF5     ; 4k window selector
 M2M$RAMROM_DATA     .EQU 0x8000     ; 4k MMIO window to read/write
 
 ; ----------------------------------------------------------------------------
+; M2M-UPSTREAM code-banks (Megamiga 2026-10-13): firmware code beyond the
+; 32k-word ROM. M2M$CODE_BANK selects which 4k-word bank of the code bank ROM
+; (the image m2m-banks.rom, see CORE/m2m-rom/make_banks.py) the CPU sees in
+; the window M2M$CODE_WIN; the RAM starts at 0xA000. Call bank code only
+; through FAR_CALL stubs (see CORE/m2m-rom/m2m-rom.asm).
+; ----------------------------------------------------------------------------
+
+M2M$CODE_BANK       .EQU 0xFFE6     ; code bank in the window (0..7), R/W
+M2M$CODE_WIN        .EQU 0x9000     ; 4k code window 0x9000-0x9FFF (read-only)
+
+; ----------------------------------------------------------------------------
 ; Sysinfo device: Selectors and addresses
 ; ----------------------------------------------------------------------------
 

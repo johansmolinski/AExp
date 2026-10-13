@@ -19,6 +19,9 @@ use work.qnice_tools.all;
 entity QNICE is
 generic (
    G_FIRMWARE        : string;                           -- .rom file that baked into the core as firmware
+   -- M2M-UPSTREAM code-banks (Megamiga 2026-10-13): .rom file of the code bank ROM behind the window
+   -- 0x9000-0x9FFF (8 banks x 4k words, bank selected by 0xFFE6); "" = no code banks
+   G_CODE_BANKS      : string := "";
    G_VGA_DX          : natural;                          -- output screen width in pixel
    G_VGA_DY          : natural;                          -- ditto height
    G_FONT_DX         : natural;                          -- character width in pixel
@@ -179,6 +182,12 @@ signal sd_cd_ext                  : std_logic;
 
 -- M2M specific QNICE MMIO signals
 signal ramrom_en                 : std_logic;                        -- $8000 (M2M-UPSTREAM rom-32k)
+signal codewin_en                : std_logic;                        -- $9000 (M2M-UPSTREAM code-banks)
+signal codewin_data_out          : std_logic_vector(15 downto 0);
+signal code_bank_en              : std_logic;                        -- $FFE6 (M2M-UPSTREAM code-banks)
+signal code_bank_we              : std_logic;
+signal code_bank_data_out        : std_logic_vector(15 downto 0);
+signal reg_code_bank             : std_logic_vector(2 downto 0);
 signal ram_ce                    : std_logic;
 signal ramrom_we                 : std_logic;
 signal ramrom_data_out           : std_logic_vector(15 downto 0);
@@ -255,7 +264,9 @@ begin
                   cfm_addr_data_out          or
                   cfm_data_data_out          or
                   ramrom_dev_data_out        or
-                  ramrom_4kwin_data_out;
+                  ramrom_4kwin_data_out      or
+                  codewin_data_out           or      -- M2M-UPSTREAM code-banks
+                  code_bank_data_out;
 
    -- generate the general reset signal
    reset_ctl <= '1' when (reset_pre_pore = '1' or reset_post_pore = '1') else '0';
@@ -306,6 +317,29 @@ begin
          address              => cpu_addr(14 downto 0),
          data                 => rom_data_out
       );
+
+   -- M2M-UPSTREAM code-banks (Megamiga 2026-10-13): the code bank ROM. The QNICE address space is
+   -- 64k words and the firmware outgrew the 32k-word ROM, so the 4k-word window 0x9000-0x9FFF shows
+   -- one of 8 banks of 4k words, selected by the register 0xFFE6 (M2M$CODE_BANK). The CPU executes
+   -- and reads from it like from the ROM (falling edge, zero wait states); writes are ignored. The
+   -- firmware calls into a bank only through a FAR_CALL stub in the fixed ROM, see m2m-rom.asm.
+   -- The RAM gives up 0x9000-0x9FFF: it starts at 0xA000 now.
+   g_codebanks : if G_CODE_BANKS /= "" generate
+      codebanks : entity work.BROM
+         generic map
+         (
+            FILE_NAME            => G_CODE_BANKS
+         )
+         port map
+         (
+            CLK                  => clk50_i,
+            ce                   => codewin_en,
+            address              => reg_code_bank & cpu_addr(11 downto 0),
+            data                 => codewin_data_out
+         );
+   else generate
+      codewin_data_out <= (others => '0');
+   end generate g_codebanks;
 
    -- RAM: up to 64kB consisting of up to 32.000 16 bit words
    ram : entity work.BRAM
@@ -515,6 +549,7 @@ begin
    -- 0xFFE1: OSM x|y coordinates (in chars)
    -- 0xFFE2: OSM dx|dy width|height (in chars)
    -- 0xFFE3: ascal.vhd mode register
+   -- 0xFFE6: code bank shown in the code window 0x9000-0x9FFF (M2M-UPSTREAM code-banks)
    -- 0xFFE8: Low active realtime snapshot of the currently pressed keys (read-only)
    -- 0xFFF0 .. 0xFFF3: access 256-bit general purpose control flags via address/data pairs
    -- 0xFFF4 -- 0xFFF5: 4k-segmented access to RAMs, ROMs and similarily behaving devices
@@ -528,7 +563,15 @@ begin
    ramrom_data_out            <= ramrom_data_i when ramrom_en = '1' and ramrom_we = '0' else (others => '0');
 
    rom_en                     <= rom_en_maybe;
-   ram_ce                     <= ram_en and not ramrom_en;
+   -- ram_ce                     <= ram_en and not ramrom_en;
+   -- M2M-UPSTREAM code-banks: the code window 0x9000-0x9FFF is not RAM (without code banks it
+   -- stays unused: the firmware's RAM starts at 0xA000 either way)
+   codewin_en                 <= '1' when cpu_addr(15 downto 12) = x"9" and G_CODE_BANKS /= "" else '0';
+   ram_ce                     <= ram_en and not ramrom_en and not codewin_en;
+
+   code_bank_en               <= '1' when cpu_addr = x"FFE6" else '0';
+   code_bank_we               <= code_bank_en and cpu_data_dir and cpu_data_valid;
+   code_bank_data_out         <= x"000" & '0' & reg_code_bank when code_bank_en = '1' and code_bank_we = '0' else (others => '0');
 
    csr_en                     <= '1' when cpu_addr = x"FFE0" else '0';
    csr_we                     <= csr_en and cpu_data_dir and cpu_data_valid;
@@ -607,6 +650,9 @@ begin
             -- MMIO 4k-segmented access to RAMs, ROMs and similarily behaving devices
             ramrom_dev_o <= x"0000";
             reg_ramrom_4kwin <= 0;
+
+            -- M2M-UPSTREAM code-banks
+            reg_code_bank <= "000";
          else
             -- CSR register
             if csr_we then
@@ -650,6 +696,11 @@ begin
             end if;
             if ramrom_4kwin_we then
                reg_ramrom_4kwin <= to_integer(unsigned(cpu_data_out));
+            end if;
+
+            -- M2M-UPSTREAM code-banks
+            if code_bank_we then
+               reg_code_bank <= cpu_data_out(2 downto 0);
             end if;
          end if;
       end if;

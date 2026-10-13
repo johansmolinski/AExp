@@ -2,7 +2,8 @@
 #
 # Called by patch_firmware.sh (see there), not directly:
 #   vivado -mode batch -source patch_firmware.tcl -tclargs <dcp> <out.bit> \
-#          <rom ref.hex> <rom new.hex> <rodata ref.hex|-> <rodata new.hex|->
+#          <rom ref.hex> <rom new.hex> <rodata ref.hex|-> <rodata new.hex|-> \
+#          <banks ref.hex|-> <banks new.hex|->
 #
 # The .hex files hold one 16-bit word per line (patch_firmware.sh converts the .rom
 # files); patch_firmware.py computes the INIT strings. For each memory (the QNICE ROM, and the read-only data RAM when it is in
@@ -20,6 +21,8 @@ set rom_ref [lindex $argv 2]
 set rom_new [lindex $argv 3]
 set rod_ref [lindex $argv 4]
 set rod_new [lindex $argv 5]
+set bnk_ref [lindex $argv 6]
+set bnk_new [lindex $argv 7]
 
 # the shape of a cell: data bits per address (no parity), slice, address range, bits
 proc cell_shape {c} {
@@ -79,6 +82,16 @@ if {[patch_mem "QNICE ROM" "*QNICE_SOC/rom/*" $rom_ref $rom_new] == 0} {
 if {$rod_ref ne "-"} {
    if {[patch_mem "read-only data" "CORE/i_rodata/*" $rod_ref $rod_new] == 0} {
       error "PATCH: the read-only data changed, but it is not in block RAM in this build (LUT ROM): synthesize"
+   }
+}
+
+# Megamiga code banks (M2M-UPSTREAM code-banks): the bank ROM behind the window 0x9000
+if {$bnk_new ne "-"} {
+   if {$bnk_ref eq "-"} {
+      error "PATCH: the firmware has code banks, but this build was saved without a bank image (older build): synthesize"
+   }
+   if {[patch_mem "code banks" "*QNICE_SOC/codebanks/*" $bnk_ref $bnk_new] == 0} {
+      error "PATCH: the firmware has code banks, but this build has no code bank ROM: synthesize"
    }
 }
 

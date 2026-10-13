@@ -8,7 +8,7 @@
 #                                             bitstream of that build with it
 #
 #   save   copies the routed checkpoint, the bitstream and the firmware images the build
-#          was made with (m2m-rom.rom, m2m-rodata.rom) from CORE-<board>.runs into <dir>
+#          was made with (m2m-rom.rom, m2m-rodata.rom, m2m-banks.rom) from CORE-<board>.runs into <dir>
 #          (board: R3..R6, default R6). The next synthesis overwrites the runs folder, so
 #          save right after the build.
 #   patch  runs m2m-rom/make_rom.sh, then Vivado opens the saved checkpoint, checks that
@@ -51,6 +51,8 @@ save)
     cp "${dcp}" "${dir}/routed.dcp"
     cp "${impl}/mega65_${b}.bit" "${dir}/"
     cp m2m-rom/m2m-rom.rom m2m-rom/m2m-rodata.rom "${dir}/"
+    # code banks (M2M-UPSTREAM code-banks); builds before them have no bank image
+    if [ -f m2m-rom/m2m-banks.rom ]; then cp m2m-rom/m2m-banks.rom "${dir}/"; fi
     echo "saved ${board} build to ${dir}"
     ;;
 patch)
@@ -72,9 +74,16 @@ patch)
         tohex "${dir}/m2m-rodata.rom" "${tmp}/rod_ref.hex"; rref=${tmp}/rod_ref.hex
         tohex m2m-rom/m2m-rodata.rom "${tmp}/rod_new.hex"; rnew=${tmp}/rod_new.hex
     fi
+    bref=-; bnew=-
+    if [ -f m2m-rom/m2m-banks.rom ]; then
+        tohex m2m-rom/m2m-banks.rom "${tmp}/bnk_new.hex"; bnew=${tmp}/bnk_new.hex
+        if [ -f "${dir}/m2m-banks.rom" ]; then
+            tohex "${dir}/m2m-banks.rom" "${tmp}/bnk_ref.hex"; bref=${tmp}/bnk_ref.hex
+        fi
+    fi
     vivado -mode batch -nojournal -log "${tmp}/vivado.log" -source patch_firmware.tcl \
         -tclargs "${dir}/routed.dcp" "$(realpath -m "${out}")" "${tmp}/rom_ref.hex" \
-        "${tmp}/rom_new.hex" "${rref}" "${rnew}" > /dev/null 2>&1 || true
+        "${tmp}/rom_new.hex" "${rref}" "${rnew}" "${bref}" "${bnew}" > /dev/null 2>&1 || true
     grep "^PATCH:\|^ERROR" "${tmp}/vivado.log" || true
     grep -q "^PATCH: OK" "${tmp}/vivado.log" || die "patch failed, see ${tmp}/vivado.log"
     rm -rf "${tmp}"

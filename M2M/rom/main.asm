@@ -53,6 +53,7 @@ INIT_FIRMWARE   AND     0x00FF, SR              ; activate register bank 0
 
 #include "../../M2M/QNICE/dist_kit/monitor.def"
 
-                .ORG    0x9000                  ; start in RAM (M2M-UPSTREAM rom-32k: was 0x8000, now the 4k window)
+                .ORG    0xA000                  ; start in RAM (M2M-UPSTREAM rom-32k/code-banks: was 0x8000;
+                                                ; 0x8000 is the 4k window, 0x9000 the code window)
                 RBRA    START_FIRMWARE, 1
 #endif

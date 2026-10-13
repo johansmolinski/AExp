@@ -39,6 +39,10 @@ constant QNICE_RODATA_M2M         : string  := "../../../CORE/m2m-rom/m2m-rodata
 -- Select firmware here
 constant QNICE_FIRMWARE           : string  := QNICE_FIRMWARE_M2M;
 
+-- Megamiga (M2M-UPSTREAM code-banks): the code bank ROM of the firmware behind the window
+-- 0x9000-0x9FFF, built together with it by make_rom.sh (make_banks.py); "" = no code banks
+constant QNICE_CODE_BANKS         : string  := "../../../CORE/m2m-rom/m2m-banks.rom";
+
 ----------------------------------------------------------------------------------------------------------
 -- Clock Speed(s)
 --

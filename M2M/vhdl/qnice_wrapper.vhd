@@ -198,6 +198,7 @@ begin
    QNICE_SOC : entity work.QNICE
       generic map (
          G_FIRMWARE              => QNICE_FIRMWARE,
+         G_CODE_BANKS            => QNICE_CODE_BANKS,    -- M2M-UPSTREAM code-banks (globals.vhd)
          G_VGA_DX                => VGA_DX,
          G_VGA_DY                => VGA_DY,
          G_FONT_DX               => FONT_DX,

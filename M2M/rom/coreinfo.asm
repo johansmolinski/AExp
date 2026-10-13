@@ -250,7 +250,7 @@ LOG_HEAP1       SYSCALL(enter, 1)
                 ; @TODO: If the address of VAR$STACK_START in
                 ; ../QNICE/monitor/variables.asm changes, then we need to
                 ; adjust this value, too
-                MOVE    0xFEEB, R8
+                MOVE    0xFEE2, R8              ; (Megamiga: was 0xFEEB, see variables.asm)
 #endif
                 SUB     HEAP, R8
                 MOVE    R8, R2
