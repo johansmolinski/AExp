@@ -2010,8 +2010,21 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   card models, the back one in SPI mode; QNICE on both, engine on one while
   QNICE uses the other, removal/re-insertion), `~/aexp-work/sdcards`
   (emulator: the real sdcards.asm, browser helpers and dirbrowse.asm on two
-  images; 19 mutants, all killed); cfgstr/cfgold/fw-prof2/share-fw/fw-ide2/
-  fw-adf updated for two cards. The cfgstr update found that `_PR_PUTCARD`'s
+  images; 19 mutants, all killed). The HDL TB found that sdhost raises
+  e_busy only some clocks after the start pulse, so the engine's slot is
+  latched from the start pulse to the done pulse (9/9 mutants killed, incl. a
+  start to both controllers, caught by an engine write on the back card that
+  must not touch the tray card); `~/aexp-work/ideng/run2.sh` (tb_ide2: the IDE
+  engine through sdslots, card in the back slot, native + SPI): PASS.
+  Firmware TBs updated for two cards (two images, `-a1`): cfgstr (227
+  records, 37/37 mutants), cfgold (16 cases, 7/7), fw-prof2 (rewritten for the
+  explicit profiles: 7 steps across both cards, 14/15 - the survivor removes a
+  redundant SDC$SELDEV in FAST_LOAD), share/fw (PASS, all 12 new mutants
+  killed), fw-ide3 (new, from fw-ide2-old - fw-ide2 targets 0.7/Gayle: master
+  on card 0, slave on card 1, per-card drops, partitions by slot, the engine
+  slot bit; all new mutants killed), fw-adf (drives on both cards, per-card
+  teardown; 7/9 - the two SDC$SELDEV removals are redundant with this FAT32
+  library, kept as a guard). The cfgstr update found that `_PR_PUTCARD`'s
   terminator emptied a path of exactly the maximum length (fixed).
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
