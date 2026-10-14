@@ -352,7 +352,7 @@ strict: true
 theme:
   name: material
   language: en
-  logo: "_theme/logo.png"
+  logo: "_theme/logo-2.png"
   favicon: "_theme/favicon.png"
   font: false
   features:
@@ -398,7 +398,7 @@ copyright: "Megamiga · Amiga 500, 600 and 1200 for MEGA65 · based on AExp"
 def copy_theme(docs_dir: Path) -> None:
     theme_target = docs_dir / "_theme"
     theme_target.mkdir(parents=True, exist_ok=True)
-    for name in ("extra.css", "logo.png", "favicon.png"):
+    for name in ("extra.css", "logo-2.png", "favicon.png"):
         source = THEME_DIR / name
         if not source.is_file():
             raise DocumentationError(f"Theme asset is missing: {source}")
