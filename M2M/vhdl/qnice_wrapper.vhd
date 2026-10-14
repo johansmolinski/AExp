@@ -29,18 +29,29 @@ port (
    uart_txd_o                : out std_logic;                  -- send data
 
    -- Micro SD Connector (external slot at back of the cover)
-   sd_reset_o                : out std_logic;
+   -- M2M-UPSTREAM sd-host: CMD and DAT3..0 with output enables
    sd_clk_o                  : out std_logic;
-   sd_mosi_o                 : out std_logic;
-   sd_miso_i                 : in  std_logic;
+   sd_cmd_o                  : out std_logic;
+   sd_cmd_oe_o               : out std_logic;
+   sd_cmd_i                  : in  std_logic;
+   sd_dat_o                  : out std_logic_vector(3 downto 0);
+   sd_dat_oe_o               : out std_logic_vector(3 downto 0);
+   sd_dat_i                  : in  std_logic_vector(3 downto 0);
    sd_cd_i                   : in  std_logic;
 
    -- SD Connector (this is the slot at the bottom side of the case under the cover)
-   sd2_reset_o               : out std_logic;
    sd2_clk_o                 : out std_logic;
-   sd2_mosi_o                : out std_logic;
-   sd2_miso_i                : in  std_logic;
+   sd2_cmd_o                 : out std_logic;
+   sd2_cmd_oe_o              : out std_logic;
+   sd2_cmd_i                 : in  std_logic;
+   sd2_dat_o                 : out std_logic_vector(3 downto 0);
+   sd2_dat_oe_o              : out std_logic_vector(3 downto 0);
+   sd2_dat_i                 : in  std_logic_vector(3 downto 0);
    sd2_cd_i                  : in  std_logic;
+
+   -- M2M-UPSTREAM sd-host: the engine port of the SD host controller (sdhost_pkg)
+   sd_eng_i                  : in  std_logic_vector(74 downto 0);
+   sd_eng_o                  : out std_logic_vector(63 downto 0);
 
    paddle_i                  : in  std_logic_vector(3 downto 0);
    paddle_drain_o            : out std_logic;
@@ -214,18 +225,26 @@ begin
          uart_txd_o              => uart_txd_o,
 
          -- Micro SD Connector (external slot at back of the cover)
-         sd_reset_o              => sd_reset_o,
          sd_clk_o                => sd_clk_o,
-         sd_mosi_o               => sd_mosi_o,
-         sd_miso_i               => sd_miso_i,
+         sd_cmd_o                => sd_cmd_o,
+         sd_cmd_oe_o             => sd_cmd_oe_o,
+         sd_cmd_i                => sd_cmd_i,
+         sd_dat_o                => sd_dat_o,
+         sd_dat_oe_o             => sd_dat_oe_o,
+         sd_dat_i                => sd_dat_i,
          sd_cd_i                 => sd_cd_i,
 
          -- SD Connector (this is the slot at the bottom side of the case under the cover)
-         sd2_reset_o             => sd2_reset_o,
          sd2_clk_o               => sd2_clk_o,
-         sd2_mosi_o              => sd2_mosi_o,
-         sd2_miso_i              => sd2_miso_i,
+         sd2_cmd_o               => sd2_cmd_o,
+         sd2_cmd_oe_o            => sd2_cmd_oe_o,
+         sd2_cmd_i               => sd2_cmd_i,
+         sd2_dat_o               => sd2_dat_o,
+         sd2_dat_oe_o            => sd2_dat_oe_o,
+         sd2_dat_i               => sd2_dat_i,
          sd2_cd_i                => sd2_cd_i,
+         sd_eng_i                => sd_eng_i,
+         sd_eng_o                => sd_eng_o,
 
          -- QNICE public registers
          csr_reset_o             => qnice_csr_reset_o,

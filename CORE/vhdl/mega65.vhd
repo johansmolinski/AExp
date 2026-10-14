@@ -35,6 +35,7 @@ use work.types_pkg.all;
 use work.video_modes_pkg.all;
 use work.physical_fdd_pkg.all;
 use work.qnice_csr_pkg.all;
+use work.sdhost_pkg.all;
 
 entity MEGA65_Core is
 generic (
@@ -274,6 +275,11 @@ port (
    eth_rxer_i              : in    std_logic := '0';
    eth_txd_o               : out   std_logic_vector(1 downto 0);
    eth_txen_o              : out   std_logic;
+
+   -- The engine port of the SD host controller (M2M-UPSTREAM sd-host, sdhost_pkg; QNICE
+   -- clock domain): the IDE board's sector engine streams HDF sectors through it
+   sd_eng_i                : in    std_logic_vector(63 downto 0) := (others => '0');
+   sd_eng_o                : out   std_logic_vector(74 downto 0);
 
    -- C64 Expansion Port (aka Cartridge Port)
    cart_en_o               : out std_logic;  -- Enable port, active high
@@ -1820,7 +1826,27 @@ begin
          qnice_ce_i              => qnice_ide_ce,
          qnice_we_i              => qnice_dev_we_i,
          qnice_data_o            => qnice_ide_data,
-         qnice_wait_o            => qnice_ide_wait
+         qnice_wait_o            => qnice_ide_wait,
+
+         -- the sector engine on the SD host controller's engine port
+         sd_ready_i              => sd_eng_i(Q2C_READY),
+         sd_start_o              => sd_eng_o(C2Q_START),
+         sd_write_o              => sd_eng_o(C2Q_WRITE),
+         sd_addr_o               => sd_eng_o(C2Q_ADDR),
+         sd_count_o              => sd_eng_o(C2Q_COUNT),
+         sd_limit_o              => sd_eng_o(C2Q_LIMIT),
+         sd_abort_o              => sd_eng_o(C2Q_ABORT),
+         sd_busy_i               => sd_eng_i(Q2C_BUSY),
+         sd_done_i               => sd_eng_i(Q2C_DONE),
+         sd_error_i              => sd_eng_i(Q2C_ERROR),
+         sd_blk_i                => sd_eng_i(Q2C_BLK),
+         sd_rd_we_i              => sd_eng_i(Q2C_RDWE),
+         sd_rd_blk_i             => sd_eng_i(Q2C_RDBLK),
+         sd_rd_idx_i             => sd_eng_i(Q2C_RDIDX),
+         sd_rd_data_i            => sd_eng_i(Q2C_RDDATA),
+         sd_wr_blk_i             => sd_eng_i(Q2C_WRBLK),
+         sd_wr_idx_i             => sd_eng_i(Q2C_WRIDX),
+         sd_wr_data_o            => sd_eng_o(C2Q_WRDATA)
       ); -- i_ide_board
 
    ---------------------------------------------------------------------------------------------

@@ -2829,6 +2829,10 @@ _IDI_Z          MOVE    0, @R0++                ; device pointer: HDF_SELECT
                 RSUB    IDE_SEL, 1
                 MOVE    IDE_CTRL, R0
                 MOVE    0, @R0
+                MOVE    IDE_ENG_U0, R0          ; sector engine off
+                MOVE    IDE_ENG_OFF, @R0
+                MOVE    IDE_ENG_U1, R0
+                MOVE    IDE_ENG_OFF, @R0
                 MOVE    IDE_EVENTS, R0
                 MOVE    IDE_LAST_EV, R1
                 MOVE    @R0, @R1
@@ -2880,7 +2884,17 @@ _HDD_N          ADD     1, R3
                 CMP     0, R4
                 RBRA    _HDD_L, !Z
                 RSUB    IDE_SEL, 1
-                MOVE    IDE_CTRL, R8            ; keep the board bit
+                MOVE    R2, R4                  ; the sector engine of the
+                AND     1, R4                   ; dropped drives off
+                RBRA    _HDD_E1, Z
+                MOVE    IDE_ENG_U0, R4
+                MOVE    IDE_ENG_OFF, @R4
+_HDD_E1         MOVE    R2, R4
+                AND     2, R4
+                RBRA    _HDD_E2, Z
+                MOVE    IDE_ENG_U1, R4
+                MOVE    IDE_ENG_OFF, @R4
+_HDD_E2         MOVE    IDE_CTRL, R8            ; keep the board bit
                 MOVE    @R8, R8
                 AND     IDE_CTRL_BOARD, R8
                 RSUB    HDF_CTRL, 1
@@ -3082,6 +3096,8 @@ _HDFP_SLOT      MOVE    R1, @R4
                 ADD     1, R8
                 MOVE    HDF_UNITS, R1
                 OR      R8, @R1
+                MOVE    R6, R8                  ; READ/WRITE SECTORS in hardware
+                RSUB    HDF_ENG_SETUP, 1
 
                 ; drive present, board in the chain; restart the Amiga so that
                 ; Kickstart configures the board and boots from the disk
@@ -3362,6 +3378,79 @@ _HGI_D          MOVE    HDF_SPC_SHIFT, R0
                 MOVE    HDF_EXT_CHI, R0
                 MOVE    0, @R0
                 DECRB
+                RET
+
+; HDF_ENG_SETUP: hand drive R8 (the active disk state) to the sector engine of
+; the board (ide_engine.vhd), which then serves READ/WRITE SECTORS itself: a
+; partition by its first block, a file by an extent map that FAT32$FILE_MAP
+; writes straight into window 1 of the board (up to 511 extents). A file with
+; more extents stays with the firmware (IDE_STEP). The mode goes last: the
+; engine reads the other values when a command arrives.
+; Input: R8: drive. Output: none; R8..R12 clobbered. Selects the IDE device.
+HDF_ENG_SETUP   INCRB
+                MOVE    IDE_ENG_U0, R0          ; R0: the unit's registers
+                CMP     0, R8
+                RBRA    _HES_U, Z
+                MOVE    IDE_ENG_U1, R0
+_HES_U          MOVE    R8, R7                  ; R7: drive
+                RSUB    IDE_SEL, 1
+                MOVE    IDE_ENG_OFF, @R0        ; off while it changes
+                MOVE    HDF_SECT_LO, R1         ; sectors
+                MOVE    R0, R2
+                ADD     IDE_ENG_SECT, R2
+                MOVE    @R1++, @R2++            ; (HDF_SECT_HI follows)
+                MOVE    @R1, @R2
+                MOVE    HDF_PART, R1
+                CMP     0, @R1
+                RBRA    _HES_FILE, Z
+
+                ; a partition: base = its first block
+                MOVE    HDF_PST_LO, R1
+                MOVE    R0, R2
+                ADD     IDE_ENG_BASE, R2
+                MOVE    @R1, @R2++
+                MOVE    HDF_PST_HI, R1
+                MOVE    @R1, @R2++
+                MOVE    0, @R2                  ; shift
+                MOVE    IDE_ENG_PART, R3
+                RBRA    _HES_ON, 1
+
+                ; a file: the extent map into window 1
+_HES_FILE       MOVE    M2M$RAMROM_4KWIN, R1
+                MOVE    1, @R1
+                MOVE    HDF_FDH, R8
+                MOVE    IDE_ENG_MAP, R9
+                CMP     0, R7
+                RBRA    _HES_M0, Z
+                ADD     IDE_ENG_MAPW, R9
+_HES_M0         MOVE    IDE_ENG_MAPW, R10
+                RSUB    FAT32$FILE_MAP, 1       ; (not in the M2M syscall table)
+                MOVE    R9, R4                  ; R4: result
+                RSUB    IDE_SEL, 1
+                CMP     0, R4
+                RBRA    _HES_RET, !Z            ; too many extents: firmware
+                ; base = DEV_CLUSTER - (2 << shift): the block of cluster 0
+                MOVE    HDF_SPC_SHIFT, R1
+                MOVE    @R1, R1                 ; R1: shift
+                MOVE    2, R4
+                AND     0xFFFD, SR              ; (X = 0: shift in zeros)
+                SHL     R1, R4                  ; R4: 2 << shift
+                MOVE    HDF_FDH, R2
+                MOVE    @R2, R2                 ; (FAT32$FDH_DEVICE = 0)
+                ADD     FAT32$DEV_CLUSTER_LO, R2
+                MOVE    @R2++, R5               ; R6:R5: DEV_CLUSTER
+                MOVE    @R2, R6                 ; (FAT32$DEV_CLUSTER_HI)
+                SUB     R4, R5
+                SUBC    0, R6
+                MOVE    R0, R2
+                ADD     IDE_ENG_BASE, R2
+                MOVE    R5, @R2++
+                MOVE    R6, @R2++
+                MOVE    R1, @R2                 ; shift
+                MOVE    IDE_ENG_FILE, R3
+
+_HES_ON         MOVE    R3, @R0                 ; mode last
+_HES_RET        DECRB
                 RET
 
 ; IDE_RESET_AMIGA: a short reset pulse for the core (M2M$CSR reset bit)
@@ -4758,6 +4847,17 @@ IDE_NERR        .EQU    0x8111              ; error register to apply on commit
 IDE_NFLAGS      .EQU    0x8112              ; bit 0: data phase CPU -> buffer
 IDE_CTRL        .EQU    0x8118              ; see IDE_CTRL_*
 IDE_COMMIT_REG  .EQU    0x811F              ; any write: commit
+IDE_ENG_U0      .EQU    0x8120              ; sector engine, unit 0: mode, sectors
+IDE_ENG_U1      .EQU    0x8128              ; lo/hi, base lo/hi, shift (+0..+5)
+IDE_ENG_MODE    .EQU    0                   ; offsets in a unit's block
+IDE_ENG_SECT    .EQU    1
+IDE_ENG_BASE    .EQU    3
+IDE_ENG_SHIFT   .EQU    5
+IDE_ENG_OFF     .EQU    0                   ; modes: firmware (IDE_STEP)
+IDE_ENG_FILE    .EQU    1                   ; extent map of the file
+IDE_ENG_PART    .EQU    2                   ; partition of the card
+IDE_ENG_MAP     .EQU    0x8000              ; window 1: the extent maps (W only),
+IDE_ENG_MAPW    .EQU    2048                ; unit u at u * IDE_ENG_MAPW
 IDE_EV_CMD      .EQU    0x0001              ; a command was written
 IDE_EV_BUF      .EQU    0x0002              ; the CPU finished a buffer
 IDE_EV_RST      .EQU    0x0004              ; reset (Amiga, RESET instr., SRST)

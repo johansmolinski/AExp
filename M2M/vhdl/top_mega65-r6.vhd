@@ -62,23 +62,26 @@ port (
    kb_jtagen_o             : out   std_logic;
 
    -- Micro SD Connector (external slot at back of the cover)
-   sd_reset_o              : out   std_logic;
+   -- M2M-UPSTREAM sd-host (Megamiga 2026-10-14): CMD and DAT3..0 are bidirectional now
+   -- (native 4-bit SD bus); the names stay the SPI ones of the XDC: reset = DAT3/CS,
+   -- mosi = CMD, miso = DAT0
+   sd_reset_o              : inout std_logic;
    sd_clk_o                : out   std_logic;
-   sd_mosi_o               : out   std_logic;
-   sd_miso_i               : in    std_logic;
+   sd_mosi_o               : inout std_logic;
+   sd_miso_i               : inout std_logic;
    sd_cd_i                 : in    std_logic;
-   sd_d1_i                 : in    std_logic;
-   sd_d2_i                 : in    std_logic;
+   sd_d1_i                 : inout std_logic;
+   sd_d2_i                 : inout std_logic;
 
    -- SD Connector (this is the slot at the bottom side of the case under the cover)
-   sd2_reset_o             : out   std_logic;
+   sd2_reset_o             : inout std_logic;
    sd2_clk_o               : out   std_logic;
-   sd2_mosi_o              : out   std_logic;
-   sd2_miso_i              : in    std_logic;
+   sd2_mosi_o              : inout std_logic;
+   sd2_miso_i              : inout std_logic;
    sd2_cd_i                : in    std_logic;
    sd2_wp_i                : in    std_logic;
-   sd2_d1_i                : in    std_logic;
-   sd2_d2_i                : in    std_logic;
+   sd2_d1_i                : inout std_logic;
+   sd2_d2_i                : inout std_logic;
 
    -- Audio DAC. U37 = AK4432VT
    -- I2C address 0x19
@@ -456,7 +459,31 @@ architecture synthesis of mega65_r6 is
    signal qnice_ramrom_we        : std_logic;
    signal qnice_ramrom_wait      : std_logic;
 
+-- M2M-UPSTREAM sd-host: the SD lines of the framework and the engine port to the core
+signal sd_cmd_o, sd_cmd_oe, sd_cmd_in       : std_logic;
+signal sd_dat_o, sd_dat_oe, sd_dat_in       : std_logic_vector(3 downto 0);
+signal sd2_cmd_o, sd2_cmd_oe, sd2_cmd_in    : std_logic;
+signal sd2_dat_o, sd2_dat_oe, sd2_dat_in    : std_logic_vector(3 downto 0);
+signal sd_eng_c2q                           : std_logic_vector(74 downto 0);
+signal sd_eng_q2c                           : std_logic_vector(63 downto 0);
+
 begin
+
+   -- M2M-UPSTREAM sd-host (Megamiga 2026-10-14): tri-state drivers of the SD lines
+   sd_mosi_o   <= sd_cmd_o    when sd_cmd_oe     = '1' else 'Z';
+   sd_miso_i   <= sd_dat_o(0) when sd_dat_oe(0)  = '1' else 'Z';
+   sd_d1_i     <= sd_dat_o(1) when sd_dat_oe(1)  = '1' else 'Z';
+   sd_d2_i     <= sd_dat_o(2) when sd_dat_oe(2)  = '1' else 'Z';
+   sd_reset_o  <= sd_dat_o(3) when sd_dat_oe(3)  = '1' else 'Z';
+   sd_cmd_in   <= sd_mosi_o;
+   sd_dat_in   <= sd_reset_o & sd_d2_i & sd_d1_i & sd_miso_i;
+   sd2_mosi_o  <= sd2_cmd_o    when sd2_cmd_oe    = '1' else 'Z';
+   sd2_miso_i  <= sd2_dat_o(0) when sd2_dat_oe(0) = '1' else 'Z';
+   sd2_d1_i    <= sd2_dat_o(1) when sd2_dat_oe(1) = '1' else 'Z';
+   sd2_d2_i    <= sd2_dat_o(2) when sd2_dat_oe(2) = '1' else 'Z';
+   sd2_reset_o <= sd2_dat_o(3) when sd2_dat_oe(3) = '1' else 'Z';
+   sd2_cmd_in  <= sd2_mosi_o;
+   sd2_dat_in  <= sd2_reset_o & sd2_d2_i & sd2_d1_i & sd2_miso_i;
 
    -- Driver for the audio DAC (AK4432VT).
    i_audio : entity work.audio
@@ -620,16 +647,24 @@ begin
       kb_io0_o                => kb_io0_o,
       kb_io1_o                => kb_io1_o,
       kb_io2_i                => kb_io2_i,
-      sd_reset_o              => sd_reset_o,
       sd_clk_o                => sd_clk_o,
-      sd_mosi_o               => sd_mosi_o,
-      sd_miso_i               => sd_miso_i,
+      sd_cmd_o                => sd_cmd_o,
+      sd_cmd_oe_o             => sd_cmd_oe,
+      sd_cmd_i                => sd_cmd_in,
+      sd_dat_o                => sd_dat_o,
+      sd_dat_oe_o             => sd_dat_oe,
+      sd_dat_i                => sd_dat_in,
       sd_cd_i                 => sd_cd_i,
-      sd2_reset_o             => sd2_reset_o,
       sd2_clk_o               => sd2_clk_o,
-      sd2_mosi_o              => sd2_mosi_o,
-      sd2_miso_i              => sd2_miso_i,
+      sd2_cmd_o               => sd2_cmd_o,
+      sd2_cmd_oe_o            => sd2_cmd_oe,
+      sd2_cmd_i               => sd2_cmd_in,
+      sd2_dat_o               => sd2_dat_o,
+      sd2_dat_oe_o            => sd2_dat_oe,
+      sd2_dat_i               => sd2_dat_in,
       sd2_cd_i                => sd2_cd_i,
+      sd_eng_i                => sd_eng_c2q,
+      sd_eng_o                => sd_eng_q2c,
       joy_1_up_n_i            => fa_up_n_i,
       joy_1_down_n_i          => fa_down_n_i,
       joy_1_left_n_i          => fa_left_n_i,
@@ -1016,6 +1051,10 @@ begin
          eth_rxer_i              => eth_rxer_i,
          eth_txd_o               => eth_txd_o,
          eth_txen_o              => eth_txen_o,
+
+         -- M2M-UPSTREAM sd-host: the engine port of the SD host controller
+         sd_eng_i                => sd_eng_q2c,
+         sd_eng_o                => sd_eng_c2q,
 
          -- C64 Expansion Port (aka Cartridge Port)
          cart_en_o               => cart_en,      -- Enable port, active high

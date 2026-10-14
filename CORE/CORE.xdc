@@ -190,3 +190,9 @@ set_false_path -to   [get_ports {eth_txd_o[*] eth_txen_o eth_mdc_o eth_mdio_io e
 create_generated_clock -name cpu_clk [get_pins CORE/clk_gen/i_clk_main/CLKOUT2]
 set_max_delay -datapath_only -from [get_clocks cpu_clk] -to [get_clocks main_clk] 20.000
 set_max_delay -datapath_only -from [get_clocks main_clk] -to [get_clocks cpu_clk] 20.000
+
+## M2M-UPSTREAM sd-host (Megamiga 2026-10-14): the native 4-bit SD bus needs pull-ups on CMD and
+## DAT0..DAT3 of both slots (the lines float between transfers; in SPI mode they are harmless).
+## Port names are the SPI ones of the board XDCs: mosi = CMD, miso = DAT0, reset = DAT3.
+set_property -dict {PULLUP TRUE} [get_ports {sd_mosi_o sd_miso_i sd_d1_i sd_d2_i sd_reset_o}]
+set_property -dict {PULLUP TRUE} [get_ports {sd2_mosi_o sd2_miso_i sd2_d1_i sd2_d2_i sd2_reset_o}]

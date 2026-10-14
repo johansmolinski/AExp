@@ -42,6 +42,19 @@
 --   0x118        R/W: bit 0: master (unit 0) present, bit 1: board enabled (in the autoconfig
 --                     chain), bit 2: slave (unit 1) present (Megamiga 0.3.1)
 --   0x11F        W: commit (any value)
+--   0x120-0x125  R/W: sector engine, unit 0: mode (0 off, 1 file, 2 partition), sectors lo/hi,
+--                     base block lo/hi, log2(sectors per cluster) - see ide_engine.vhd
+--   0x128-0x12D  R/W: the same for unit 1
+--   0x130        R: bit 0 SD card ready (sdhost), bit 1 engine busy
+--   0x131-0x133  R: engine statistics: commands taken, forwarded to the firmware, failed
+--   window 1     W: the extent maps of the engine, unit u at u * 2048 (FAT32$FILE_MAP format)
+--
+-- Sector engine (Megamiga 0.6.1): READ SECTORS and WRITE SECTORS of a unit whose engine mode is
+-- not 0 are served by ide_engine.vhd (QNICE clock) through the engine port of the SD host
+-- controller, with rings of 8 sector buffers in block RAM in both directions: the Amiga reads
+-- sector n while sector n + 1.. arrive, and writes sector n + 1 while sector n goes to the
+-- card. The core side keeps DRQ up across sector boundaries while the ring has data (read) or
+-- room (write). The firmware never sees these commands (the engine forwards all others).
 --   window 0xFFFF   the M2M CSR (qnice_csr.vhd): the OSM HDF mount line is a manual
 --                CRT/ROM load into this device, so the Shell writes the file size and
 --                STATUS=OK and then waits for PARSEST. PREP_LOAD_IMAGE moves the read
@@ -101,7 +114,27 @@ entity ide_board is
       qnice_ce_i             : in  std_logic;
       qnice_we_i             : in  std_logic;
       qnice_data_o           : out std_logic_vector(15 downto 0);
-      qnice_wait_o           : out std_logic
+      qnice_wait_o           : out std_logic;
+
+      -- QNICE clock domain: the engine port of the SD host controller (sdhost.vhd)
+      sd_ready_i             : in  std_logic := '0';
+      sd_start_o             : out std_logic;
+      sd_write_o             : out std_logic;
+      sd_addr_o              : out std_logic_vector(31 downto 0);
+      sd_count_o             : out std_logic_vector(15 downto 0);
+      sd_limit_o             : out std_logic_vector(15 downto 0);
+      sd_abort_o             : out std_logic;
+      sd_busy_i              : in  std_logic := '0';
+      sd_done_i              : in  std_logic := '0';
+      sd_error_i             : in  std_logic := '0';
+      sd_blk_i               : in  std_logic := '0';
+      sd_rd_we_i             : in  std_logic := '0';
+      sd_rd_blk_i            : in  std_logic_vector(15 downto 0) := (others => '0');
+      sd_rd_idx_i            : in  std_logic_vector(8 downto 0) := (others => '0');
+      sd_rd_data_i           : in  std_logic_vector(7 downto 0) := (others => '0');
+      sd_wr_blk_i            : in  std_logic_vector(15 downto 0) := (others => '0');
+      sd_wr_idx_i            : in  std_logic_vector(8 downto 0) := (others => '0');
+      sd_wr_data_o           : out std_logic_vector(7 downto 0)
    );
 end entity ide_board;
 
@@ -187,6 +220,62 @@ architecture synthesis of ide_board is
    signal wb_addr   : unsigned(7 downto 0) := (others => '0');
    signal wb_data   : std_logic_vector(15 downto 0) := (others => '0');
 
+   ---------------------------------------------------------------------------------------
+   -- sector engine
+   ---------------------------------------------------------------------------------------
+
+   constant C_RING_LOG2 : natural := 3;
+   constant C_RING      : natural := 2 ** C_RING_LOG2;
+   constant C_ST_DRQ    : std_logic_vector(7 downto 0) := x"58";   -- DRDY | DSC | DRQ
+   constant C_ST_ERR    : std_logic_vector(7 downto 0) := x"51";   -- DRDY | DSC | ERR
+
+   -- core side
+   type t_emode is (EM_NONE, EM_READ, EM_WRITE);
+   signal e_mode      : t_emode := EM_NONE;
+   signal e_left      : unsigned(8 downto 0) := (others => '0');   -- sectors left for the CPU
+   signal e_avail     : unsigned(C_RING_LOG2 downto 0) := (others => '0');  -- read: full slots; write: free
+   signal e_slot      : unsigned(C_RING_LOG2 - 1 downto 0) := (others => '0');
+   signal e_err_pend  : std_logic := '0';
+   signal m_acc_d, m_acc_s, m_acc_seen : std_logic := '0';
+   signal m_accwr_d, m_accwr_s         : std_logic := '0';
+   signal m_rdy_d, m_rdy_s, m_rdy_seen : std_logic := '0';
+   signal m_fin_d, m_fin_s, m_fin_seen : std_logic := '0';
+   signal m_finerr_d, m_finerr_s       : std_logic := '0';
+   signal m_free_tgl  : std_logic := '0';
+   signal rr_q        : std_logic_vector(15 downto 0);
+   signal rr_addr     : std_logic_vector(C_RING_LOG2 + 7 downto 0);
+   signal wr_we       : std_logic := '0';
+   signal wr_addr     : std_logic_vector(C_RING_LOG2 + 7 downto 0) := (others => '0');
+
+   attribute async_reg : string;
+   attribute async_reg of m_acc_d, m_acc_s, m_accwr_d, m_accwr_s, m_rdy_d, m_rdy_s,
+                          m_fin_d, m_fin_s, m_finerr_d, m_finerr_s : signal is "true";
+
+   -- QNICE side
+   signal q_free_d, q_free_s : std_logic := '0';
+   attribute async_reg of q_free_d, q_free_s : signal is "true";
+   signal q_win1      : std_logic;
+   signal q_map_we_f  : std_logic := '0';                          -- falling-edge capture
+   signal q_map_wa    : std_logic_vector(11 downto 0) := (others => '0');
+   signal q_map_wd    : std_logic_vector(15 downto 0) := (others => '0');
+   signal q_map_we    : std_logic := '0';
+   signal q_cfg_wr_f, q_cfg_wr : std_logic := '0';
+   signal q_mode0, q_mode1   : std_logic_vector(1 downto 0) := "00";
+   signal q_sects0, q_sects1 : std_logic_vector(31 downto 0) := (others => '0');
+   signal q_base0, q_base1   : std_logic_vector(31 downto 0) := (others => '0');
+   signal q_shift0, q_shift1 : std_logic_vector(2 downto 0) := (others => '0');
+   signal q_map_addr  : std_logic_vector(11 downto 0);
+   signal q_map_q     : std_logic_vector(15 downto 0);
+   signal q_fw_cmd    : std_logic;
+   signal q_acc, q_acc_wr, q_rdy, q_fin, q_fin_err : std_logic;
+   signal q_rr_we     : std_logic;
+   signal q_rr_addr   : std_logic_vector(C_RING_LOG2 + 7 downto 0);
+   signal q_rr_data   : std_logic_vector(15 downto 0);
+   signal q_wr_addr   : std_logic_vector(C_RING_LOG2 + 7 downto 0);
+   signal q_wr_q      : std_logic_vector(15 downto 0);
+   signal q_st_acc, q_st_fwd, q_st_err : std_logic_vector(15 downto 0);
+   signal q_eng_busy  : std_logic;
+
    -- helpers
    function rd8(v : std_logic_vector(7 downto 0)) return std_logic_vector is
    begin
@@ -215,6 +304,8 @@ begin
       variable reg       : natural range 0 to 7;
       variable present   : boolean;
       variable byte      : std_logic_vector(7 downto 0);
+      variable va        : unsigned(C_RING_LOG2 downto 0);   -- e_avail of this clock
+      variable e_sect    : boolean;                           -- the CPU finished a sector
 
       procedure buffer_done is
       begin
@@ -230,10 +321,27 @@ begin
          ptr      <= (others => '0');
          phase_wr <= '0';
          dly_rst  <= C_EVT_DELAY;
+         e_mode   <= EM_NONE;
       end procedure;
    begin
       if rising_edge(clk_i) then
-         wb_we <= '0';
+         wb_we  <= '0';
+         wr_we  <= '0';
+         e_sect := false;
+
+         -- sector engine handshake (single-bit toggles from the QNICE domain)
+         m_acc_d    <= q_acc;     m_acc_s    <= m_acc_d;
+         m_accwr_d  <= q_acc_wr;  m_accwr_s  <= m_accwr_d;
+         m_rdy_d    <= q_rdy;     m_rdy_s    <= m_rdy_d;
+         m_fin_d    <= q_fin;     m_fin_s    <= m_fin_d;
+         m_finerr_d <= q_fin_err; m_finerr_s <= m_finerr_d;
+         va := e_avail;
+         if m_rdy_s /= m_rdy_seen then           -- read: a sector more; write: a slot free
+            m_rdy_seen <= m_rdy_s;
+            if e_mode /= EM_NONE then
+               va := va + 1;
+            end if;
+         end if;
 
          -- delayed event toggles
          if dly_cmd = 1 then evt_cmd <= not evt_cmd; end if;
@@ -310,7 +418,13 @@ begin
                            else
                               case reg is
                                  when 0 =>
-                                    if status(C_DRQ) = '1' and phase_wr = '0' then
+                                    if status(C_DRQ) = '1' and phase_wr = '0' and e_mode = EM_READ then
+                                       rdata <= rr_q;           -- the sector engine's ring
+                                       ptr   <= ptr + 1;
+                                       if ptr = 255 then
+                                          e_sect := true;
+                                       end if;
+                                    elsif status(C_DRQ) = '1' and phase_wr = '0' then
                                        rdata <= rd_buf(to_integer(ptr));
                                        ptr   <= ptr + 1;
                                        if ptr = 255 then
@@ -345,7 +459,13 @@ begin
                                  wb_addr <= ptr;
                                  wb_data <= data_i;
                                  ptr     <= ptr + 1;
-                                 if ptr = 255 then
+                                 if e_mode = EM_WRITE then
+                                    wr_we   <= '1';        -- the sector engine's ring
+                                    wr_addr <= std_logic_vector(e_slot) & std_logic_vector(ptr);
+                                    if ptr = 255 then
+                                       e_sect := true;
+                                    end if;
+                                 elsif ptr = 255 then
                                     buffer_done;
                                  end if;
                               end if;
@@ -407,6 +527,83 @@ begin
                   bus_state <= B_IDLE;
                end if;
          end case;
+
+         ---------------------------------------------------------------------------------
+         -- sector engine: command taken, sectors, completion
+         ---------------------------------------------------------------------------------
+         if m_acc_s /= m_acc_seen then
+            m_acc_seen <= m_acc_s;
+            if status(C_BSY) = '1' and e_mode = EM_NONE then
+               if tf_scnt = x"00" then
+                  e_left <= to_unsigned(256, 9);
+               else
+                  e_left <= resize(unsigned(tf_scnt), 9);
+               end if;
+               e_slot     <= (others => '0');
+               ptr        <= (others => '0');
+               e_err_pend <= '0';
+               if m_accwr_s = '1' then
+                  e_mode   <= EM_WRITE;
+                  va       := to_unsigned(C_RING, C_RING_LOG2 + 1);
+                  status   <= C_ST_DRQ;
+                  phase_wr <= '1';
+               else
+                  e_mode   <= EM_READ;
+                  va       := (others => '0');
+                  phase_wr <= '0';
+               end if;
+            end if;
+         end if;
+
+         if m_fin_s /= m_fin_seen then
+            m_fin_seen <= m_fin_s;
+            if e_mode = EM_WRITE then
+               if m_finerr_s = '1' then
+                  status <= C_ST_ERR;
+                  error  <= x"40";                -- UNC
+               else
+                  status <= C_ST_READY;
+               end if;
+               e_mode <= EM_NONE;
+            elsif e_mode = EM_READ and m_finerr_s = '1' then
+               e_err_pend <= '1';
+            end if;
+         end if;
+
+         if e_sect then
+            -- the CPU read (read) or filled (write) the sector of slot e_slot
+            e_slot     <= e_slot + 1;
+            m_free_tgl <= not m_free_tgl;
+            va         := va - 1;
+            e_left     <= e_left - 1;
+            if e_left = 1 then
+               if e_mode = EM_READ then
+                  status <= C_ST_READY;           -- all data delivered
+                  e_mode <= EM_NONE;
+               else
+                  status <= C_ST_BUSY;            -- until the last sector is on the card
+               end if;
+            elsif va /= 0 and not (e_mode = EM_READ and e_err_pend = '1') then
+               null;                              -- DRQ stays, ptr wrapped to 0
+            else
+               status <= C_ST_BUSY;
+            end if;
+         elsif e_mode = EM_READ and status(C_BSY) = '1' then
+            if e_err_pend = '1' then
+               status <= C_ST_ERR;
+               error  <= x"40";                   -- UNC
+               e_mode <= EM_NONE;
+            elsif va /= 0 then
+               status   <= C_ST_DRQ;
+               ptr      <= (others => '0');
+               phase_wr <= '0';
+            end if;
+         elsif e_mode = EM_WRITE and status(C_BSY) = '1' and e_left /= 0 and va /= 0 then
+            status   <= C_ST_DRQ;
+            ptr      <= (others => '0');
+            phase_wr <= '1';
+         end if;
+         e_avail <= va;
 
          if rst_i = '1' then
             bus_state   <= B_IDLE;
@@ -494,11 +691,144 @@ begin
       ); -- i_cdc_to_qnice
 
    ---------------------------------------------------------------------------------------
+   -- Sector engine (QNICE clock) and its rings
+   ---------------------------------------------------------------------------------------
+
+   -- read ring: the engine writes (QNICE clock), the CPU reads (core clock)
+   rr_addr <= std_logic_vector(e_slot) & std_logic_vector(ptr);
+
+   i_rring : entity work.tdp_ram
+      generic map (
+         ADDR_WIDTH => C_RING_LOG2 + 8,
+         DATA_WIDTH => 16
+      )
+      port map (
+         clock_a   => qnice_clk_i,
+         address_a => q_rr_addr,
+         data_a    => q_rr_data,
+         wren_a    => q_rr_we,
+         q_a       => open,
+         clock_b   => clk_i,
+         address_b => rr_addr,
+         data_b    => (others => '0'),
+         wren_b    => '0',
+         q_b       => rr_q
+      ); -- i_rring
+
+   -- write ring: the CPU writes (core clock), the engine reads (QNICE clock)
+   i_wring : entity work.tdp_ram
+      generic map (
+         ADDR_WIDTH => C_RING_LOG2 + 8,
+         DATA_WIDTH => 16
+      )
+      port map (
+         clock_a   => clk_i,
+         address_a => wr_addr,
+         data_a    => wb_data,
+         wren_a    => wr_we,
+         q_a       => open,
+         clock_b   => qnice_clk_i,
+         address_b => q_wr_addr,
+         data_b    => (others => '0'),
+         wren_b    => '0',
+         q_b       => q_wr_q
+      ); -- i_wring
+
+   -- the extent maps: the firmware writes (window 1), the engine reads
+   i_map : entity work.tdp_ram
+      generic map (
+         ADDR_WIDTH => 12,
+         DATA_WIDTH => 16
+      )
+      port map (
+         clock_a   => qnice_clk_i,
+         address_a => q_map_wa,
+         data_a    => q_map_wd,
+         wren_a    => q_map_we,
+         q_a       => open,
+         clock_b   => qnice_clk_i,
+         address_b => q_map_addr,
+         data_b    => (others => '0'),
+         wren_b    => '0',
+         q_b       => q_map_q
+      ); -- i_map
+
+   -- the core side's free toggle into the QNICE domain
+   q_sync_proc : process (qnice_clk_i)
+   begin
+      if rising_edge(qnice_clk_i) then
+         q_free_d <= m_free_tgl;
+         q_free_s <= q_free_d;
+         -- writes captured on the falling edge, applied on the rising one
+         q_map_we <= q_map_we_f;
+         q_cfg_wr <= q_cfg_wr_f;
+      end if;
+   end process q_sync_proc;
+
+   i_engine : entity work.ide_engine
+      generic map (
+         G_RING_LOG2 => C_RING_LOG2
+      )
+      port map (
+         clk_i        => qnice_clk_i,
+         rst_i        => qnice_rst_i,
+         tf_i         => q_tf,
+         cmd_tgl_i    => q_events(0),
+         rst_tgl_i    => q_events(2),
+         fw_cmd_tgl_o => q_fw_cmd,
+         cfg_mode0_i  => q_mode0,
+         cfg_mode1_i  => q_mode1,
+         cfg_sects0_i => q_sects0,
+         cfg_sects1_i => q_sects1,
+         cfg_base0_i  => q_base0,
+         cfg_base1_i  => q_base1,
+         cfg_shift0_i => q_shift0,
+         cfg_shift1_i => q_shift1,
+         cfg_wr_i     => q_cfg_wr,
+         map_addr_o   => q_map_addr,
+         map_data_i   => q_map_q,
+         acc_tgl_o    => q_acc,
+         acc_wr_o     => q_acc_wr,
+         rdy_tgl_o    => q_rdy,
+         fin_tgl_o    => q_fin,
+         fin_err_o    => q_fin_err,
+         free_tgl_i   => q_free_s,
+         rring_we_o   => q_rr_we,
+         rring_addr_o => q_rr_addr,
+         rring_data_o => q_rr_data,
+         wring_addr_o => q_wr_addr,
+         wring_data_i => q_wr_q,
+         st_acc_o     => q_st_acc,
+         st_fwd_o     => q_st_fwd,
+         st_err_o     => q_st_err,
+         busy_o       => q_eng_busy,
+         sd_ready_i   => sd_ready_i,
+         sd_start_o   => sd_start_o,
+         sd_write_o   => sd_write_o,
+         sd_addr_o    => sd_addr_o,
+         sd_count_o   => sd_count_o,
+         sd_limit_o   => sd_limit_o,
+         sd_abort_o   => sd_abort_o,
+         sd_busy_i    => sd_busy_i,
+         sd_done_i    => sd_done_i,
+         sd_error_i   => sd_error_i,
+         sd_blk_i     => sd_blk_i,
+         sd_rd_we_i   => sd_rd_we_i,
+         sd_rd_blk_i  => sd_rd_blk_i,
+         sd_rd_idx_i  => sd_rd_idx_i,
+         sd_rd_data_i => sd_rd_data_i,
+         sd_wr_blk_i  => sd_wr_blk_i,
+         sd_wr_idx_i  => sd_wr_idx_i,
+         sd_wr_data_o => sd_wr_data_o
+      ); -- i_engine
+
+   ---------------------------------------------------------------------------------------
    -- Firmware interface (QNICE clock)
    ---------------------------------------------------------------------------------------
 
    q_bufaddr    <= unsigned(qnice_addr_i(7 downto 0));
    q_win0       <= '1' when qnice_addr_i(27 downto 12) = x"0000" else '0';
+   q_win1       <= '1' when qnice_addr_i(27 downto 12) = x"0001" else '0';
    q_reg_ce     <= qnice_ce_i and q_win0;
 
    -- the M2M CSR in window 0xFFFF: answers READY as soon as the Shell reports the file
@@ -531,6 +861,13 @@ begin
    qnice_write_proc : process (qnice_clk_i)
    begin
       if falling_edge(qnice_clk_i) then
+         q_map_we_f <= '0';
+         q_cfg_wr_f <= '0';
+         if qnice_ce_i = '1' and qnice_we_i = '1' and q_win1 = '1' then
+            q_map_we_f <= '1';
+            q_map_wa   <= qnice_addr_i(11 downto 0);
+            q_map_wd   <= qnice_data_i;
+         end if;
          if q_reg_ce = '1' and qnice_we_i = '1' then
             if qnice_addr_i(8) = '0' then
                rd_buf(to_integer(q_bufaddr)) <= qnice_data_i;
@@ -546,12 +883,29 @@ begin
                   when x"17" => q_ndevh  <= qnice_data_i(7 downto 0);
                   when x"18" => q_ctrl   <= qnice_data_i(2 downto 0);
                   when x"1F" => q_commit <= not q_commit;
+                  when x"20" => q_mode0  <= qnice_data_i(1 downto 0);
+                  when x"21" => q_sects0(15 downto 0)  <= qnice_data_i;
+                  when x"22" => q_sects0(31 downto 16) <= qnice_data_i;
+                  when x"23" => q_base0(15 downto 0)   <= qnice_data_i;
+                  when x"24" => q_base0(31 downto 16)  <= qnice_data_i;
+                  when x"25" => q_shift0 <= qnice_data_i(2 downto 0);
+                  when x"28" => q_mode1  <= qnice_data_i(1 downto 0);
+                  when x"29" => q_sects1(15 downto 0)  <= qnice_data_i;
+                  when x"2A" => q_sects1(31 downto 16) <= qnice_data_i;
+                  when x"2B" => q_base1(15 downto 0)   <= qnice_data_i;
+                  when x"2C" => q_base1(31 downto 16)  <= qnice_data_i;
+                  when x"2D" => q_shift1 <= qnice_data_i(2 downto 0);
                   when others => null;
                end case;
+               if qnice_addr_i(7 downto 4) = x"2" then
+                  q_cfg_wr_f <= '1';
+               end if;
             end if;
          end if;
          if qnice_rst_i = '1' then
-            q_ctrl <= "000";
+            q_ctrl  <= "000";
+            q_mode0 <= "00";
+            q_mode1 <= "00";
          end if;
       end if;
    end process qnice_write_proc;
@@ -569,7 +923,7 @@ begin
             d := wr_buf(to_integer(q_bufaddr));
          else
             case qnice_addr_i(7 downto 0) is
-               when x"00" => d(3 downto 0) := q_events;
+               when x"00" => d(3 downto 0) := q_events(3 downto 1) & q_fw_cmd;
                when x"01" => d(7 downto 0) := q_tf( 7 downto  0);
                when x"02" => d(7 downto 0) := q_tf(15 downto  8);
                when x"03" => d(7 downto 0) := q_tf(23 downto 16);
@@ -586,6 +940,22 @@ begin
                when x"16" => d(7 downto 0) := q_nlba2;
                when x"17" => d(7 downto 0) := q_ndevh;
                when x"18" => d(2 downto 0) := q_ctrl;
+               when x"20" => d(1 downto 0) := q_mode0;
+               when x"21" => d := q_sects0(15 downto 0);
+               when x"22" => d := q_sects0(31 downto 16);
+               when x"23" => d := q_base0(15 downto 0);
+               when x"24" => d := q_base0(31 downto 16);
+               when x"25" => d(2 downto 0) := q_shift0;
+               when x"28" => d(1 downto 0) := q_mode1;
+               when x"29" => d := q_sects1(15 downto 0);
+               when x"2A" => d := q_sects1(31 downto 16);
+               when x"2B" => d := q_base1(15 downto 0);
+               when x"2C" => d := q_base1(31 downto 16);
+               when x"2D" => d(2 downto 0) := q_shift1;
+               when x"30" => d(1 downto 0) := q_eng_busy & sd_ready_i;
+               when x"31" => d := q_st_acc;
+               when x"32" => d := q_st_fwd;
+               when x"33" => d := q_st_err;
                when others => null;
             end case;
          end if;

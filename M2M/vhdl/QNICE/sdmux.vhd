@@ -10,6 +10,12 @@
 -- The smart multiplexer also makes sure that the QNICE SD card controller is
 -- being reset as soon as the SD card is switched. 
 --
+-- M2M-UPSTREAM sd-host (Megamiga 2026-10-14): the lines are no longer SPI-only.
+-- CMD and DAT3..DAT0 each have an output, an output enable and an input, so
+-- that sdhost.vhd can use the native 4-bit SD bus (in SPI mode CMD = MOSI,
+-- DAT0 = MISO, DAT3 = CS). The inactive slot gets what it got before: clock
+-- low, CS (DAT3) high, CMD (MOSI) low, the other lines released.
+--
 -- CAVEAT: RIGHT NOW WE CANNOT DETECT THE TRAY SD CARD on R3 machines. This
 -- is a PCB bug and it has been fixed on R3A machines.
 --
@@ -36,24 +42,33 @@ entity sdmux is
       
       -- interface to bottom tray's SD card
       sd_tray_detect_i  : in std_logic;   -- low active
-      sd_tray_reset_o   : out std_logic;
       sd_tray_clk_o     : out std_logic;
-      sd_tray_mosi_o    : out std_logic;
-      sd_tray_miso_i    : in std_logic;
-      
+      sd_tray_cmd_o     : out std_logic;
+      sd_tray_cmd_oe_o  : out std_logic;
+      sd_tray_cmd_i     : in std_logic;
+      sd_tray_dat_o     : out std_logic_vector(3 downto 0);
+      sd_tray_dat_oe_o  : out std_logic_vector(3 downto 0);
+      sd_tray_dat_i     : in std_logic_vector(3 downto 0);
+
       -- interface to the SD card in the back slot
       sd_back_detect_i  : in std_logic;   -- low active
-      sd_back_reset_o   : out std_logic;
       sd_back_clk_o     : out std_logic;
-      sd_back_mosi_o    : out std_logic;
-      sd_back_miso_i    : in std_logic;
-      
+      sd_back_cmd_o     : out std_logic;
+      sd_back_cmd_oe_o  : out std_logic;
+      sd_back_cmd_i     : in std_logic;
+      sd_back_dat_o     : out std_logic_vector(3 downto 0);
+      sd_back_dat_oe_o  : out std_logic_vector(3 downto 0);
+      sd_back_dat_i     : in std_logic_vector(3 downto 0);
+
       -- interface to the QNICE SD card controller
       ctrl_reset_o      : out std_logic;  -- high active; it is important that sdmux controls the QNICE controller's reset
-      ctrl_sd_reset_i   : in std_logic;
-      ctrl_sd_clk_i     : in std_logic;
-      ctrl_sd_mosi_i    : in std_logic;
-      ctrl_sd_miso_o    : out std_logic
+      ctrl_clk_i        : in std_logic;
+      ctrl_cmd_i        : in std_logic;
+      ctrl_cmd_oe_i     : in std_logic;
+      ctrl_cmd_o        : out std_logic;
+      ctrl_dat_i        : in std_logic_vector(3 downto 0);
+      ctrl_dat_oe_i     : in std_logic_vector(3 downto 0);
+      ctrl_dat_o        : out std_logic_vector(3 downto 0)
    );
 end sdmux;
 
@@ -91,23 +106,33 @@ begin
    connect_sd_cards : process(all)
    begin
       if active = '0' then
-         sd_tray_reset_o   <= ctrl_sd_reset_i;
-         sd_tray_clk_o     <= ctrl_sd_clk_i;
-         sd_tray_mosi_o    <= ctrl_sd_mosi_i;
-         ctrl_sd_miso_o    <= sd_tray_miso_i;
-         
-         sd_back_reset_o   <= '1';
+         sd_tray_clk_o     <= ctrl_clk_i;
+         sd_tray_cmd_o     <= ctrl_cmd_i;
+         sd_tray_cmd_oe_o  <= ctrl_cmd_oe_i;
+         sd_tray_dat_o     <= ctrl_dat_i;
+         sd_tray_dat_oe_o  <= ctrl_dat_oe_i;
+         ctrl_cmd_o        <= sd_tray_cmd_i;
+         ctrl_dat_o        <= sd_tray_dat_i;
+
          sd_back_clk_o     <= '0';
-         sd_back_mosi_o    <= '0';
+         sd_back_cmd_o     <= '0';
+         sd_back_cmd_oe_o  <= '1';
+         sd_back_dat_o     <= "1111";
+         sd_back_dat_oe_o  <= "1000";
       else
-         sd_back_reset_o   <= ctrl_sd_reset_i;
-         sd_back_clk_o     <= ctrl_sd_clk_i;
-         sd_back_mosi_o    <= ctrl_sd_mosi_i;
-         ctrl_sd_miso_o    <= sd_back_miso_i;
-         
-         sd_tray_reset_o   <= '1';
+         sd_back_clk_o     <= ctrl_clk_i;
+         sd_back_cmd_o     <= ctrl_cmd_i;
+         sd_back_cmd_oe_o  <= ctrl_cmd_oe_i;
+         sd_back_dat_o     <= ctrl_dat_i;
+         sd_back_dat_oe_o  <= ctrl_dat_oe_i;
+         ctrl_cmd_o        <= sd_back_cmd_i;
+         ctrl_dat_o        <= sd_back_dat_i;
+
          sd_tray_clk_o     <= '0';
-         sd_tray_mosi_o    <= '0';
+         sd_tray_cmd_o     <= '0';
+         sd_tray_cmd_oe_o  <= '1';
+         sd_tray_dat_o     <= "1111";
+         sd_tray_dat_oe_o  <= "1000";
       end if;
    end process;
    
