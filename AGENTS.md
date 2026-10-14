@@ -109,8 +109,9 @@ Megamiga fork (johansmolinski):
   Kickstart = Amiga held in reset), SPACE forgets an HDF, 0x7F partitions in
   the HDF browser (`partition:N`). Fast hard disks (branch `fastdisk`): M2M
   exception 18 `sd-host` (native 4-bit SD / SPI 25 MHz) + `ide_engine.vhd`
-  (READ/WRITE SECTORS in hardware, extent map from the firmware). Next:
-  `.uaem`.
+  (READ/WRITE SECTORS in hardware, extent map from the firmware); both SD
+  slots at once (`sdslots.vhd`, `sdcards.asm`, card list in the browser,
+  `SDx:` paths). Next: `.uaem`.
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
@@ -137,6 +138,9 @@ mutant set.
 - **IDE**: RIPPLE-compatible Zorro II board, master + slave HDF,
   `/amiga/lide.rom` boot ROM; READ/WRITE SECTORS by the sector engine
   (`ide_engine.vhd`, 0.6.1), everything else by the firmware ATA server.
+- **SD cards**: both slots at once (0.6.1, M2M exception 18): SD0 = bottom
+  tray (native 4-bit), SD1 = back slot (usually SPI: the boot firmware used
+  it); paths in the settings file carry the card.
 - **RTG**, **network card**, **PMOD serial**, audio filters/stereo/volume,
   battery RTC.
 
@@ -297,14 +301,29 @@ the dated facts.
   answer in SD mode (a card used in SPI mode since power-up stays there) or
   the test read fails, 12.5 MHz after a failed transfer; an ENGINE PORT
   streams multi-block transfers for the core (QNICE commands end them at a
-  block boundary). CMD/DAT3..0 with output enables through `sdmux.vhd`,
-  `qnice.vhd`, `qnice_wrapper.vhd`, `framework.vhd`; the R4/R5/R6 tops make
-  the SD pins bidirectional (XDC names unchanged) and pass the engine port
-  (`sdhost_pkg`, two vectors) to the core; pull-ups in CORE.xdc; the old
-  divider clock in `common.xdc` is commented out. R3's top was not adapted.
-  `START_SHELL` (shell.asm) forces the internal card when both slots hold one:
-  the MEGA65 boot firmware leaves the back card in SPI mode (only a power loss
-  ends it), the tray card is untouched and runs 4-bit (HW-confirmed with F1).
+  block boundary). CMD/DAT3..0 with output enables through `qnice.vhd`,
+  `qnice_wrapper.vhd`, `framework.vhd`; the R4/R5/R6 tops make the SD pins
+  bidirectional (XDC names unchanged) and pass the engine port (`sdhost_pkg`,
+  two vectors) to the core; pull-ups in CORE.xdc; the old divider clock in
+  `common.xdc` is commented out. R3's top was not adapted.
+  **Two slots at once** (2026-10-14): `sdslots.vhd` replaces the smart
+  multiplexer `sdmux.vhd` (deleted, also from the four .xpr): one sdhost per
+  slot (0 = bottom tray SD2_*, 1 = back slot SD_*), register 0xFF27
+  (`M2M$SD_SLOT`) selects the one 0xFF20..0xFF26 address (CSR bit 8 reads it
+  back, CSR bits 6/7 unused), the engine port's bit `C2Q_SLOT` (75) picks the
+  controller (latched while a transfer runs); a slot without a card holds its
+  controller in reset. Firmware: `M2M/rom/sdcards.asm` - ONE device handle per
+  slot (`SDC_DEV0/1`, functions select the slot first), a card generation per
+  slot (`SDC_GEN`, debounced card-detect) instead of `SD_CHANGED`/`SD_ACTIVE`;
+  `HANDLE_DEV`/`CONFIG_DEVH`/`INITIAL_SD` are gone. Direct sector-buffer access
+  calls `SDC$SELDEV` first. The file browser has no F1/F3: "<..>" at a card's
+  root leads to the list of the cards (`DIRBROWSE_CARDS`; `BROWSE_EXTRA` gets
+  R11 = slot, 0xFFFF in a directory). The settings file: back card first, then
+  the tray (`SDC_HOME`, `ROSM_INTEGRITY` by its generation); auto-load ROMs
+  from that card. Megamiga paths carry the card (`SD0:`/`SD1:`, none =
+  invalid), partitions `SDx:partition:N` (`HDF_VPART` = slot << 8 | n), the
+  shared folder is the back card only, the engine mode registers get bit 2 =
+  slot. TBs `~/aexp-work/sdslots` (HDL), `~/aexp-work/sdcards` (+ `mut.py`).
   TBs `~/aexp-work/sdhost`, `~/aexp-work/ideng`. Added in the JS fork
   2026-10-14.
   All other framework fixes

@@ -173,7 +173,7 @@ constant HELP_3 : string :=
    " Left/Right: previous/next page\n" &
    " Return: mount selected file\n" &
    " Run/Stop: cancel\n" &
-   " F1/F3: Switch between SD cards\n\n" &
+   " <..> at the top: the two SD cards\n\n" &
 
    " Mounted disks boot automatically.\n\n" &
 
@@ -834,7 +834,7 @@ constant OPTM_ITEMS        : string :=
    " About & Help\n"        &    -- 210: About & Help (WHS(1))
    " Close Menu\n"          &    -- 211: Close Menu (was 212; the Line moved below it)
    "\n"                     &    -- 212: Line
-   " SD card               \n" ;  -- 213: Text: live SD card status (exactly OPTM_DX characters, see SD_STATUS_STEP in m2m-rom.asm)
+   " SD0:-      SD1:-      \n" ;  -- 213: Text: live status of both SD cards (exactly OPTM_DX characters, see SD_STATUS_STEP in m2m-rom.asm)
 -- also make sure that your group numbers are monotonic increasing (e.g. 1, 2, 3, 4, ...)
 -- single-select items and therefore also drive mount items need to have unique identifiers
 constant OPTM_G_ADF0       : integer := 1;   -- mount ADF for df0 (manual CRT/ROM load 0)

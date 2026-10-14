@@ -77,7 +77,7 @@ In the file browser:
 | Left / Right | previous / next page |
 | Return | mount the selected file |
 | Run/Stop | cancel |
-| F1 / F3 | switch between the two SD cards |
+| Return on **<..>** at the top of a card | the list of the two SD cards (and the Amiga partitions on them) |
 
 To eject, put the cursor on a drive line that holds a disk and press
 **Space**.

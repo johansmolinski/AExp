@@ -52,18 +52,28 @@ OPTM_HEAP_SIZE  .BLOCK 1                        ; size of this scratch buffer
 SCRATCH_HEX     .BLOCK 5
 SCRATCH_DWORD   .BLOCK 2
 
-; SD card device handle and array of pointers to file handles for disk images
-HANDLE_DEV      .BLOCK  FAT32$DEV_STRUCT_SIZE
+; M2M-UPSTREAM sd-host (two slots): one device handle per SD card slot, shared
+; by the file browser, the settings file, the auto-load ROMs and the core (see
+; sdcards.asm). They replace HANDLE_DEV (the browser's) and CONFIG_DEVH (the
+; settings file's), which both described the one active card.
+SDC_DEV0        .BLOCK  FAT32$DEV_STRUCT_SIZE   ; slot 0: internal (bottom tray)
+SDC_DEV1        .BLOCK  FAT32$DEV_STRUCT_SIZE   ; slot 1: external (back slot)
+SDC_GEN         .BLOCK  2                       ; card generation per slot
+SDC_MGEN        .BLOCK  2                       ; generation the handle has
+SDC_PRES        .BLOCK  2                       ; card present (debounced)
+SDC_RAW         .BLOCK  2                       ; card-detect seen last
+SDC_RAWT        .BLOCK  2                       ; IO$CYC_MID when it changed
+SDC_HOME        .BLOCK  1                       ; slot of the settings file,
+                                                ; 0xFFFF = none
+SDC_HGEN        .BLOCK  1                       ; its generation at the load
+FB_SLOT         .BLOCK  1                       ; the card the browser shows
+FB_CARDS        .BLOCK  1                       ; 1: it shows the card list
+FB_GEN          .BLOCK  2                       ; generations its list is of
 
 ; Remember configuration handling:
-; * We are using a separate device handle because some logic around SD card
-;   switching in shell.asm is tied to the status of HANDLE_DEV.
-;   Warning: This is not a best practice. If you want to leverage the
-;   automatic data corruption prevention built in to the FAT32 library of the
-;   monitor, then stick to one device handle per device. Since we are not
-;   following this best practice, we need to prevent data corruption by
-;   ourselves, for example see the ROSM_SAVE dirty check in options.asm.
-;   @TODO: We might want to re-factor the handling of device handles.
+; * M2M-UPSTREAM sd-host (two slots): the settings file is opened through the
+;   device handle of its card (SDC_HOME, see sdcards.asm); there is no
+;   separate CONFIG_DEVH any more.
 ; * File-handle for config file (saving/loading OSM settings) is valid (i.e.
 ;   not null) when SAVE_SETTINGS (config.vhd) is true and when the file
 ;   specified by CFG_FILE (config.vhd) exists and has exactly the size of
@@ -73,9 +83,8 @@ HANDLE_DEV      .BLOCK  FAT32$DEV_STRUCT_SIZE
 ;   M2M$CFM_DATA register so that we can implement a smart saving mechanism:
 ;   When pressing "Help" to close the on-screen-menu, we only save the
 ;   settings to the SD card when the settings changed.
-; * Initially (upon core start time) active SD card: Used for protecting the
-;   data integrity: see comment for ROSM_INTEGRITY in options.asm
-CONFIG_DEVH     .BLOCK  FAT32$DEV_STRUCT_SIZE
+; * The card generation at the load (SDC_HGEN) protects the data integrity:
+;   see ROSM_INTEGRITY in options.asm
 CONFIG_FILE     .BLOCK  FAT32$FDH_STRUCT_SIZE
 OLD_SETTINGS    .BLOCK  16
 ; M2M-UPSTREAM cfg-strings (cfgstr.asm): the text behind the menu bytes
@@ -83,10 +92,6 @@ CFGS_LEN        .BLOCK  1                       ; its length
 CFGS_DIRTY      .BLOCK  1                       ; 1: changed since loaded/saved
 CFGS_BUF        .BLOCK  CFGS_MAX                ; one character per word
 CFGS_PB         .BLOCK  FAT32$PB_SIZE           ; FAT32 write layer parameters
-INITIAL_SD      .BLOCK  1
-
-SD_ACTIVE       .BLOCK 1                        ; currently active SD card
-SD_CHANGED      .BLOCK 1                        ; SD card (briefly) changed?
 
 ; SD card "stability" workaround
 SD_WAIT         .EQU   0x05F6                   ; 2 seconds @ 50 MHz

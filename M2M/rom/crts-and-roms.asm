@@ -616,17 +616,11 @@ CRTROM_AUTOLOAD SYSCALL(enter, 1)
                 XOR     R1, R1                  ; R1: ROM number counter
 
                 ; We assume that CRTROM_AUTOLOAD is called after
-                ; HELP_MENU_INIT and we will (re-)use the device handle from
-                ; the config file loading (CONFIG_DEVH). But we cannot rely
-                ; on CONFIG_DEVH being valid, because the user of the
-                ; framework could have switched-off the config file handling
-                ; in config.vhd by setting SAVE_SETTINGS to false.
-                MOVE    CONFIG_DEVH, R8
-                CMP     0, @R8
-                RBRA    _CRMA_1, !Z             ; seems to be valid: continue
+                ; HELP_MENU_INIT. M2M-UPSTREAM sd-host (two slots): the ROMs
+                ; come from the card of the settings file (without one: the
+                ; external card, else the internal one), see SDC$HOMEDEV.
                 RSUB    WAIT_FOR_SD, 1          ; stability workaround
-                MOVE    1, R9                   ; partition #1 hardcoded
-                SYSCALL(f32_mnt_sd, 1)
+                RSUB    SDC$HOMEDEV, 1          ; R8: device handle
                 CMP     0, R9                   ; R9=error code; 0=OK
                 RBRA    _CRMA_1, Z              ; mount OK: continue
 
@@ -668,7 +662,7 @@ _CRMA_1         MOVE    LOG_STR_ARLINE8, R8
                 SYSCALL(strcpy, 1)
                 MOVE    R9, R10                 ; R10: name for f32_fopen
                 MOVE    R9, R6                  ; R6: remember name for fatal
-                MOVE    CONFIG_DEVH, R8
+                RSUB    SDC$HOMEDEV, 1          ; R8: device handle (mounted)
                 MOVE    CRTROM_AUT_FILE, R9     ; file handle
                 XOR     R11, R11                ; use / as path separator
                 SYSCALL(f32_fopen, 1)

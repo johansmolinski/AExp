@@ -50,50 +50,32 @@ START_SHELL     MOVE    LOG_M2M, R8             ; M2M start message
                 ; Initialize stack, heap, variables, libraries and IO
                 ; ------------------------------------------------------------
 
-                ; FAT32 subsystem: initialize SD card device handles for the
-                ; vdrive and CRT/ROM loader (HANDLE_DEV) and for the config
-                ; file (CONFIG_DEVH) and initialize the config file and the
-                ; ROM auto-load filehandle.
+                ; FAT32 subsystem: M2M-UPSTREAM sd-host (two slots): the
+                ; device handles of both SD card slots (sdcards.asm), the
+                ; config file and the ROM auto-load filehandle.
                 ; It is important that these handles are initialized to zero
                 ; as parts of the code use this as a flag.
-                MOVE    HANDLE_DEV, R8
-                MOVE    0, @R8
-                MOVE    CONFIG_DEVH, R8
-                MOVE    0, @R8
+                RSUB    SDC$INIT, 1
                 MOVE    CONFIG_FILE, R8
                 MOVE    0, @R8
                 MOVE    CRTROM_AUT_FILE, R8
                 MOVE    0, @R8
 
-                ; M2M-UPSTREAM sd-host: with a card in both slots, use the
-                ; internal one (bottom tray). The MEGA65's boot firmware puts
-                ; the card in the back slot into SPI mode, and a card leaves
-                ; SPI mode only when it loses power; the internal card is
-                ; untouched and runs on the native 4-bit bus. F1/F3 in the
-                ; file browser still switch for the session.
-                MOVE    M2M$CSR, R8
-                MOVE    @R8, R9
-                AND     M2M$CSR_SD_DET_INT, R9
-                RBRA    _SS_SD_SEL, Z           ; no internal card: auto
-                MOVE    @R8, R9
-                AND     M2M$CSR_SD_DET_EXT, R9
-                RBRA    _SS_SD_SEL, Z           ; no external card: auto
-                AND     M2M$CSR_UN_SD_FORCE, @R8 ; force the internal card
-                OR      M2M$CSR_SD_MODE, @R8
-_SS_SD_WAIT     MOVE    @R8, R9                 ; sdmux switches within a
-                AND     M2M$CSR_SD_ACTIVE, R9   ; few cycles: wait for it
-                RBRA    _SS_SD_WAIT, !Z
-
-                ; initialize file browser persistence variables
-_SS_SD_SEL      MOVE    M2M$CSR, R8             ; get active SD card
-                MOVE    @R8, R8
-                AND     M2M$CSR_SD_ACTIVE, R8
-                MOVE    SD_ACTIVE, R9
+                ; initialize file browser persistence variables: it starts
+                ; on the external card if there is one (SDC$HOMEDEV changes
+                ; that to the card of the settings file)
+                MOVE    1, R8
+                RSUB    SDC$PRESENT, 1
+                MOVE    1, R8
+                RBRA    _SS_FBSL, C
+                XOR     R8, R8
+_SS_FBSL        MOVE    FB_SLOT, R9
                 MOVE    R8, @R9
-                MOVE    SD_CHANGED, R9
+                MOVE    FB_CARDS, R9
                 MOVE    0, @R9
-                MOVE    INITIAL_SD, R9
-                MOVE    R8, @R9
+                MOVE    FB_GEN, R9
+                MOVE    0, @R9++
+                MOVE    0, @R9
                 MOVE    FB_LASTCALLER, R8
                 MOVE    0xFFFF, @R8
                 RSUB    FB_INIT, 1              ; init persistence variables
@@ -107,6 +89,9 @@ _SS_SD_SEL      MOVE    M2M$CSR, R8             ; get active SD card
                 ; be two levels deep at the beginning. This is why we push two
                 ; 0 on the stack and remove one of them, inside SELECT_FILE
                 ; in case we revert back to the root folder.
+                ; M2M-UPSTREAM sd-host (two slots): plus one for the list of
+                ; the SD cards above the root (see SELECT_FILE).
+                MOVE    0, @--SP
                 MOVE    0, @--SP
                 MOVE    0, @--SP
                 MOVE    FB_STACK_INIT, R8       ; used to restore FB_STACK
@@ -266,14 +251,10 @@ _HM_RETRY_MOUNT RSUB    FRAME_FULLSCR, 1
                 RSUB    SCR$GOTOXY, 1
                 RSUB    SCR$OSM_M_ON, 1
 
-                ; Step #2 - Mount SD card
-                MOVE    HANDLE_DEV, R8          ; device handle
-                CMP     0, @R8
-                RBRA    _HM_SDMOUNTED1, !Z
-
-_HM_SDUNMOUNTED MOVE    1, R9                   ; partition #1 hardcoded
-                SYSCALL(f32_mnt_sd, 1)
-                CMP     0, R9                   ; R9=error code; 0=OK
+                ; Step #2 - Mount SD card (M2M-UPSTREAM sd-host, two slots:
+                ; the card of the file browser, see FB_PREPARE)
+_HM_SDMOUNTED1  RSUB    FB_PREPARE, 1           ; R9=error code; 0=OK
+                CMP     0, R9
                 RBRA    _HM_SDMOUNTED2, Z
 
                 ; Mounting did not work - offer retry
@@ -288,17 +269,11 @@ _HM_SDUNMOUNTED MOVE    1, R9                   ; partition #1 hardcoded
                 MOVE    ERR_MOUNT_RET, R8
                 RSUB    SCR$PRINTSTR, 1
                 RSUB    WAIT333MS, 1
-_HM_KEYLOOP     MOVE    M2M$KEYBOARD, R8
+_HM_KEYLOOP     RSUB    HANDLE_IO, 1            ; (the card-detect debounce)
+                MOVE    M2M$KEYBOARD, R8
                 AND     M2M$KEY_RETURN, @R8
                 RBRA    _HM_KEYLOOP, !Z         ; wait for return; low-active
-                MOVE    HANDLE_DEV, R8
-                MOVE    0, @R8 
                 RBRA    _HM_RETRY_MOUNT, 1
-
-                ; SD card already mounted, but is it still the same card slot?
-_HM_SDMOUNTED1  MOVE    SD_CHANGED, R0
-                CMP     1, @R0                  ; did the card change?
-                RBRA    _HM_SDCHANGED, Z        ; yes, re-init and re-mount
 
                 ; SD card freshly mounted or already mounted and still
                 ; the same card slot:
@@ -309,7 +284,7 @@ _HM_SDMOUNTED1  MOVE    SD_CHANGED, R0
                 ;   R8: pointer to filename string
                 ;   R9: status- and error code (see selectfile.asm)
                 ;
-                ; The status of the device handle HANDLE_DEV will be at the
+                ; The status of the browser's device handle (FB_DEV) will be at the
                 ; subdirectory that has been selected so that a subsequent
                 ; file open can be directly done.
                 ;
@@ -339,6 +314,11 @@ _HM_SDMOUNTEDXA CMP     R9, @R8                 ; same caller als last time?
                 RBRA    _HM_SDMOUNTEDXS, Z      ; yes; browse where we were
                 MOVE    R9, @R8                 ; no: remember last caller..
                 RSUB    FB_RE_INIT, 1           ; ..and reset file browser
+                MOVE    FB_CARDS, R8            ; (M2M-UPSTREAM sd-host: in a
+                MOVE    0, @R8                  ; directory, not on the list
+                RSUB    FB_PREPARE, 1           ; of the cards)
+                CMP     0, R9
+                RBRA    _HM_SDMOUNTED1, !Z
 
 _HM_SDMOUNTEDXS MOVE    SF_CONTEXT, R8
                 CMP     0, R5                   ; virtual drive mode?
@@ -358,11 +338,8 @@ _HM_SDMOUNTEDX2 RSUB    SELECT_FILE, 1
 
 _HM_SDCHANGED   MOVE    LOG_STR_SD, R8
                 SYSCALL(puts, 1)
-                MOVE    HANDLE_DEV, R8          ; reset device handle
-                MOVE    0, @R8
-                RSUB    FB_RE_INIT, 1           ; reset file browser
-                MOVE    0, @R0                  ; reset SD_CHANGED
-                RBRA    _HM_SDUNMOUNTED, 1      ; re-mount, re-browse files
+                RBRA    _HM_SDMOUNTED1, 1       ; FB_PREPARE: re-mount, re-
+                                                ; browse files
 
                 ; Cancelled via Run/Stop
 _HM_SDMOUNTED2A CMP     2, R9                   ; Run/Stop?
@@ -410,8 +387,8 @@ _HM_SDMOUNTED2W MOVE    R10, R8                 ; menu index
 _HM_SDMOUNTED2C CMP     3, R9                   ; CMSG_BROWSENOTHING situation
                 RBRA    _HM_SDMOUNTED2D, !Z     ; no
                 RSUB    FB_RE_INIT, 1           ; reset file browser
-                MOVE    M2M$CSR, R8             ; set SD card..
-                AND     M2M$CSR_UN_SD_MODE, @R8 ; ..back to auto-detect
+                MOVE    FB_CARDS, R8            ; (M2M-UPSTREAM sd-host)
+                MOVE    0, @R8
                 RBRA    _HM_SDMOUNTED2E, 1      ; continue like Run/Stop
 
                 ; Unknown error / fatal
@@ -678,8 +655,8 @@ _HM_RET         RSUB    VD_MNT_ST_SET, 1        ; remember mount status
 ;   R9: file name of disk image
 ;  R10: mode selector: 0=virtual drives 1=manually loadable CRTs/ROMs
 ;
-; And HANDLE_DEV needs to be fully initialized and the status needs to be
-; such, that the directory where R9 resides is active
+; And the card of the file browser (FB_DEV, M2M-UPSTREAM sd-host) needs to be
+; mounted and the directory where R9 resides needs to be its current one
 ;
 ; Output:
 ;   R8: 0=OK, error code otherwise
@@ -712,13 +689,12 @@ _LI_CRTROM      MOVE    CRTROM_MAN_DEV, R0
                 MOVE    HNDL_RM_FILES, R9
 
                 ; Open file
-_LI_OPENFILE    MOVE    HANDLE_DEV, R8          ; R8: sd card device handle
-                ADD     R1, R9
+_LI_OPENFILE    ADD     R1, R9
                 MOVE    @R9, R9                 ; R9: file handle
                 MOVE    R9, R5                  ; R5: remember file handle
                 ; M2M-UPSTREAM cfg-strings: an entry of the core that is no
                 ; file (SF_VIRTUAL, see BROWSE_EXTRA): an empty handle (size 0,
-                ; on HANDLE_DEV) instead; PREP_LOAD_IMAGE knows what it is
+                ; on FB_DEV) instead; PREP_LOAD_IMAGE knows what it is
                 MOVE    SF_VIRTUAL, R10
                 CMP     0, @R10
                 RBRA    _LI_FOPEN, Z
@@ -726,11 +702,12 @@ _LI_OPENFILE    MOVE    HANDLE_DEV, R8          ; R8: sd card device handle
                 MOVE    FAT32$FDH_STRUCT_SIZE, R9
                 XOR     R10, R10
                 SYSCALL(memset, 1)
-                MOVE    R5, R8
-                ADD     FAT32$FDH_DEVICE, R8
-                MOVE    HANDLE_DEV, @R8
+                RSUB    FB_DEV, 1
+                MOVE    R5, R9
+                ADD     FAT32$FDH_DEVICE, R9
+                MOVE    R8, @R9
                 RBRA    _LI_FOPEN_OK, 1
-_LI_FOPEN       MOVE    HANDLE_DEV, R8
+_LI_FOPEN       RSUB    FB_DEV, 1               ; R8: sd card device handle
                 MOVE    R5, R9
                 MOVE    R2, R10
                 XOR     R11, R11
@@ -951,18 +928,9 @@ HANDLE_IO       SYSCALL(enter, 1)
                 RSUB    ROSM_INTEGRITY, 1
 
                 ; Detect SD card changes to be handled in drive mounting
-                ; mechanisms and in the filebrowser
-                MOVE    SD_CHANGED, R2
-                CMP     1, @R2                  ; "changed" flag alread true?
-                RBRA    _HANDLE_IO_0, Z         ; yes: do not allow reset here
-                MOVE    SD_ACTIVE, R0           ; no: check status
-                MOVE    M2M$CSR, R1             ; extract currently active SD
-                MOVE    @R1, R1
-                AND     M2M$CSR_SD_ACTIVE, R1
-                CMP     @R0, R1                 ; did the card change?
-                RBRA    _HANDLE_IO_0, Z         ; no: proceed
-                MOVE    R1, @R0                 ; remember new status
-                MOVE    1, @R2                  ; set "changed" flag
+                ; mechanisms and in the filebrowser (M2M-UPSTREAM sd-host,
+                ; two slots: the card generations of sdcards.asm)
+                RSUB    SDC$POLL, 1
 
                 ; M2M-UPSTREAM core-io-hook: HANDLE_CORE_IO is a mandatory
                 ; callback function (like SUBMENU_SUMMARY, PREP_START, etc.)
@@ -975,7 +943,7 @@ HANDLE_IO       SYSCALL(enter, 1)
                 ; registers (SYSCALL enter/leave); return quickly, this is
                 ; cooperative multitasking; may change the active RAMROM
                 ; device/window (like HANDLE_IO itself does); called after
-                ; the SD-card-change detection above, so SD_CHANGED is fresh.
+                ; the SD-card-change detection above, so SDC_GEN is fresh.
 _HANDLE_IO_0    RSUB    HANDLE_CORE_IO, 1
 
                 ; Loop through all VDRIVES (if any) and check for requests
@@ -1539,6 +1507,7 @@ FRAME_FULLSCR   SYSCALL(enter, 1)
 
 ; framework libraries
 #include "dirbrowse.asm"
+#include "sdcards.asm"
 #include "keyboard.asm"
 #include "menu.asm"
 #include "screen.asm"

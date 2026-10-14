@@ -1972,6 +1972,47 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   Build fastdisk-c (`9b0082d`): R6 WNS +0.061 / WHS +0.013 first pass, fully
   routed, LUTs 87.7k, BRAM 115.5; saved to `~/aexp-builds/Megamiga-fastdisk-c`
   (`mega65_r6_fastdisk_c.bit`). Awaiting hardware tests.
+  HARDWARE (fastdisk-c, 2026-10-14): 4-bit only after re-inserting the card
+  (the MEGA65 boot firmware leaves the card it read in SPI mode); with cards in
+  both slots, F1 (the tray card) gave 4-bit at once - the boot firmware reads
+  only the back card. A firmware rule "both slots -> the tray card" (`c511bcf`)
+  was then replaced by the user's request to use BOTH CARDS AT ONCE:
+  BOTH SD SLOTS (M2M exception 18 extended; user decisions: paths carry the
+  card, `SD0:` = tray / `SD1:` = back, a path without it is invalid; no F1/F3,
+  "<..>" above a card's root lists the cards; the settings file back card
+  first, then the tray; `SDCard:` = the back card only - "the purpose of the
+  shared folder is easy file sharing with other computers"; partitions in the
+  card list). HDL: `M2M/vhdl/QNICE/sdslots.vhd` (new, replaces `sdmux.vhd`,
+  which is deleted and replaced in all four .xpr): two sdhost, register 0xFF27
+  selects the QNICE slot, C2Q bit 75 the engine's (latched while either
+  controller is busy), a controller is held in reset while its slot has had no
+  card for G_ABSENT clocks; ide_board mode registers bit 2 = the unit's slot,
+  ide_engine `sd_slot_o` (the new command's unit in E_DECIDE). Firmware:
+  `M2M/rom/sdcards.asm` (SDC$INIT/POLL/MOUNT/DEV/SLOT/SEL/SELDEV/PRESENT/GEN/
+  HOMEDEV; one device handle per slot whose functions select the slot first,
+  so the FAT32 library is unchanged and tracks each controller's buffer owner
+  correctly; card generations bumped on a ~100 ms debounced card-detect edge),
+  browser (`FB_PREPARE`, `FB_CHANGED`, `FB_ENTER`, `FB_TOCARDS`, `FB_ATROOT`,
+  `DIRBROWSE_CARDS`, the synthetic "<..>" at a root, three initial cursor
+  stack words), settings file on both cards (`SDC_HOME`/`SDC_HGEN`,
+  ROSM_INTEGRITY by generation), auto-load ROMs from the settings card.
+  Megamiga: per-drive card + generation for ADF (`ADF_SD_GEN`) and HDF
+  (`HDF_DSLOT`/`HDF_DGEN`, the global `HDF_SD_SLOT` rule "both drives on one
+  slot" is gone), `SDC$SELDEV` before every direct IO$SD_DATA use (FAST_LOAD,
+  FLUSH_ADF_STEP, IDE_SD_TAKE), share on the back card only (SHARE_DEV = a copy
+  of SDC_DEV1, follows SDC_GEN[1]; SHR_COREUSE counts core files on the back
+  card only), partitions per card in the card list (`SDx: Partition n: size`,
+  id = slot << 8 | n), profile paths `SDx:/...` / `SDx:partition:N`
+  (`_PR_CARD`, `_PR_PUTCARD`, `_PR_PATHOF` on the file's own device), the
+  status line shows both cards (`SD0:4-bit  SD1:SPI 25 `). QNICE emulator:
+  two slots (`-a`, `-a1`, register 7). Firmware 31221/32768 words, combined
+  heap total 18528 (stack margin 287). TBs: `~/aexp-work/sdslots` (HDL: two
+  card models, the back one in SPI mode; QNICE on both, engine on one while
+  QNICE uses the other, removal/re-insertion), `~/aexp-work/sdcards`
+  (emulator: the real sdcards.asm, browser helpers and dirbrowse.asm on two
+  images; 19 mutants, all killed); cfgstr/cfgold/fw-prof2/share-fw/fw-ide2/
+  fw-adf updated for two cards. The cfgstr update found that `_PR_PUTCARD`'s
+  terminator emptied a path of exactly the maximum length (fixed).
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the

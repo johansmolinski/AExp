@@ -64,6 +64,9 @@
 
 START_FIRMWARE
 #if SD_SPI_ONLY
+                MOVE    1, R2                   ; both SD controllers (slot 1, 0)
+_SF_SDS         MOVE    M2M$SD_SLOT, R0
+                MOVE    R2, @R0
                 MOVE    0xFF26, R0              ; sdhost register 6: SPI only,
                 MOVE    1, @R0                  ; then re-initialise the card
                 MOVE    IO$SD_CSR, R0           ; (busy ends after the init,
@@ -71,6 +74,8 @@ START_FIRMWARE
 _SF_SDW         MOVE    @R0, R1
                 AND     0x8000, R1
                 RBRA    _SF_SDW, !Z
+                SUB     1, R2
+                RBRA    _SF_SDS, !N
 #endif
                 RSUB    ADF_WB_INIT, 1
                 RSUB    SCR_INIT, 1
@@ -194,8 +199,8 @@ _PREP_LI_HDF    MOVE    R8, R5                  ; R5: the file, R6: its ROM id
                 MOVE    R9, R6
                 ADD     PROF_HDF_ID, R6
                 MOVE    SF_VIRTUAL, R4          ; a partition from the browser
-                MOVE    @R4, R4                 ; (BROWSE_EXTRA: id = its
-                CMP     0, R4                   ; number)
+                MOVE    @R4, R4                 ; (BROWSE_EXTRA: id = slot <<
+                CMP     0, R4                   ; 8 | its number)
                 RBRA    _PREP_LI_HP, Z
                 SUB     1, R4
                 MOVE    HDF_VPART, R7
@@ -470,6 +475,8 @@ _FL_SEEK        MOVE    R0, R8                  ; read the sector into the
                 OR      R9, R8
                 MOVE    M2M$RAMROM_4KWIN, R9
                 MOVE    R8, @R9
+                MOVE    @R0, R8                 ; the SD controller of the file
+                RSUB    SDC$SELDEV, 1           ; (M2M-UPSTREAM sd-host)
                 MOVE    R2, R8                  ; R8: destination in the window
                 AND     0x0FFF, R8
                 ADD     M2M$RAMROM_DATA, R8
@@ -670,9 +677,10 @@ _KP_RET         MOVE    R4, R10
 ; At boot (PREP_START) /amiga/kick.rom is already loaded if it exists, and no
 ; HDF is mounted.
 ;
-; The files are opened through the device handle of the Shell (HANDLE_DEV, as
-; the file browser does), so the HDF lives on the same handle as a manually
-; mounted one; the one SD sector buffer is tracked per device handle.
+; The files are opened through the device handle of their card (M2M-UPSTREAM
+; sd-host, two slots: a remembered path names its card, "SD0:" or "SD1:";
+; kick.rom comes from the card of the settings file), the one the file browser
+; uses too; the SD sector buffer of a card is tracked per device handle.
 ;
 ; Input:  R8: profile 0..2, R9: 0 = boot, 1 = the user selected the profile
 ; Output: none, all registers preserved
@@ -685,20 +693,6 @@ PROFILE_APPLY   SYSCALL(enter, 1)
                 MOVE    0, @R8++
                 MOVE    0, @R8++
                 MOVE    0, @R8
-
-                MOVE    SD_CHANGED, R2          ; the device handle of the
-                MOVE    HANDLE_DEV, R8          ; Shell: (re-)mount it like
-                CMP     1, @R2                  ; the file browser does
-                RBRA    _PA_MNT, Z
-                CMP     0, @R8
-                RBRA    _PA_KICK, !Z
-_PA_MNT         MOVE    0, @R8
-                RSUB    FB_RE_INIT, 1
-                MOVE    0, @R2
-                MOVE    1, R9                   ; partition #1
-                SYSCALL(f32_mnt_sd, 1)
-                CMP     0, R9
-                RBRA    _PA_RET, !Z             ; no SD card: nothing to do
 
                 ; the Kickstart: hold the Amiga while the ROM is replaced
 _PA_KICK        MOVE    FL_NOBAR, R2            ; no progress bar: the menu
@@ -808,8 +802,9 @@ _PA_RET         MOVE    FL_NOBAR, R2
                 RET
 
 ; PROF_OPEN: open a file of the read-only data device (label in R8) into
-; PROF_FDH. Output: C=1 and R8 = the name after "/amiga/" (in RODATA_BUF) if
-; it is open, C=0 if not. Only HANDLE_DEV must be mounted. R9..R12 preserved.
+; PROF_FDH, on the card of the settings file. Output: C=1 and R8 = the name
+; after "/amiga/" (in RODATA_BUF) if it is open, C=0 if not. R9..R12
+; preserved.
 PROF_OPEN       INCRB
                 MOVE    R9, R0
                 MOVE    R10, R1
@@ -817,11 +812,15 @@ PROF_OPEN       INCRB
                 RSUB    RODATA_STR, 1           ; the path in RAM
                 MOVE    R8, R3
                 MOVE    R8, R10
-                MOVE    HANDLE_DEV, R8
-                MOVE    PROF_FDH, R9
+                RSUB    SDC$HOMEDEV, 1          ; R8: device, R9: 0 = mounted
+                CMP     0, R9
+                RBRA    _PO_NM, Z
+                MOVE    R9, R10                 ; (an error code: not open)
+                RBRA    _PO_ERR, 1
+_PO_NM          MOVE    PROF_FDH, R9
                 XOR     R11, R11                ; "/" separator
                 SYSCALL(f32_fopen, 1)
-                MOVE    R3, R8
+_PO_ERR         MOVE    R3, R8
                 ADD     PROF_DIR_LEN, R8        ; skip "/amiga/"
                 MOVE    R10, R4                 ; R4: error code
                 MOVE    R0, R9
@@ -1085,23 +1084,12 @@ _OSM_SP_SCR     CMP     AEXP_OPTM_G_SCRRELOAD, R8
                 RSUB    SCR$PRINTSTRXY, 1
 
                 ; The user may have pulled the SD card to write a new file with
-                ; the python tool; the shared SD controller is then de-negotiated
-                ; until a re-mount runs SD$RESET (and a same-slot tray swap does
-                ; NOT reliably raise SD_CHANGED on R3, so we cannot gate on it).
-                ; Re-mount CONFIG_DEVH here, mirroring the remount of the file
-                ; browser, so the reload reads the CURRENT card and not the
-                ; stale boot mount. Safe for config-save: write-back is gated on
-                ; CONFIG_FILE (untouched), and re-mounting keeps the bookkeeping
-                ; of CONFIG_DEVH consistent with the freshly reset controller.
-_OSP_SCR_RM     MOVE    CONFIG_DEVH, R8
-                CMP     0, @R8                  ; any SD device mounted at all?
-                RBRA    _OSP_SCR_LOAD, Z        ; none -> let LOAD zero the table
-                RSUB    WAIT1SEC, 1             ; debounce a just-reinserted card
-                MOVE    CONFIG_DEVH, R8
-                MOVE    1, R9                   ; partition #1 (framework-wide)
-                SYSCALL(f32_mnt_sd, 1)          ; SD$RESET + re-read geometry;
-                                                ; LOAD then re-checks status
-_OSP_SCR_LOAD   RSUB    LOAD_SCREEN_OFFSETS, 1
+                ; the python tool. M2M-UPSTREAM sd-host (two slots): that is a
+                ; new card generation, and SDC$HOMEDEV in LOAD_SCREEN_OFFSETS
+                ; mounts the card again, so the reload reads the CURRENT card.
+                ; Safe for config-save: write-back is gated on CONFIG_FILE and
+                ; the generation the settings file was loaded at.
+_OSP_SCR_RM     RSUB    LOAD_SCREEN_OFFSETS, 1
 
                 ; Momentary reset: clear the single-select state everywhere so
                 ; no "=" ever sticks. M2M$FORCE_MENU clears the QNICE setting
@@ -1159,11 +1147,15 @@ OSM_SEL_PRE     INCRB
 ; (behind "<..>"); choosing one makes the Shell call PREP_LOAD_IMAGE with an
 ; empty file handle and SF_VIRTUAL = id + 1.
 ;
-; Megamiga: for the two HDF lines, the partitions of the SD card with the MBR
-; type 0x7F ("Partition 2: 1024 MB"), id = the partition number: the drive is
-; then that partition (HDF_PREP, HDF_VPART), like a link file names it.
+; Megamiga: for the two HDF lines, the partitions of an SD card with the MBR
+; type 0x7F ("SD0: Partition 2: 1024 MB"), id = slot << 8 | the partition
+; number: the drive is then that partition (HDF_PREP, HDF_VPART), like a link
+; file names it. M2M-UPSTREAM sd-host (two slots): they are listed in the list
+; of the cards, after their card (R11 = its slot); in a directory (R11 =
+; 0xFFFF) there are none.
 ;
-; Input:  R8: index of the entry (0, 1, ...), R9: context (CTX_*), R10: group
+; Input:  R8: index of the entry (0, 1, ...), R9: context (CTX_*), R10: group,
+;         R11: the slot or 0xFFFF
 ; Output: R8: its name (0 = no more entries), R9: its id (0..0x0FFF);
 ;         R10..R12 preserved
 BROWSE_EXTRA    INCRB
@@ -1176,9 +1168,17 @@ BROWSE_EXTRA    INCRB
                 RBRA    _BRX_GO, Z
                 CMP     AEXP_OPTM_G_HDF1, R0
                 RBRA    _BRX_NO, !Z
-_BRX_GO         MOVE    R8, R3                  ; R3: usable ones to skip
-                MOVE    1, R4                   ; R4: partition number
-_BRX_L          MOVE    HDF_DEVREF, R8
+_BRX_GO         CMP     0xFFFF, R1              ; a directory: none
+                RBRA    _BRX_NO, Z
+                MOVE    R8, R3                  ; R3: usable ones to skip
+                MOVE    R1, R8                  ; the card, mounted
+                RSUB    SDC$MOUNT, 1
+                CMP     0, R9
+                RBRA    _BRX_NO, !Z
+                MOVE    BRX_DEVREF, R9          ; a "file handle" for
+                MOVE    R8, @R9                 ; HDF_PART_GET: only its
+                MOVE    1, R4                   ; device word is read
+_BRX_L          MOVE    BRX_DEVREF, R8          ; R4: partition number
                 MOVE    R4, R9
                 RSUB    HDF_PART_GET, 1         ; R8: n or 0xFF, R12:R11 size
                 CMP     0x00FF, R8
@@ -1192,10 +1192,17 @@ _BRX_NX         ADD     1, R4
 _BRX_NO         XOR     R8, R8
                 RBRA    _BRX_RET, 1
 
-_BRX_FOUND      MOVE    BRX_S_PART, R8          ; "Partition n: "
-                MOVE    BRX_NAME, R9
+_BRX_FOUND      MOVE    BRX_NAME, R5            ; "SDx: Partition n: "
+                MOVE    0x0053, @R5++
+                MOVE    0x0044, @R5++
+                MOVE    R1, R6
+                ADD     0x0030, R6
+                MOVE    R6, @R5++
+                MOVE    0x003A, @R5++
+                MOVE    0x0020, @R5++
+                MOVE    BRX_S_PART, R8
+                MOVE    R5, R9
                 SYSCALL(strcpy, 1)
-                MOVE    R9, R5
                 ADD     BRX_S_PLEN, R5
                 MOVE    R4, R6
                 ADD     0x0030, R6
@@ -1225,7 +1232,9 @@ _BRX_DEC        MOVE    BRX_DEC, R10
                 MOVE    R5, R9
                 SYSCALL(strcpy, 1)
                 MOVE    BRX_NAME, R8
-                MOVE    R4, R9
+                MOVE    R1, R9                  ; the id: slot << 8 | number
+                SWAP    R9, R9
+                OR      R4, R9
 _BRX_RET        MOVE    R0, R10
                 MOVE    R1, R11
                 MOVE    R2, R12
@@ -1249,8 +1258,6 @@ BRX_S_PART      .ASCII_W "Partition "
 BRX_S_PLEN      .EQU    10
 BRX_S_MB        .ASCII_W " MB"
 BRX_S_GB        .ASCII_W " GB"
-HDF_DEVREF      .DW     HANDLE_DEV              ; a "file handle" for HDF_PART_GET:
-                                                ; only its device word is read
 
 ; CUSTOM_MSG callback function:
 ;
@@ -1374,12 +1381,12 @@ ADF_DISARM      INCRB
 ; Two drives holding the same image file is a silent data-loss trap: each drive
 ; streams its OWN copy into its OWN HyperRAM pool, both collect Amiga writes
 ; independently, and whichever drive flushes last overwrites what the other one
-; saved. The file is identified by its FAT32 start cluster, which is unique per
-; file on a card. Comparing that alone is enough because every ARMED drive was
-; verified to sit on the currently active SD slot by the guards of
-; HANDLE_CORE_IO, and the fresh handle was just opened on that same slot. A
-; drive whose write-back is not armed cannot write and is therefore skipped -
-; its file identity is not retained anywhere either.
+; saved. The file is identified by its device handle (M2M-UPSTREAM sd-host:
+; one per card) and its FAT32 start cluster, which is unique per file on a
+; card; the guards of HANDLE_CORE_IO keep every ARMED drive on the generation
+; of its card it was armed on. A drive whose write-back is not armed cannot
+; write and is therefore skipped - its file identity is not retained anywhere
+; either.
 ;
 ; Input:  R8: the fresh file handle
 ;         R9: the drive that is being loaded (it is skipped)
@@ -1618,36 +1625,26 @@ _HCIO_NODET     MOVE    M2M$RAMROM_DEV, R0
                 MOVE    M2M$RAMROM_4KWIN, R2
                 MOVE    @R2, R3
 
-                ; --- 1. SD guards, per drive. A shell-detected card change
-                ;        tears EVERY drive down. An active-slot switch tears
-                ;        down exactly the drives whose handle was snapshotted
-                ;        on the other slot: the file browser F1/F3 switch
-                ;        updates SD_ACTIVE WITHOUT raising SD_CHANGED, and
-                ;        every FDH points at the ONE shared device handle,
-                ;        which after the switch describes the other card - so a
-                ;        flush through it would write into whatever file
-                ;        happens to live at those clusters over there.
-                ;        Drives armed on the slot that is now active survive;
-                ;        with two cards in use, df0 from slot 1 and df1 from
-                ;        slot 2 are independent and only one of them dies.
-                XOR     R6, R6                  ; R6: 1 = tear every drive down
-                MOVE    SD_CHANGED, R4
-                CMP     1, @R4
-                RBRA    _HCIO_SD1, !Z
-                MOVE    1, R6
-_HCIO_SD1       MOVE    M2M$CSR, R4
-                MOVE    @R4, R4
-                AND     M2M$CSR_SD_ACTIVE, R4   ; R4: the active SD slot
+                ; --- 1. SD guards, per drive. M2M-UPSTREAM sd-host (two
+                ;        slots): a drive was armed on one card (its handle
+                ;        snapshot names the device handle of that card), and
+                ;        a new generation of THAT card (sdcards.asm: it was
+                ;        pulled or swapped) tears the drive down - a flush
+                ;        through the handle would write into whatever file
+                ;        happens to live at those clusters on the new card.
+                ;        Drives on the other card survive.
                 XOR     R5, R5                  ; R5: drive
 _HCIO_SDD       MOVE    ADF_FDH_VALID, R7
                 ADD     R5, R7
                 CMP     0, @R7
                 RBRA    _HCIO_SDN, Z            ; not armed: nothing to tear
-                CMP     1, R6
-                RBRA    _HCIO_SDK, Z            ; card swapped: tear it down
                 MOVE    ADF_SD_SLOT, R7
                 ADD     R5, R7
-                CMP     @R7, R4                 ; snapshot slot == active slot?
+                MOVE    @R7, R8
+                RSUB    SDC$GEN, 1
+                MOVE    ADF_SD_GEN, R7
+                ADD     R5, R7
+                CMP     @R7, R8                 ; the same card as at arm time?
                 RBRA    _HCIO_SDN, Z            ; yes: this drive stays armed
 _HCIO_SDK       MOVE    R5, R8                  ; the retained handle is dead:
                 RSUB    ADF_WIPE_DIRTY, 1       ; the dirty tracks can no
@@ -1661,16 +1658,6 @@ _HCIO_SDK       MOVE    R5, R8                  ; the retained handle is dead:
 _HCIO_SDN       ADD     1, R5
                 CMP     ADF_DRIVES, R5
                 RBRA    _HCIO_SDD, !Z
-                CMP     1, R6                   ; on a card change, skip the
-                RBRA    _HCIO_RTC, Z            ; ADF work for this poll - but
-                                                ; only the ADF work. SD_CHANGED
-                                                ; is a LATCH, cleared only by
-                                                ; the mount/browse flow, so
-                                                ; returning outright here would
-                                                ; starve the battery-clock
-                                                ; reseed and the live status
-                                                ; line for as long as the user
-                                                ; does not open a file browser.
 
                 ; --- 2. mount tracking (PARSEST=READY rising edge), per drive
 _HCIO_MOUNT     XOR     R5, R5                  ; R5: drive
@@ -1713,12 +1700,18 @@ _HCIO_MD        MOVE    ADF_DEV_TAB, R6
                 MOVE    ADF_FL_STATE, R6
                 ADD     R5, R6
                 MOVE    0, @R6
-                MOVE    M2M$CSR, R6             ; remember the active SD slot
-                MOVE    @R6, R6                 ; the snapshot was taken on
-                AND     M2M$CSR_SD_ACTIVE, R6   ; (see the SD guards above)
-                MOVE    ADF_SD_SLOT, R7
+                MOVE    ADF_FDH_TAB, R8         ; remember the card of the
+                ADD     R5, R8                  ; snapshot and its generation
+                MOVE    @R8, R8
+                MOVE    @R8, R8                 ; (FAT32$FDH_DEVICE = 0)
+                RSUB    SDC$SLOT, 1
+                MOVE    ADF_SD_SLOT, R7         ; (see the SD guards above)
                 ADD     R5, R7
-                MOVE    R6, @R7
+                MOVE    R8, @R7
+                RSUB    SDC$GEN, 1
+                MOVE    ADF_SD_GEN, R7
+                ADD     R5, R7
+                MOVE    R8, @R7
                 MOVE    R5, R8                  ; WR_EN := 1: the track engine
                 RSUB    ADF_SEL_WBC, 1          ; announces THIS unit writable
                 MOVE    ADF_WBC_CTRL, R6
@@ -1961,6 +1954,8 @@ _FADF_CHUNK     MOVE    ADF_FDH_TAB, R8         ; R8: the FDH of THIS drive
                 MOVE    ADF_FDH_TAB, R6         ; R6: the FDH of THIS drive
                 ADD     R0, R6
                 MOVE    @R6, R6
+                MOVE    @R6, R8                 ; the SD controller of its card
+                RSUB    SDC$SELDEV, 1           ; (M2M-UPSTREAM sd-host)
                 MOVE    IO$SD_DATA_POS, R8
                 MOVE    IO$SD_DATA, R9
                 XOR     R10, R10                ; R10: byte in the sector
@@ -2228,28 +2223,26 @@ ADF_UNMOUNT     INCRB
                 ;    the drive already shows empty).
                 ;
                 ; First apply the SAME card-change guard that the SD guard of
-                ; HANDLE_CORE_IO uses (SD_CHANGED, or an active-slot switch
-                ; while armed): a swapped/pulled card makes the retained FDH
+                ; HANDLE_CORE_IO uses (a new generation of the drive's card,
+                ; M2M-UPSTREAM sd-host): a swapped/pulled card makes the retained FDH
                 ; stale, and flushing to it would write the old disk into the
                 ; new card (the ROSM_INTEGRITY rule) - and the FAT32 errors of
                 ; FLUSH_ADF_STEP are FATAL. We run BEFORE that SD guard (RSUB-ed
                 ; first in HANDLE_CORE_IO), so an eject in the card-change
                 ; window would otherwise crash. On a change, DISCARD the dirty
                 ; bitmap (mirrors _HCIO_SDK) instead of flushing, then disarm.
-                MOVE    SD_CHANGED, R0
-                CMP     1, @R0
-                RBRA    _ADF_UM_DROP, Z
-                MOVE    ADF_FDH_VALID, R0       ; slot check only when armed
+                MOVE    ADF_FDH_VALID, R0       ; card check only when armed
                 ADD     R2, R0
                 CMP     1, @R0
                 RBRA    _ADF_UM_FLUSH, !Z       ; not armed -> flush is a no-op
-                MOVE    M2M$CSR, R0
-                MOVE    @R0, R0
-                AND     M2M$CSR_SD_ACTIVE, R0
                 MOVE    ADF_SD_SLOT, R1
                 ADD     R2, R1
-                CMP     @R1, R0
-                RBRA    _ADF_UM_FLUSH, Z        ; same slot -> safe to flush
+                MOVE    @R1, R8
+                RSUB    SDC$GEN, 1
+                MOVE    ADF_SD_GEN, R1
+                ADD     R2, R1
+                CMP     @R1, R8
+                RBRA    _ADF_UM_FLUSH, Z        ; same card -> safe to flush
 
 _ADF_UM_DROP    MOVE    R2, R8                  ; card changed: drop the dirty
                 RSUB    ADF_WIPE_DIRTY, 1       ; bitmap so a later mount cannot
@@ -2480,8 +2473,9 @@ _HWF_RET        DECRB
 ;
 ; The last main-menu item (AEXP_OSM_SD_STATUS) is a TEXT line of exactly
 ; OPTM_DX characters; group 0, so the cursor skips it. While the main menu is
-; on screen it shows the mode of the SD host controller (sdhost.vhd), read from
-; its register 6 (bit 0 native 4-bit, bit 1 slow = SPI 12.5 MHz, bit 2 ready).
+; on screen it shows the mode of both SD host controllers (sdhost.vhd, one per
+; slot, M2M-UPSTREAM sd-host): "SD0:4-bit  SD1:SPI 25 ", read from register 6
+; of each (bit 0 native 4-bit, bit 1 slow = SPI 12.5 MHz, bit 2 ready).
 ; sdhost falls back on its own (native -> SPI 25 MHz -> SPI 12.5 MHz after a
 ; failed transfer; a card used in SPI mode since power-up stays in SPI mode),
 ; and this line is where the user sees it. Same gates, throttle and label
@@ -2535,31 +2529,29 @@ SD_STATUS_STEP  INCRB
                 RBRA    _SDS_CLS0, 1
 _SDS_POLL       MOVE    R1, @R0
 
-_SDS_CLS0       MOVE    SD_REG_MODE, R0         ; classify
-                MOVE    @R0, R0
-                MOVE    SD_OS_NONE, R6
-                MOVE    R0, R1
-                AND     SD_MODE_READY, R1
-                RBRA    _SDS_CLS, Z
-                MOVE    SD_OS_4BIT, R6
-                MOVE    R0, R1
-                AND     SD_MODE_NATIVE, R1
-                RBRA    _SDS_CLS, !Z
-                MOVE    SD_OS_SPI25, R6
-                AND     SD_MODE_SLOW, R0
-                RBRA    _SDS_CLS, Z
-                MOVE    SD_OS_SPI12, R6
+_SDS_CLS0       MOVE    1, R8                   ; classify both: R6 = the
+                RSUB    _SDS_MODE, 1            ; internal card's state +
+                MOVE    R9, R6                  ; 4 x the external one's
+                ADD     R6, R6
+                ADD     R6, R6
+                XOR     R8, R8
+                RSUB    _SDS_MODE, 1
+                ADD     R9, R6
 
 _SDS_CLS        MOVE    SD_OSM_LAST, R0         ; changed: new text
                 CMP     @R0, R6
                 RBRA    _SDS_DIM, Z
                 MOVE    R6, @R0
-                MOVE    SD_OSM_STR, R0
-                ADD     R6, R0
-                MOVE    @R0, R8
-                RSUB    RODATA_STR, 1           ; (read-only data: in RAM)
-                MOVE    HWF_LABEL, R9
-                SYSCALL(strcpy, 1)
+                MOVE    HWF_LABEL, R9           ; "SD0:" + state + "SD1:" +
+                XOR     R8, R8                  ; state
+                MOVE    R6, R5
+                AND     3, R5
+                RSUB    _SDS_PUT, 1
+                MOVE    1, R8
+                MOVE    R6, R5
+                AND     0xFFFB, SR
+                SHR     2, R5
+                RSUB    _SDS_PUT, 1
                 MOVE    AEXP_OSM_SD_STATUS, R8
                 MOVE    1, R9                   ; skip the selection marker
                 MOVE    HWF_LABEL, R10
@@ -2616,6 +2608,43 @@ _SDS_HIDE       MOVE    SD_OSM_LAST, R0
                 MOVE    HWF_OS_INVALID, @R0
 
 _SDS_RET        DECRB
+                RET
+
+; _SDS_MODE: the state (SD_OS_*) of the controller of slot R8 -> R9. R10 used.
+_SDS_MODE       RSUB    SDC$SEL, 1
+                MOVE    SD_REG_MODE, R10
+                MOVE    @R10, R10
+                MOVE    SD_OS_NONE, R9
+                AND     SD_MODE_READY, R10
+                RBRA    _SDSM_RET, Z
+                MOVE    SD_REG_MODE, R10
+                MOVE    @R10, R10
+                MOVE    SD_OS_4BIT, R9
+                AND     SD_MODE_NATIVE, R10
+                RBRA    _SDSM_RET, !Z
+                MOVE    SD_REG_MODE, R10
+                MOVE    @R10, R10
+                MOVE    SD_OS_SPI25, R9
+                AND     SD_MODE_SLOW, R10
+                RBRA    _SDSM_RET, Z
+                MOVE    SD_OS_SPI12, R9
+_SDSM_RET       RET
+
+; _SDS_PUT: "SDx:" (slot R8) and the text of state R5 at R9 -> R9 behind it.
+; R8, R10..R12 used.
+_SDS_PUT        MOVE    0x0053, @R9++           ; "SDx:"
+                MOVE    0x0044, @R9++
+                MOVE    R8, @R9
+                ADD     0x0030, @R9++
+                MOVE    0x003A, @R9++
+                MOVE    R9, R10                 ; the text (read-only data)
+                MOVE    SD_OSM_STR, R8
+                ADD     R5, R8
+                MOVE    @R8, R8
+                RSUB    RODATA_STR, 1
+                MOVE    R10, R9
+                SYSCALL(strcpy, 1)
+                ADD     SD_OSM_LEN, R9
                 RET
 
 ; ----------------------------------------------------------------------------
@@ -3147,9 +3176,17 @@ HDF_PREP        INCRB
 
                 MOVE    HDF_VPART, R1           ; a partition, not the file
                 CMP     0, @R1                  ; (the file browser or a
-                RBRA    _HDFP_NVP, Z            ; profile chose it)
+                RBRA    _HDFP_NVP, Z            ; profile chose it): slot <<
+                MOVE    @R1, R8                 ; 8 | number. The handle is
+                SWAP    R8, R8                  ; an empty one: its device
+                AND     0x00FF, R8              ; is that card's
+                RSUB    SDC$MOUNT, 1            ; (M2M-UPSTREAM sd-host)
+                CMP     0, R9
+                RBRA    _HDFP_BADPT, !Z
+                MOVE    R8, @R0                 ; (FAT32$FDH_DEVICE = 0)
                 MOVE    R0, R8
                 MOVE    @R1, R9
+                AND     0x00FF, R9
                 RSUB    HDF_PART_GET, 1
                 CMP     0x00FF, R8
                 RBRA    _HDFP_BADPT, Z
@@ -3245,15 +3282,16 @@ _HDFP_SKM       RSUB    FAT32$FILE_SEEK_MAP, 1
 _HDFP_SKD       CMP     0, R9
                 RBRA    _HDFP_FATERR, !Z
 
-                MOVE    M2M$CSR, R1             ; remember the SD slot (see
-                MOVE    @R1, R1                 ; the SD guards in IDE_STEP);
-                AND     M2M$CSR_SD_ACTIVE, R1   ; the disk of the other drive
-                MOVE    HDF_SD_SLOT, R4         ; cannot stay if it came from
-                CMP     @R4, R1                 ; the other slot
-                RBRA    _HDFP_SLOT, Z
-                MOVE    3, R8
-                RSUB    HDF_DROP, 1
-_HDFP_SLOT      MOVE    R1, @R4
+                MOVE    HDF_FDH, R8             ; remember the card and its
+                MOVE    @R8, R8                 ; generation (see the SD
+                RSUB    SDC$SLOT, 1             ; guards in IDE_STEP; M2M-
+                MOVE    HDF_DSLOT, R1           ; UPSTREAM sd-host: each drive
+                ADD     R6, R1                  ; can be on either card)
+                MOVE    R8, @R1
+                RSUB    SDC$GEN, 1
+                MOVE    HDF_DGEN, R1
+                ADD     R6, R1
+                MOVE    R8, @R1
                 MOVE    R6, R8                  ; mounted: bit 0 or 1
                 ADD     1, R8
                 MOVE    HDF_UNITS, R1
@@ -3291,6 +3329,9 @@ _HDFP_LINK      MOVE    R9, R4                  ; R4/R5: start, R1/R7: size
                 ADD     1, R9                   ; master, 2 for the slave
                 AND     R9, R8
                 RBRA    _HDFP_LDUP, Z           ; no
+                MOVE    HDF_SAVE, R8            ; on the same card? (its
+                CMP     @R8, @R0                ; FAT32$FDH_DEVICE)
+                RBRA    _HDFP_LDUP, !Z
                 MOVE    HDF_SAVE, R8            ; its HDF_PART
                 ADD     HDF_PART, R8
                 SUB     HDF_FDH, R8
@@ -3614,7 +3655,12 @@ _HES_M0         MOVE    IDE_ENG_MAPW, R10
                 MOVE    R1, @R2                 ; shift
                 MOVE    IDE_ENG_FILE, R3
 
-_HES_ON         MOVE    R3, @R0                 ; mode last
+_HES_ON         MOVE    HDF_DSLOT, R1           ; bit 2: the card of the drive
+                ADD     R7, R1                  ; (M2M-UPSTREAM sd-host: the
+                CMP     0, @R1                  ; engine port's controller)
+                RBRA    _HES_ON2, Z
+                OR      IDE_ENG_SLOT1, R3
+_HES_ON2        MOVE    R3, @R0                 ; mode last
 _HES_RET        DECRB
                 RET
 
@@ -3679,21 +3725,33 @@ _IDS_SYNC       MOVE    IDE_EVENTS, R0
                 MOVE    IDE_ST_IDLE, @R1
                 RBRA    _IDS_RET, 1
 
-                ; SD guards (see HANDLE_CORE_IO): a swapped card or a switch to
-                ; the other slot makes the retained handle useless - the drive
-                ; vanishes, never write to a card the file was not opened on
-_IDS_VALID      MOVE    SD_CHANGED, R0
-                CMP     1, @R0
-                RBRA    _IDS_DROP, Z
-                MOVE    M2M$CSR, R0
+                ; SD guards (see HANDLE_CORE_IO): a swapped card makes the
+                ; retained handle useless - the drive vanishes, never write
+                ; to a card the file was not opened on. M2M-UPSTREAM sd-host
+                ; (two slots): per drive, by the generation of its card.
+_IDS_VALID      XOR     R2, R2                  ; R2: drive
+                MOVE    1, R3                   ; R3: its bit
+_IDS_GL         MOVE    HDF_UNITS, R0
                 MOVE    @R0, R0
-                AND     M2M$CSR_SD_ACTIVE, R0
-                MOVE    HDF_SD_SLOT, R1
-                CMP     @R1, R0
-                RBRA    _IDS_EV, Z
-_IDS_DROP       MOVE    3, R8                   ; both drives
+                AND     R3, R0
+                RBRA    _IDS_GN, Z              ; not mounted
+                MOVE    HDF_DSLOT, R0
+                ADD     R2, R0
+                MOVE    @R0, R8
+                RSUB    SDC$GEN, 1
+                MOVE    HDF_DGEN, R0
+                ADD     R2, R0
+                CMP     @R0, R8
+                RBRA    _IDS_GN, Z
+                MOVE    R3, R8                  ; its card changed: it goes
                 RSUB    HDF_DROP, 1
-                RBRA    _IDS_SYNC, 1
+_IDS_GN         ADD     1, R2
+                ADD     R3, R3
+                CMP     2, R2
+                RBRA    _IDS_GL, !Z
+                MOVE    HDF_UNITS, R0
+                CMP     0, @R0
+                RBRA    _IDS_SYNC, Z            ; no drive left
 
 _IDS_EV         MOVE    IDE_EVENTS, R0
                 MOVE    @R0, R1
@@ -4218,6 +4276,9 @@ IDE_SD_TAKE     INCRB
                 MOVE    HDF_FDH, R8             ; flush a dirty owner, then the
                 RSUB    _F32_RELEASE_BUF, 1     ; buffer belongs to nobody
                 MOVE    R9, R2                  ; R2: flush result
+                MOVE    HDF_FDH, R8             ; the SD controller of the file
+                MOVE    @R8, R8                 ; (M2M-UPSTREAM sd-host: the
+                RSUB    SDC$SELDEV, 1           ; buffer is used directly)
                 MOVE    R0, R8
                 MOVE    R1, R9
                 CMP     0, R2                   ; (MOVE changes Z: test last)
@@ -4549,14 +4610,15 @@ HDMI_FLT_TABLE  .DW AEXP_OSM_FLT_NO_FILTER,     M2M$ASCAL_NEAREST,   0,         
 ; ----------------------------------------------------------------------------
 LOAD_SCREEN_OFFSETS INCRB
 
-                MOVE    CONFIG_DEVH, R8         ; reuse the config device handle
-                CMP     0, @R8                  ; valid? (set by HELP_MENU_INIT)
-                RBRA    _LSO_ZERO, Z            ; no SD device -> zero table
-
+                RSUB    SDC$HOMEDEV, 1          ; the card of the settings file
+                CMP     0, R9                   ; (M2M-UPSTREAM sd-host; it is
+                RBRA    _LSO_ZERO, !Z           ; mounted again after a card
+                                                ; change) - none: zero table
+                MOVE    R8, R0                  ; R0: device handle
                 MOVE    SCR_FILE_NAME, R8       ; "/amiga/aexp_screen.cfg"
                 RSUB    RODATA_STR, 1           ; (read-only data: in RAM)
                 MOVE    R8, R10
-                MOVE    CONFIG_DEVH, R8
+                MOVE    R0, R8
                 MOVE    SCR_FDH, R9        ; empty file handle struct
                 XOR     R11, R11                ; "/" path separator
                 SYSCALL(f32_fopen, 1)
@@ -5021,6 +5083,7 @@ IDE_ENG_SHIFT   .EQU    5
 IDE_ENG_OFF     .EQU    0                   ; modes: firmware (IDE_STEP)
 IDE_ENG_FILE    .EQU    1                   ; extent map of the file
 IDE_ENG_PART    .EQU    2                   ; partition of the card
+IDE_ENG_SLOT1   .EQU    4                   ; + bit 2: on the external card
 IDE_ENG_MAP     .EQU    0x8000              ; window 1: the extent maps (W only),
 IDE_ENG_MAPW    .EQU    2048                ; unit u at u * IDE_ENG_MAPW
 IDE_EV_CMD      .EQU    0x0001              ; a command was written
@@ -5181,6 +5244,7 @@ SD_OS_4BIT      .EQU    1
 SD_OS_SPI25     .EQU    2
 SD_OS_SPI12     .EQU    3
 SD_OSM_ATTR     .EQU    0x004F              ; M2M$SA_DARK + white on blue
+SD_OSM_LEN      .EQU    7                   ; the state texts (m2m-rodata.asm)
 SD_OSM_STR      .DW SD_OSM_NONE, SD_OSM_4BIT, SD_OSM_SPI25, SD_OSM_SPI12 ; (rodata)
 
 ; MEGA65 battery RTC (issue #13): framework device C_DEV_RTC (qnice_wrapper.vhd)
@@ -5273,7 +5337,9 @@ BANK_F32F       .EQU    2                       ; FAT32 write layer: files
 ; ----------------------------------------------------------------------------
 ; Shared folder (Megamiga 0.6.1)
 ;
-; The folder /amiga of the SD card as an AmigaOS volume, read-only. On the
+; The folder /amiga of the external SD card (the back slot, M2M-UPSTREAM
+; sd-host: the card one can pull to share files with a computer) as an AmigaOS
+; volume. On the
 ; Amiga, the handler MegamigaFS (CORE/share) turns every DOS packet into a
 ; request in the shared memory at $DD4000 (share_buf.vhd, QNICE device
 ; AEXP_DEV_SHARE) and waits; SHARE_STEP answers it from the SD card. The
@@ -5290,22 +5356,21 @@ BANK_F32F       .EQU    2                       ; FAT32 write layer: files
 ;               protocol version. The generation changes whenever the volume
 ;               goes away or comes back: MegamigaFS shows that as a disk change.
 ;   word 0x7F6  event counters (diagnostics, the ShareInfo tool shows them):
-;               card-detect changes (raw, also glitches), card removals and
-;               insertions (debounced), SD_CHANGED, slot switches, mounts
+;               0 (was: raw card-detect changes), card removals and
+;               insertions, new card generations, 0 (was: slot switches),
+;               mounts
 ;   word 0x800  the data buffer (4 KB) of READ
 ;
-; Volume: /amiga is mounted on the device handle SHARE_DEV of its own (the
-; Shell keeps the current directory of HANDLE_DEV for its file browser) about
-; a second after the core starts, after a card is inserted (card-detect rising
-; edge), after a switch of the active SD slot and after a card change the
-; Shell noticed (SD_CHANGED). A card-detect falling edge takes the volume down.
-; A card-detect level counts only once it held for SHR_DET_DEB (~100 ms): a
-; glitch of the signal must not look like a disk change to the Amiga.
+; Volume: /amiga is mounted on the device handle SHARE_DEV of its own (a copy
+; of SDC_DEV1, the handle of the external card that the Shell and the core
+; use: the volume needs its own current directory) about a second after the
+; core starts and after a card is inserted. Every new generation of the
+; external card (sdcards.asm: a card-detect level that held for ~100 ms, so a
+; glitch of the signal does not look like a disk change to the Amiga) takes
+; the volume down first.
 ; The main menu item " SDCard: inserted" (AEXP_OSM_SHARE) ejects the volume
 ; while it is off, without touching the card; switching it on again inserts it
 ; (after the same ~1 s as a card change).
-; Edges, not levels: a slot whose card-detect does not work still gets its
-; volume at start.
 ;
 ; Locks and files: a lock is an object - the root (/amiga), a directory (its
 ; first cluster) or a file (the first cluster of its directory and its index
@@ -5315,10 +5380,10 @@ BANK_F32F       .EQU    2                       ; FAT32 write layer: files
 ; Key 0 is the root. Open files are FAT32 handles in SHR_FILES_N slots, keyed
 ; the same way. An Amiga reset (the reset counter of share_buf.vhd) frees all.
 ;
-; The one SD sector buffer: SHARE_DEV is a third device handle on the same
-; controller as HANDLE_DEV and CONFIG_DEVH, and every device handle tracks the
-; owner of the buffer itself. So a request first flushes and releases the
-; buffer of the other two (SHR_TAKE_BUF) and finally releases its own
+; The SD sector buffer of the external card: SHARE_DEV is a second device
+; handle on its controller (next to SDC_DEV1), and every device handle tracks
+; the owner of the buffer itself. So a request first flushes and releases the
+; buffer of SDC_DEV1 (SHR_TAKE_BUF) and finally releases its own
 ; (SHR_GIVE_BUF): between two time slices nobody claims the buffer, and every
 ; handle re-reads its sector on its next access.
 ; ----------------------------------------------------------------------------
@@ -5339,13 +5404,12 @@ SHR_FILE_SZ     .EQU    24                      ; words, FAT32$FDH_STRUCT_SIZE),
 SHR_F_OBJ       .EQU    15                      ; its object (8 words) and
 SHR_F_USED      .EQU    23                      ; "used" (1: read, 2: write)
 SHR_DEBOUNCE    .EQU    768                     ; IO$CYC_MID ticks: ~1 s
-SHR_DET_DEB     .EQU    77                      ; card-detect: ~100 ms
 SHR_EVC_N       .EQU    6                       ; event counters:
-SHR_EV_RAW      .EQU    0                       ; card-detect changes (raw)
+SHR_EV_RAW      .EQU    0                       ; (unused: 0)
 SHR_EV_OUT      .EQU    1                       ; card removed
 SHR_EV_IN       .EQU    2                       ; card inserted
-SHR_EV_SDCH     .EQU    3                       ; SD_CHANGED rising
-SHR_EV_SLOT     .EQU    4                       ; slot switch
+SHR_EV_SDCH     .EQU    3                       ; new card generations
+SHR_EV_SLOT     .EQU    4                       ; (unused: 0)
 SHR_EV_MOUNT    .EQU    5                       ; mount attempts
 SHR_PROTO       .EQU    2                       ; protocol version (2: writes)
 SHR_W_TIME      .EQU    0x87F0                  ; the Amiga time of a request
@@ -5452,23 +5516,18 @@ B0_SHARE_INIT   INCRB
                 MOVE    SHR_RSTSEEN, R2
                 MOVE    @R1, @R2
                 MOVE    0, @R0
-                RSUB    SHR_CARD, 1             ; R8: slot, R9: card detected
-                MOVE    SHR_SLOT, R0
-                MOVE    R8, @R0
-                MOVE    SHR_DET, R0
-                MOVE    R9, @R0
-                MOVE    SHR_DETRAW, R0
-                MOVE    R9, @R0
+                MOVE    SHR_SDGEN, R0           ; the first SHARE_STEP sees a
+                MOVE    0, @R0                  ; new card (generations start
+                                                ; at 1, sdcards.asm)
                 MOVE    SHR_EVC, R0             ; no events yet
                 MOVE    SHR_EVC_N, R1
 _SHI_EV         MOVE    0, @R0++
                 SUB     1, R1
                 RBRA    _SHI_EV, !Z
-                MOVE    SHR_SDCH, R0
+                MOVE    SHR_MNT_PEND, R0
                 MOVE    0, @R0
                 MOVE    SHR_INSW, R0            ; the menu: inserted (seen as
                 MOVE    1, @R0                  ; an edge if it is off)
-                RSUB    SHR_PEND, 1             ; mount in about a second
                 RSUB    SHR_STATUS, 1
                 DECRB
                 RET
@@ -5525,24 +5584,6 @@ SHR_SEL         INCRB
                 DECRB
                 RET
 
-; SHR_CARD: R8 = the active SD slot (M2M$CSR_SD_ACTIVE bit), R9 = 1 if its
-; card-detect reports a card. Other registers preserved.
-SHR_CARD        INCRB
-                MOVE    M2M$CSR, R0
-                MOVE    @R0, R0
-                MOVE    R0, R8
-                AND     M2M$CSR_SD_ACTIVE, R8
-                MOVE    M2M$CSR_SD_DET_INT, R1
-                CMP     0, R8
-                RBRA    _SHC_D, Z
-                MOVE    M2M$CSR_SD_DET_EXT, R1
-_SHC_D          XOR     R9, R9
-                AND     R0, R1
-                RBRA    _SHC_RET, Z
-                MOVE    1, R9
-_SHC_RET        DECRB
-                RET
-
 ; SHR_PEND: (re)mount after the debounce time. All registers preserved.
 SHR_PEND        INCRB
                 MOVE    SHR_MNT_PEND, R0
@@ -5553,75 +5594,32 @@ SHR_PEND        INCRB
                 DECRB
                 RET
 
-; SHR_MEDIA: follow the SD card (see the header). All registers preserved.
+; SHR_MEDIA: follow the external SD card (see the header): a new generation of
+; it (sdcards.asm: pulled, inserted, swapped) takes the volume down, and if a
+; card is there, it comes back after SHR_DEBOUNCE. All registers preserved.
 SHR_MEDIA       SYSCALL(enter, 1)
-                RSUB    SHR_CARD, 1
-                XOR     R2, R2                  ; R2: 1 = remount
-                MOVE    SHR_SLOT, R0            ; another slot active?
+                MOVE    1, R8                   ; the external card
+                RSUB    SDC$GEN, 1
+                MOVE    SHR_SDGEN, R0
                 CMP     @R0, R8
-                RBRA    _SHM_RAW, Z
+                RBRA    _SHM_PND, Z             ; no change
                 MOVE    R8, @R0
                 MOVE    SHR_EVC, R3
-                ADD     SHR_EV_SLOT, R3
-                ADD     1, @R3
-                MOVE    1, R2
-                MOVE    SHR_DETRAW, R0          ; a deliberate switch: the
-                MOVE    R9, @R0                 ; card-detect of the new slot
-                MOVE    SHR_DET, R0             ; counts at once
-                MOVE    R9, @R0
-                CMP     0, R9
-                RBRA    _SHM_SDC, !Z
-                RBRA    _SHM_OUT, 1             ; (no card there)
-_SHM_RAW        MOVE    SHR_DETRAW, R0          ; card-detect changed?
-                CMP     @R0, R9
-                RBRA    _SHM_STB, Z
-                MOVE    R9, @R0                 ; yes: wait until it holds
-                MOVE    IO$CYC_MID, R1
-                MOVE    SHR_DETT, R3
-                MOVE    @R1, @R3
-                MOVE    SHR_EVC, R3
-                ADD     SHR_EV_RAW, R3
-                ADD     1, @R3
-                RBRA    _SHM_SDC, 1
-_SHM_STB        MOVE    SHR_DET, R0             ; a new level that held?
-                CMP     @R0, R9
-                RBRA    _SHM_SDC, Z
-                MOVE    IO$CYC_MID, R1
-                MOVE    @R1, R1
-                MOVE    SHR_DETT, R3
-                SUB     @R3, R1
-                CMP     SHR_DET_DEB, R1
-                RBRA    _SHM_SDC, N             ; (SHR_DET_DEB > R1)
-                MOVE    R9, @R0
-                CMP     0, R9
-                RBRA    _SHM_INS, !Z
-_SHM_OUT        MOVE    SHR_EVC, R3             ; removed: down until a card
-                ADD     SHR_EV_OUT, R3          ; is inserted
+                ADD     SHR_EV_SDCH, R3
                 ADD     1, @R3
                 RSUB    SHR_DOWN, 1
                 MOVE    SHR_MNT_PEND, R0
                 MOVE    0, @R0
-                XOR     R2, R2
-                RBRA    _SHM_SDC, 1
+                MOVE    1, R8
+                RSUB    SDC$PRESENT, 1
+                RBRA    _SHM_INS, C
+                MOVE    SHR_EVC, R3             ; removed: down until a card
+                ADD     SHR_EV_OUT, R3          ; is inserted
+                ADD     1, @R3
+                RBRA    _SHM_PND, 1
 _SHM_INS        MOVE    SHR_EVC, R3             ; inserted
                 ADD     SHR_EV_IN, R3
                 ADD     1, @R3
-                MOVE    1, R2
-_SHM_SDC        MOVE    SD_CHANGED, R0          ; the Shell saw a card change
-                MOVE    @R0, R0
-                MOVE    SHR_SDCH, R1
-                CMP     @R1, R0
-                RBRA    _SHM_ACT, Z
-                MOVE    R0, @R1
-                CMP     0, R0
-                RBRA    _SHM_ACT, Z
-                MOVE    SHR_EVC, R3
-                ADD     SHR_EV_SDCH, R3
-                ADD     1, @R3
-                MOVE    1, R2
-_SHM_ACT        CMP     0, R2
-                RBRA    _SHM_PND, Z
-                RSUB    SHR_DOWN, 1
                 RSUB    SHR_PEND, 1
 _SHM_PND        MOVE    AEXP_OSM_SHARE, R8      ; the menu: inserted?
                 RSUB    M2M$GET_SETTING, 1
@@ -5725,12 +5723,11 @@ _SCA_F          MOVE    0, @R0
                 DECRB
                 RET
 
-; SHR_TAKE_BUF: flush and release the SD sector buffer of the Shell's device
-; handles (see the header). All registers preserved.
+; SHR_TAKE_BUF: flush and release the SD sector buffer of the device handle of
+; the external card that everybody else uses (see the header). All registers
+; preserved.
 SHR_TAKE_BUF    SYSCALL(enter, 1)
-                MOVE    HANDLE_DEV, R8
-                RSUB    _SHR_RELDEV, 1
-                MOVE    CONFIG_DEVH, R8
+                MOVE    SDC_DEV1, R8
                 RSUB    _SHR_RELDEV, 1
                 SYSCALL(leave, 1)
                 RET
@@ -5757,10 +5754,16 @@ SHR_MOUNT       SYSCALL(enter, 1)
                 RSUB    SHR_TAKE_BUF, 1
                 MOVE    SHARE_DEV, R8
                 MOVE    0, @R8
-                MOVE    1, R9                   ; partition #1
-                SYSCALL(f32_mnt_sd, 1)
-                CMP     0, R9
+                MOVE    1, R8                   ; the external card, mounted
+                RSUB    SDC$MOUNT, 1            ; (R8: SDC_DEV1; M2M-UPSTREAM
+                CMP     0, R9                   ; sd-host)
                 RBRA    _SMT_ERR, !Z
+                MOVE    SHARE_DEV, R9           ; a copy of its device handle:
+                MOVE    FAT32$DEV_STRUCT_SIZE, R10  ; the volume needs its own
+                SYSCALL(memcpy, 1)              ; current directory
+                MOVE    SHARE_DEV, R8           ; (nobody owns the buffer)
+                ADD     FAT32$DEV_BUFFERED_FDH, R8
+                MOVE    0, @R8
                 MOVE    SHARE_DEV, R8           ; the root: /amiga
                 MOVE    SHR_DIRNAME, R9
                 XOR     R10, R10
@@ -7029,8 +7032,8 @@ _SSO_NO         AND     0xFFFB, SR              ; C=0
 
 ; SHR_COREUSE: C=1 if the core uses the file with the first cluster R10:R9
 ; (0: never): a mounted disk image, a hard disk (or its link file), the
-; settings file. All files of the core are on the same card (the shared
-; folder follows the active card). R8..R12 clobbered.
+; settings file - on the external card (M2M-UPSTREAM sd-host: the shared
+; folder's card; the core may use files on both cards). R8..R12 clobbered.
 SHR_COREUSE     INCRB
                 MOVE    R9, R0
                 MOVE    R10, R1
@@ -7068,8 +7071,16 @@ _SCU_NO         DECRB
 _SCU_YES        DECRB
                 OR      0x0004, SR              ; C=1
                 RET
-; _SCU_FDH: C=1 if the file handle R8 starts at cluster R1:R0 (caller's bank)
-_SCU_FDH        ADD     FAT32$FDH_START_CLUS_LO, R8
+; _SCU_FDH: C=1 if the file handle R8 is on the external card and starts at
+; cluster R1:R0 (caller's bank). R11 clobbered.
+_SCU_FDH        MOVE    R8, R11
+                MOVE    @R11, R8                ; its device (0: none)
+                RBRA    _SCF_NO, Z
+                RSUB    SDC$SLOT, 1
+                CMP     1, R8
+                RBRA    _SCF_NO, !Z
+                MOVE    R11, R8
+                ADD     FAT32$FDH_START_CLUS_LO, R8
                 CMP     @R8++, R0
                 RBRA    _SCF_NO, !Z
                 CMP     @R8, R1
@@ -8059,10 +8070,12 @@ _SRN_E          MOVE    CFGS_PB, R9              ; the entry address
 ;
 ; The settings file keeps text (M2M-UPSTREAM cfg-strings, cfgstr.asm): per
 ; profile the Kickstart and the two hard disks the user loaded through the
-; menu, as paths ("a1200.hdf0=/amiga/disks/work.hdf"). PROFILE_APPLY loads
-; them instead of the profile's standard files (a1200.rom, a1200.hdf, ...),
-; which stay the fallback. This code is in code bank BANK_F32F (with the
-; FAT32 write layer's file part, which has room), behind FAR_CALL stubs.
+; menu, as paths with the card in front (M2M-UPSTREAM sd-host, two slots:
+; "SD0:" = the internal card, "SD1:" = the external one):
+; "a1200.hdf0=SD1:/amiga/disks/work.hdf", "a1200.hdf1=SD0:partition:2". A
+; path without the card is invalid (a missing file). PROFILE_APPLY loads them.
+; This code is in code bank BANK_F32F (with the FAT32 write layer's file part,
+; which has room), behind FAR_CALL stubs.
 ; ----------------------------------------------------------------------------
 
 ; the keys: profile x 3 + (ROM id - PROF_HDF_ID): hdf0, hdf1, kick
@@ -8106,21 +8119,27 @@ _PR_CUR         MOVE    R10, @--SP
                 MOVE    @SP++, R10
                 RET
 
-; B2_PROF_REMEMBER: the user loaded the file handle R8 (opened through
-; HANDLE_DEV from its current directory) as ROM id R9 (PROF_HDF_ID ..
-; PROF_KICK_ID): the selected profile remembers its path. All registers
-; preserved.
+; B2_PROF_REMEMBER: the user loaded the file handle R8 (opened through the
+; device handle of its card from its current directory) as ROM id R9
+; (PROF_HDF_ID .. PROF_KICK_ID): the selected profile remembers its path. All
+; registers preserved.
 B2_PROF_REMEMBER SYSCALL(enter, 1)
                 MOVE    R9, R1                  ; R1: ROM id
                 MOVE    SF_VIRTUAL, R2          ; an SD card partition from the
                 MOVE    @R2, R2                 ; browser (BROWSE_EXTRA: id =
-                CMP     0, R2                   ; its number): "partition:N"
-                RBRA    _PRR_FILE, Z
-                MOVE    _PR_S_PART, R8
+                CMP     0, R2                   ; slot << 8 | its number):
+                RBRA    _PRR_FILE, Z            ; "SDx:partition:N"
+                SUB     1, R2
+                MOVE    R2, R8
+                SWAP    R8, R8
+                AND     0x00FF, R8
                 MOVE    PROF_PATH, R9
+                RSUB    _PR_PUTCARD, 1          ; "SDx:"
+                MOVE    _PR_S_PART, R8
                 SYSCALL(strcpy, 1)
                 ADD     _PR_S_PLEN, R9
-                ADD     0x002F, R2              ; (id + 1) - 1 + "0"
+                AND     0x00FF, R2
+                ADD     0x0030, R2
                 MOVE    R2, @R9++
                 MOVE    0, @R9
                 RBRA    _PRR_OK, 1
@@ -8166,13 +8185,19 @@ B2_PROF_SAVED   INCRB
                 MOVE    PROF_PATH, R10
                 CMP     0, @R10
                 RBRA    _PRS_NO, Z
-                MOVE    PROF_PATH, R4           ; "partition:N"?
+                RSUB    _PR_CARD, 1             ; "SDx:" -> R8: slot, R10: the
+                RBRA    _PRS_NF, !C             ; rest (none: not there)
+                RSUB    SDC$MOUNT, 1            ; R8: the card's device
+                CMP     0, R9
+                RBRA    _PRS_NF, !Z
+                MOVE    R8, R6                  ; R6: the device handle
+                MOVE    R10, R4                 ; "partition:N"?
                 MOVE    _PR_S_PART, R5
 _PRS_PP         CMP     0, @R5
                 RBRA    _PRS_PART, Z
                 CMP     @R4++, @R5++
                 RBRA    _PRS_PP, Z
-                MOVE    HANDLE_DEV, R8
+                MOVE    R6, R8
                 MOVE    PROF_FDH, R9
                 XOR     R11, R11                ; "/" separator
                 SYSCALL(f32_fopen, 1)
@@ -8209,8 +8234,9 @@ _PRS_NE         MOVE    0, @R6
                 DECRB
                 OR      0x0004, SR              ; C=1
                 RET
-                ; an SD card partition: HDF_PREP mounts it (HDF_VPART), the
-                ; handle is an empty one on HANDLE_DEV (only its device counts)
+                ; an SD card partition: HDF_PREP mounts it (HDF_VPART = slot
+                ; << 8 | number), the handle is an empty one on the device of
+                ; the card (only its device counts)
 _PRS_PART       CMP     PROF_KICK_ID, R0        ; (not a Kickstart)
                 RBRA    _PRS_NF, Z
                 MOVE    @R4, R5                 ; the digit 1..4
@@ -8218,14 +8244,18 @@ _PRS_PART       CMP     PROF_KICK_ID, R0        ; (not a Kickstart)
                 CMP     R5, 3
                 RBRA    _PRS_NF, N              ; (R5 > 3, also below "1")
                 ADD     1, R5
-                MOVE    HDF_VPART, R6
-                MOVE    R5, @R6
+                MOVE    R6, R8                  ; the slot of the device
+                RSUB    SDC$SLOT, 1
+                SWAP    R8, R8
+                OR      R5, R8
+                MOVE    HDF_VPART, R7
+                MOVE    R8, @R7
                 MOVE    PROF_FDH, R8
                 MOVE    FAT32$FDH_STRUCT_SIZE, R9
                 XOR     R10, R10
                 SYSCALL(memset, 1)
                 MOVE    PROF_FDH, R8
-                MOVE    HANDLE_DEV, @R8
+                MOVE    R6, @R8
                 MOVE    BRX_S_PART, R8          ; its name: "Partition N"
                 MOVE    PROF_PATH, R9
                 SYSCALL(strcpy, 1)
@@ -8247,15 +8277,51 @@ _PRS_C0         MOVE    R0, R9
                 AND     0xFFFB, SR              ; C=0
                 RET
 
-; _PR_PATHOF: the path of the file handle R8 (opened through HANDLE_DEV from
-; its current directory, FDH_EA set by FAT32$FILE_OPEN) -> PROF_PATH, C=1;
-; C=0 if it cannot be found or is longer than 127 characters. The names come
-; from directory listings (PROF_FDH as the directory handle, SHR_DE as the
-; entry): the file's own entry, then upwards through ".." - each directory
+; _PR_CARD: PROF_PATH starts with the card, "SD0:" or "SD1:" (M2M-UPSTREAM
+; sd-host)? C=1: R8 = the slot, R10 = the rest of the path; C=0: no card.
+; R9 clobbered.
+_PR_CARD        MOVE    PROF_PATH, R10
+                MOVE    @R10++, R9              ; "S" or "s"
+                OR      0x0020, R9
+                CMP     0x0073, R9
+                RBRA    _PRC_NO, !Z
+                MOVE    @R10++, R9              ; "D" or "d"
+                OR      0x0020, R9
+                CMP     0x0064, R9
+                RBRA    _PRC_NO, !Z
+                MOVE    @R10++, R8              ; "0" or "1"
+                SUB     0x0030, R8
+                CMP     R8, 1
+                RBRA    _PRC_NO, N              ; (R8 > 1, also below "0")
+                CMP     0x003A, @R10++          ; ":"
+                RBRA    _PRC_NO, !Z
+                OR      0x0004, SR              ; C=1
+                RET
+_PRC_NO         AND     0xFFFB, SR              ; C=0
+                RET
+
+; _PR_PUTCARD: "SDx:" for slot R8 at R9 -> R9 behind it (no terminator: the
+; callers write the rest right behind it; a path that fills PROF_PATH starts
+; exactly there). R8 preserved.
+_PR_PUTCARD     MOVE    0x0053, @R9++
+                MOVE    0x0044, @R9++
+                MOVE    R8, @R9
+                ADD     0x0030, @R9++
+                MOVE    0x003A, @R9++
+                RET
+
+; _PR_PATHOF: the path of the file handle R8 (opened through the device handle
+; of its card from the current directory of that, FDH_EA set by
+; FAT32$FILE_OPEN) -> PROF_PATH with the card in front ("SD1:/amiga/x.hdf"),
+; C=1; C=0 if it cannot be found or is longer than 127 characters. The names
+; come from directory listings (PROF_FDH as the directory handle, SHR_DE as
+; the entry): the file's own entry, then upwards through ".." - each directory
 ; by its cluster in its parent. All registers preserved.
 _PR_PATHOF      SYSCALL(enter, 1)
                 MOVE    R8, R7                  ; R7: the file handle
-                MOVE    HANDLE_DEV, R6
+                MOVE    PROF_DEVP, R6           ; its device handle
+                MOVE    @R7, @R6                ; (FAT32$FDH_DEVICE = 0)
+                MOVE    @R6, R6
                 ADD     FAT32$DEV_AD_1STCLUS_LO, R6
                 MOVE    @R6++, R0               ; R1:R0: the current directory
                 MOVE    @R6, R1                 ; (restored at the end)
@@ -8292,7 +8358,8 @@ _PP_FL          RSUB    _PP_NEXT, 1
                 RBRA    _PP_FAIL, !C
 
                 ; the directories up to the root
-_PP_UP          MOVE    HANDLE_DEV, R8
+_PP_UP          MOVE    PROF_DEVP, R8
+                MOVE    @R8, R8
                 ADD     FAT32$DEV_RD_1STCLUS_LO, R8
                 CMP     @R8++, R2
                 RBRA    _PP_PAR, !Z
@@ -8318,7 +8385,8 @@ _PP_DD          RSUB    _PP_NEXT, 1
                 MOVE    R2, R8
                 OR      R3, R8
                 RBRA    _PP_P1, !Z
-                MOVE    HANDLE_DEV, R8
+                MOVE    PROF_DEVP, R8
+                MOVE    @R8, R8
                 ADD     FAT32$DEV_RD_1STCLUS_LO, R8
                 MOVE    @R8++, R2
                 MOVE    @R8, R3
@@ -8341,8 +8409,13 @@ _PP_DN          RSUB    _PP_NEXT, 1
                 RBRA    _PP_FAIL, !C
                 RBRA    _PP_UP, 1
 
-                ; done: the path to the start of PROF_PATH
-_PP_DONE        MOVE    PROF_PATH, R8
+                ; done: the card and the path to the start of PROF_PATH
+_PP_DONE        MOVE    PROF_DEVP, R8
+                MOVE    @R8, R8
+                RSUB    SDC$SLOT, 1
+                MOVE    PROF_PATH, R9
+                RSUB    _PR_PUTCARD, 1
+                MOVE    R9, R8
 _PP_MV          MOVE    @R4++, R9
                 MOVE    R9, @R8++
                 CMP     0, R9
@@ -8357,12 +8430,14 @@ _PP_FAIL        RSUB    _PP_END, 1
                 RET
 
 ; _PP_OPEN: the directory R3:R2 (caller's bank) as the current directory of
-; HANDLE_DEV, open in PROF_FDH. C=1 if OK. R8..R12 used.
-_PP_OPEN        MOVE    HANDLE_DEV, R8
+; the device PROF_DEVP, open in PROF_FDH. C=1 if OK. R8..R12 used.
+_PP_OPEN        MOVE    PROF_DEVP, R8
+                MOVE    @R8, R8
                 ADD     FAT32$DEV_AD_1STCLUS_LO, R8
                 MOVE    R2, @R8++
                 MOVE    R3, @R8
-                MOVE    HANDLE_DEV, R8
+                MOVE    PROF_DEVP, R8
+                MOVE    @R8, R8
                 MOVE    PROF_FDH, R9
                 RSUB    FAT32$DIR_OPEN, 1
                 CMP     0, R9
@@ -8388,12 +8463,12 @@ _PPN_NO         AND     0xFFFB, SR
                 RET
 
 ; _PP_PUT: "/" and the name in SHR_DE in front of the path at R4 (caller's
-; bank). C=0 if it does not fit. R8..R10 used.
+; bank). C=0 if it does not fit (with the "SDx:" in front). R8..R10 used.
 _PP_PUT         MOVE    SHR_DE, R8
                 SYSCALL(strlen, 1)              ; R9: its length
-                MOVE    R4, R10                 ; room: R4 - PROF_PATH
-                SUB     PROF_PATH, R10
-                SUB     1, R10
+                MOVE    R4, R10                 ; room: R4 - PROF_PATH - 1
+                SUB     PROF_PATH, R10          ; - 4 ("SDx:")
+                SUB     5, R10
                 CMP     R9, R10
                 RBRA    _PPP_NO, N              ; (R9 > R10)
                 SUB     R9, R4
@@ -8410,13 +8485,15 @@ _PPP_E          SUB     1, R4
 _PPP_NO         AND     0xFFFB, SR
                 RET
 
-; _PP_END: the current directory of HANDLE_DEV back to R1:R0 (caller's bank);
+; _PP_END: the current directory of PROF_DEVP back to R1:R0 (caller's bank);
 ; the sector buffer is nobody's if PROF_FDH has it. R8, R9 used.
-_PP_END         MOVE    HANDLE_DEV, R8
+_PP_END         MOVE    PROF_DEVP, R8
+                MOVE    @R8, R8
                 ADD     FAT32$DEV_AD_1STCLUS_LO, R8
                 MOVE    R0, @R8++
                 MOVE    R1, @R8
-                MOVE    HANDLE_DEV, R8
+                MOVE    PROF_DEVP, R8
+                MOVE    @R8, R8
                 ADD     FAT32$DEV_BUFFERED_FDH, R8
                 CMP     PROF_FDH, @R8
                 RBRA    _PPE_RET, !Z
@@ -8454,7 +8531,8 @@ ADF_FDH2        .BLOCK FAT32$FDH_STRUCT_SIZE    ; drive: HNDL_RM_FILES[n] is
                                                 ; (reached via ADF_FDH_TAB)
 ADF_FDH_VALID   .BLOCK ADF_DRIVES               ; 1: the FDH of that drive is
                                                 ; usable, i.e. armed
-ADF_SD_SLOT     .BLOCK ADF_DRIVES               ; active SD slot at arm time
+ADF_SD_SLOT     .BLOCK ADF_DRIVES               ; SD card slot at arm time
+ADF_SD_GEN      .BLOCK ADF_DRIVES               ; ... and its card generation
 ADF_MOUNT_SEEN  .BLOCK ADF_DRIVES               ; 1: armed or blocked; 0: a
                                                 ; fresh PARSEST=READY may arm
 ADF_FL_STATE    .BLOCK ADF_DRIVES               ; 0: idle  1: track session
@@ -8469,11 +8547,14 @@ PROF_FDH        .BLOCK FAT32$FDH_STRUCT_SIZE    ; PROFILE_APPLY: the Kickstart /
 PROF_PENDF      .BLOCK 1                        ; PROF_NAME: a name waits for the menu
 PROF_PEND       .BLOCK PROF_PEND_NUM            ; its path labels (0 = none), by ROM id
 PROF_PATH       .BLOCK 128                      ; a remembered path (cfg text)
+PROF_DEVP       .BLOCK 1                        ; _PR_PATHOF: the device handle
 PROF_PNAME      .BLOCK 63                       ; PROF_PEND_NUM x PROF_PN_LEN:
                                                 ; the names of remembered files
-HDF_VPART       .BLOCK 1                        ; HDF_PREP: 1..4 = mount this SD
-                                                ; card partition, not the file
+HDF_VPART       .BLOCK 1                        ; HDF_PREP: slot << 8 | 1..4 =
+                                                ; mount this SD card partition,
+                                                ; not the file
 BRX_NAME        .BLOCK 32                       ; BROWSE_EXTRA: an entry's name
+BRX_DEVREF      .BLOCK 1                        ; ... its card's device handle
 BRX_DEC         .BLOCK 11                       ; its decimal size
 FL_BAR_TOTAL    .BLOCK 1                        ; FAST_LOAD progress bar: sectors
 FL_BAR_WIDTH    .BLOCK 1                        ; bar width in characters
@@ -8490,7 +8571,10 @@ HDF_UNITS       .BLOCK 1                        ; mounted drives: bit 0 master
                                                 ; (unit 0), bit 1 slave (unit 1)
 HDF_ACTIVE      .BLOCK 1                        ; drive whose state is in the
                                                 ; block below (see HDF_SELECT)
-HDF_SD_SLOT     .BLOCK 1                        ; active SD slot at mount time
+HDF_DSLOT       .BLOCK 2                        ; per drive: its SD card slot
+HDF_DGEN        .BLOCK 2                        ; ... and that card's generation
+                                                ; at the mount (M2M-UPSTREAM
+                                                ; sd-host, see IDE_STEP)
 ; The disk state of ONE drive, HDF_FDH up to HDF_SAVE. HDF_SELECT swaps it with
 ; HDF_SAVE, which holds the other drive; keep it contiguous and keep
 ; HDF_BLK_WORDS equal to its length (the fw-ide harness checks both).
@@ -8548,13 +8632,10 @@ SHR_UP          .BLOCK 1                        ; 1: the volume is mounted
 SHR_GEN         .BLOCK 1                        ; generation 1..0x7FFF
 SHR_LASTREQ     .BLOCK 1                        ; last request number seen
 SHR_RSTSEEN     .BLOCK 1                        ; last Amiga reset count seen
-SHR_SLOT        .BLOCK 1                        ; active SD slot seen last
-SHR_DET         .BLOCK 1                        ; its card-detect (debounced)
-SHR_DETRAW      .BLOCK 1                        ; its card-detect seen last
-SHR_DETT        .BLOCK 1                        ; IO$CYC_MID when it changed
+SHR_SDGEN       .BLOCK 1                        ; generation of the external
+                                                ; card seen last (sdcards.asm)
 SHR_INSW        .BLOCK 1                        ; the menu toggle seen last
 SHR_EVC         .BLOCK 6                        ; event counters (SHR_EV_*)
-SHR_SDCH        .BLOCK 1                        ; SD_CHANGED seen last
 SHR_MNT_PEND    .BLOCK 1                        ; 1: mount after SHR_MNT_T
 SHR_MNT_T       .BLOCK 1                        ; IO$CYC_MID at the event
 SHR_TOTAL       .BLOCK 2                        ; blocks of the volume (lo, hi)
@@ -8709,7 +8790,11 @@ HEAP            .BLOCK 1
 ; Partitions in the HDF browser (HDF_VPART, BRX_*) and SF_VIRTUAL: 45 words,
 ; the combined total is 32 words smaller: 18560, stack margin 274 words.
 ;HEAP_SIZE       .EQU 14976                      ; 18560 - 3584 = 14976
-HEAP_SIZE       .EQU 14944                      ; 18560 - 3616 = 14944
+; M2M-UPSTREAM sd-host, two slots (both SD cards at once): the per-slot card
+; state, the browser's card and the per-drive card generations added 17 words:
+; the combined total is 32 words smaller: 18528, stack margin 287 words.
+;HEAP_SIZE       .EQU 14944                      ; 18560 - 3616 = 14944
+HEAP_SIZE       .EQU 14912                      ; 18528 - 3616 = 14912
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

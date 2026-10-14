@@ -279,7 +279,7 @@ port (
    -- The engine port of the SD host controller (M2M-UPSTREAM sd-host, sdhost_pkg; QNICE
    -- clock domain): the IDE board's sector engine streams HDF sectors through it
    sd_eng_i                : in    std_logic_vector(63 downto 0) := (others => '0');
-   sd_eng_o                : out   std_logic_vector(74 downto 0);
+   sd_eng_o                : out   std_logic_vector(75 downto 0);
 
    -- C64 Expansion Port (aka Cartridge Port)
    cart_en_o               : out std_logic;  -- Enable port, active high
@@ -1830,6 +1830,7 @@ begin
          qnice_wait_o            => qnice_ide_wait,
 
          -- the sector engine on the SD host controller's engine port
+         sd_slot_o               => sd_eng_o(C2Q_SLOT),
          sd_ready_i              => sd_eng_i(Q2C_READY),
          sd_start_o              => sd_eng_o(C2Q_START),
          sd_write_o              => sd_eng_o(C2Q_WRITE),

@@ -23,6 +23,7 @@
 --
 -- Map / configuration (written by the firmware, registers in ide_board): per unit u
 --   mode   0 = off (firmware), 1 = file (extent map), 2 = partition
+--   slot   the SD card: 0 = bottom tray, 1 = back slot (sd_slot_o selects the controller)
 --   sects  sectors of the image
 --   base   file: DEV_CLUSTER - (2 << shift) (block of cluster 0); partition: first block
 --   shift  log2(sectors per cluster)
@@ -52,6 +53,8 @@ entity ide_engine is
       -- configuration
       cfg_mode0_i    : in  std_logic_vector(1 downto 0);
       cfg_mode1_i    : in  std_logic_vector(1 downto 0);
+      cfg_slot0_i    : in  std_logic := '0';
+      cfg_slot1_i    : in  std_logic := '0';
       cfg_sects0_i   : in  std_logic_vector(31 downto 0);
       cfg_sects1_i   : in  std_logic_vector(31 downto 0);
       cfg_base0_i    : in  std_logic_vector(31 downto 0);
@@ -84,7 +87,8 @@ entity ide_engine is
       busy_o         : out std_logic;
 
       -- SD host engine port
-      sd_ready_i     : in  std_logic;
+      sd_slot_o      : out std_logic;             -- the controller (stable while busy)
+      sd_ready_i     : in  std_logic;             -- of the controller sd_slot_o names
       sd_start_o     : out std_logic;
       sd_write_o     : out std_logic;
       sd_addr_o      : out std_logic_vector(31 downto 0);
@@ -195,6 +199,9 @@ begin
    map_addr_o   <= std_logic_vector(maddr);
 
    sd_start_o   <= sd_start;
+   -- E_DECIDE checks sd_ready_i of the unit of the new command (unit is set there)
+   sd_slot_o    <= cfg_slot1_i when (st = E_DECIDE and tf_i(52) = '1') or (st /= E_DECIDE and unit = '1') else
+                   cfg_slot0_i;
    sd_write_o   <= wr;
    sd_addr_o    <= std_logic_vector(run_blk);
    sd_count_o   <= std_logic_vector(run_len);

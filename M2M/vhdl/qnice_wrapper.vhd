@@ -50,7 +50,7 @@ port (
    sd2_cd_i                  : in  std_logic;
 
    -- M2M-UPSTREAM sd-host: the engine port of the SD host controller (sdhost_pkg)
-   sd_eng_i                  : in  std_logic_vector(74 downto 0);
+   sd_eng_i                  : in  std_logic_vector(75 downto 0);
    sd_eng_o                  : out std_logic_vector(63 downto 0);
 
    paddle_i                  : in  std_logic_vector(3 downto 0);

@@ -42,7 +42,8 @@
 --   0x118        R/W: bit 0: master (unit 0) present, bit 1: board enabled (in the autoconfig
 --                     chain), bit 2: slave (unit 1) present (Megamiga 0.3.1)
 --   0x11F        W: commit (any value)
---   0x120-0x125  R/W: sector engine, unit 0: mode (0 off, 1 file, 2 partition), sectors lo/hi,
+--   0x120-0x125  R/W: sector engine, unit 0: mode (bits 1..0: 0 off, 1 file, 2 partition; bit 2:
+--                     the SD slot, 0 = bottom tray, 1 = back), sectors lo/hi,
 --                     base block lo/hi, log2(sectors per cluster) - see ide_engine.vhd
 --   0x128-0x12D  R/W: the same for unit 1
 --   0x130        R: bit 0 SD card ready (sdhost), bit 1 engine busy
@@ -117,6 +118,7 @@ entity ide_board is
       qnice_wait_o           : out std_logic;
 
       -- QNICE clock domain: the engine port of the SD host controller (sdhost.vhd)
+      sd_slot_o              : out std_logic;     -- the controller: 0 = bottom tray, 1 = back
       sd_ready_i             : in  std_logic := '0';
       sd_start_o             : out std_logic;
       sd_write_o             : out std_logic;
@@ -260,7 +262,7 @@ architecture synthesis of ide_board is
    signal q_map_wd    : std_logic_vector(15 downto 0) := (others => '0');
    signal q_map_we    : std_logic := '0';
    signal q_cfg_wr_f, q_cfg_wr : std_logic := '0';
-   signal q_mode0, q_mode1   : std_logic_vector(1 downto 0) := "00";
+   signal q_mode0, q_mode1   : std_logic_vector(2 downto 0) := "000";
    signal q_sects0, q_sects1 : std_logic_vector(31 downto 0) := (others => '0');
    signal q_base0, q_base1   : std_logic_vector(31 downto 0) := (others => '0');
    signal q_shift0, q_shift1 : std_logic_vector(2 downto 0) := (others => '0');
@@ -776,8 +778,10 @@ begin
          cmd_tgl_i    => q_events(0),
          rst_tgl_i    => q_events(2),
          fw_cmd_tgl_o => q_fw_cmd,
-         cfg_mode0_i  => q_mode0,
-         cfg_mode1_i  => q_mode1,
+         cfg_mode0_i  => q_mode0(1 downto 0),
+         cfg_mode1_i  => q_mode1(1 downto 0),
+         cfg_slot0_i  => q_mode0(2),
+         cfg_slot1_i  => q_mode1(2),
          cfg_sects0_i => q_sects0,
          cfg_sects1_i => q_sects1,
          cfg_base0_i  => q_base0,
@@ -802,6 +806,7 @@ begin
          st_fwd_o     => q_st_fwd,
          st_err_o     => q_st_err,
          busy_o       => q_eng_busy,
+         sd_slot_o    => sd_slot_o,
          sd_ready_i   => sd_ready_i,
          sd_start_o   => sd_start_o,
          sd_write_o   => sd_write_o,
@@ -883,13 +888,13 @@ begin
                   when x"17" => q_ndevh  <= qnice_data_i(7 downto 0);
                   when x"18" => q_ctrl   <= qnice_data_i(2 downto 0);
                   when x"1F" => q_commit <= not q_commit;
-                  when x"20" => q_mode0  <= qnice_data_i(1 downto 0);
+                  when x"20" => q_mode0  <= qnice_data_i(2 downto 0);
                   when x"21" => q_sects0(15 downto 0)  <= qnice_data_i;
                   when x"22" => q_sects0(31 downto 16) <= qnice_data_i;
                   when x"23" => q_base0(15 downto 0)   <= qnice_data_i;
                   when x"24" => q_base0(31 downto 16)  <= qnice_data_i;
                   when x"25" => q_shift0 <= qnice_data_i(2 downto 0);
-                  when x"28" => q_mode1  <= qnice_data_i(1 downto 0);
+                  when x"28" => q_mode1  <= qnice_data_i(2 downto 0);
                   when x"29" => q_sects1(15 downto 0)  <= qnice_data_i;
                   when x"2A" => q_sects1(31 downto 16) <= qnice_data_i;
                   when x"2B" => q_base1(15 downto 0)   <= qnice_data_i;
@@ -904,8 +909,8 @@ begin
          end if;
          if qnice_rst_i = '1' then
             q_ctrl  <= "000";
-            q_mode0 <= "00";
-            q_mode1 <= "00";
+            q_mode0 <= "000";
+            q_mode1 <= "000";
          end if;
       end if;
    end process qnice_write_proc;
@@ -940,13 +945,13 @@ begin
                when x"16" => d(7 downto 0) := q_nlba2;
                when x"17" => d(7 downto 0) := q_ndevh;
                when x"18" => d(2 downto 0) := q_ctrl;
-               when x"20" => d(1 downto 0) := q_mode0;
+               when x"20" => d(2 downto 0) := q_mode0;
                when x"21" => d := q_sects0(15 downto 0);
                when x"22" => d := q_sects0(31 downto 16);
                when x"23" => d := q_base0(15 downto 0);
                when x"24" => d := q_base0(31 downto 16);
                when x"25" => d(2 downto 0) := q_shift0;
-               when x"28" => d(1 downto 0) := q_mode1;
+               when x"28" => d(2 downto 0) := q_mode1;
                when x"29" => d := q_sects1(15 downto 0);
                when x"2A" => d := q_sects1(31 downto 16);
                when x"2B" => d := q_base1(15 downto 0);

@@ -60,7 +60,7 @@ port (
    sd2_cd_i             : in std_logic;
 
    -- M2M-UPSTREAM sd-host: the engine port of the SD host controller (sdhost_pkg)
-   sd_eng_i             : in  std_logic_vector(74 downto 0) := (others => '0');
+   sd_eng_i             : in  std_logic_vector(75 downto 0) := (others => '0');
    sd_eng_o             : out std_logic_vector(63 downto 0);
 
    -- QNICE public registers
@@ -154,11 +154,8 @@ signal reset_ctl                 : std_logic;
 signal reset_pre_pore            : std_logic;
 signal reset_post_pore           : std_logic;
 
--- SD Card multiplexing: SD_* signals are the bottom tray, SD2*_ signals are the back slot
-signal sd_mux_reset_ctrl          : std_logic;                       -- reset QNICE's controller
-signal sd_mux_clk                 : std_logic;
-signal sd_mux_cmd, sd_mux_cmd_oe, sd_mux_cmd_in : std_logic;
-signal sd_mux_dat, sd_mux_dat_oe, sd_mux_dat_in : std_logic_vector(3 downto 0);
+-- M2M-UPSTREAM sd-host (two slots): see sdslots.vhd (the smart multiplexer sdmux.vhd and
+-- its signals are gone)
 
 -- QNICE standard MMIO signals
 signal rom_en                    : std_logic;
@@ -187,9 +184,9 @@ signal cyc_count_reg             : std_logic_vector(1 downto 0);
 signal cyc_count_data_out        : std_logic_vector(15 downto 0);
 
 -- MEGA65 SD card specific MMIO signals (see sysdef.asm)
-signal sd_mode                    : std_logic;
+-- M2M-UPSTREAM sd-host (two slots): no multiplexer any more; CSR bit 8 reads the slot
+-- register 7 selects, bits 6 and 7 are unused
 signal sd_inuse_rd                : std_logic;                       -- read currently active sd
-signal sd_inuse_wr                : std_logic;                       -- force new active sd
 signal sd_cd_int                  : std_logic;
 signal sd_cd_ext                  : std_logic;
 
@@ -291,8 +288,6 @@ begin
    csr_keyboard_o    <= reg_csr(3);
    csr_joy1_o        <= reg_csr(4);
    csr_joy2_o        <= reg_csr(5);
-   sd_mode           <= reg_csr(6);
-   sd_inuse_wr       <= reg_csr(7);
    ascal_usage       <= reg_csr(11);
    ramrom_ce_o       <= ramrom_en;
    ramrom_we_o       <= ramrom_we;
@@ -402,92 +397,47 @@ begin
          data_out             => eae_data_out
       );
 
-   -- Smart SD card multiplexer: handles the two different SD Card slots of the MEGA65 (see also sysdef.asm)
-   i_sdmux : entity work.sdmux
-      port map
-      (
-         -- QNICE system interface
-         sysclk50Mhz_i        => clk50_i,
-         sysreset_i           => reset_ctl,
-
-         -- Configuration lines to control the behavior of the multiplexer
-         mode_i               => sd_mode,
-         active_o             => sd_inuse_rd,
-         force_i              => sd_inuse_wr,
-         detected_int_o       => sd_cd_int,
-         detected_ext_o       => sd_cd_ext,
-
-         -- interface to bottom tray's SD card
-         sd_tray_detect_i     => sd2_cd_i,
-         sd_tray_clk_o        => sd2_clk_o,
-         sd_tray_cmd_o        => sd2_cmd_o,
-         sd_tray_cmd_oe_o     => sd2_cmd_oe_o,
-         sd_tray_cmd_i        => sd2_cmd_i,
-         sd_tray_dat_o        => sd2_dat_o,
-         sd_tray_dat_oe_o     => sd2_dat_oe_o,
-         sd_tray_dat_i        => sd2_dat_i,
-
-         -- interface to the SD card in the back slot
-         sd_back_detect_i     => sd_cd_i,
-         sd_back_clk_o        => sd_clk_o,
-         sd_back_cmd_o        => sd_cmd_o,
-         sd_back_cmd_oe_o     => sd_cmd_oe_o,
-         sd_back_cmd_i        => sd_cmd_i,
-         sd_back_dat_o        => sd_dat_o,
-         sd_back_dat_oe_o     => sd_dat_oe_o,
-         sd_back_dat_i        => sd_dat_i,
-
-         -- interface to the QNICE SD card controller
-         ctrl_reset_o         => sd_mux_reset_ctrl,
-         ctrl_clk_i           => sd_mux_clk,
-         ctrl_cmd_i           => sd_mux_cmd,
-         ctrl_cmd_oe_i        => sd_mux_cmd_oe,
-         ctrl_cmd_o           => sd_mux_cmd_in,
-         ctrl_dat_i           => sd_mux_dat,
-         ctrl_dat_oe_i        => sd_mux_dat_oe,
-         ctrl_dat_o           => sd_mux_dat_in
-      );
-
-   -- SD Card: M2M-UPSTREAM sd-host - the SD host controller sdhost.vhd replaces
-   -- QNICE's sdcard.vhd (same registers; native 4-bit SD bus with SPI fallback,
-   -- 25 MHz, and the engine port for a core's block streaming)
-   sd_card : entity work.sdhost
+   -- M2M-UPSTREAM sd-host (two slots): sdslots.vhd replaces the smart multiplexer sdmux.vhd
+   -- and the one SD host controller: one controller per slot, both always live; registers
+   -- 0xFF20..0xFF26 go to the slot that 0xFF27 selects (CSR bit 8 reads it back, CSR bits 6
+   -- and 7 are unused), the engine port to the slot its slot bit names.
+   -- Original: i_sdmux (mode_i/force_i from CSR bits 6/7, active_o to CSR bit 8) and sd_card
+   -- (one sdhost behind the multiplexer).
+   i_sdslots : entity work.sdslots
       port map
       (
          clk_i                => clk50_i,
-         reset_i              => sd_mux_reset_ctrl,
+         reset_i              => reset_ctl,
          en_i                 => sd_en,
          we_i                 => sd_we,
          reg_i                => sd_reg,
          data_i               => cpu_data_out,
          data_o               => sd_data_out,
+         sel_o                => sd_inuse_rd,
+         cd_int_o             => sd_cd_int,
+         cd_ext_o             => sd_cd_ext,
+         eng_i                => sd_eng_i,
+         eng_o                => sd_eng_o,
 
-         e_ready_o            => sd_eng_o(Q2C_READY),
-         e_start_i            => sd_eng_i(C2Q_START),
-         e_write_i            => sd_eng_i(C2Q_WRITE),
-         e_addr_i             => sd_eng_i(C2Q_ADDR),
-         e_count_i            => sd_eng_i(C2Q_COUNT),
-         e_limit_i            => sd_eng_i(C2Q_LIMIT),
-         e_abort_i            => sd_eng_i(C2Q_ABORT),
-         e_busy_o             => sd_eng_o(Q2C_BUSY),
-         e_done_o             => sd_eng_o(Q2C_DONE),
-         e_error_o            => sd_eng_o(Q2C_ERROR),
-         e_blk_o              => sd_eng_o(Q2C_BLK),
-         e_rd_we_o            => sd_eng_o(Q2C_RDWE),
-         e_rd_blk_o           => sd_eng_o(Q2C_RDBLK),
-         e_rd_idx_o           => sd_eng_o(Q2C_RDIDX),
-         e_rd_data_o          => sd_eng_o(Q2C_RDDATA),
-         e_wr_blk_o           => sd_eng_o(Q2C_WRBLK),
-         e_wr_idx_o           => sd_eng_o(Q2C_WRIDX),
-         e_wr_data_i          => sd_eng_i(C2Q_WRDATA),
+         -- slot 0: the bottom tray's SD card (SD2_* pins)
+         tray_cd_i            => sd2_cd_i,
+         tray_clk_o           => sd2_clk_o,
+         tray_cmd_o           => sd2_cmd_o,
+         tray_cmd_oe          => sd2_cmd_oe_o,
+         tray_cmd_i           => sd2_cmd_i,
+         tray_dat_o           => sd2_dat_o,
+         tray_dat_oe          => sd2_dat_oe_o,
+         tray_dat_i           => sd2_dat_i,
 
-         sd_clk_o             => sd_mux_clk,
-         cmd_o                => sd_mux_cmd,
-         cmd_oe_o             => sd_mux_cmd_oe,
-         cmd_i                => sd_mux_cmd_in,
-         dat_o                => sd_mux_dat,
-         dat_oe_o             => sd_mux_dat_oe,
-         dat_i                => sd_mux_dat_in
+         -- slot 1: the SD card in the back slot (SD_* pins)
+         back_cd_i            => sd_cd_i,
+         back_clk_o           => sd_clk_o,
+         back_cmd_o           => sd_cmd_o,
+         back_cmd_oe          => sd_cmd_oe_o,
+         back_cmd_i           => sd_cmd_i,
+         back_dat_o           => sd_dat_o,
+         back_dat_oe          => sd_dat_oe_o,
+         back_dat_i           => sd_dat_i
       );
 
    -- Cycle Counter: used by the M2M firmware for measuring delays

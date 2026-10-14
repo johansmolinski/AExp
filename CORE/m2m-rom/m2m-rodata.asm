@@ -79,10 +79,12 @@ IDE_ID_MODEL    .ASCII_W "Megamiga HDF image"
 HWF_OSM_IDLE    .ASCII_W "df0:Hardware Floppy   "
 HWF_OSM_MOTOR   .ASCII_W "df0:HW Floppy: Motor  "
 HWF_OSM_READ    .ASCII_W "df0:HW Floppy: Reading"
-SD_OSM_NONE     .ASCII_W "SD: no card           "
-SD_OSM_4BIT     .ASCII_W "SD: 4-bit 25 MHz      "
-SD_OSM_SPI25    .ASCII_W "SD: SPI 25 MHz        "
-SD_OSM_SPI12    .ASCII_W "SD: SPI 12.5 MHz      "
+; SD card status line (SD_STATUS_STEP): "SD0:" + the mode of the internal card
+; + "SD1:" + the mode of the external one, 7 characters each
+SD_OSM_NONE     .ASCII_W "-      "
+SD_OSM_4BIT     .ASCII_W "4-bit  "
+SD_OSM_SPI25    .ASCII_W "SPI 25 "
+SD_OSM_SPI12    .ASCII_W "SPI 12 "
 ; screen adjustment (LOAD_SCREEN_OFFSETS)
 SCR_FILE_NAME   .ASCII_W "/amiga/aexp_screen.cfg"
 SCR_LOADING_STR .ASCII_W "<Loading Screen Config>"

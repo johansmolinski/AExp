@@ -464,7 +464,7 @@ signal sd_cmd_o, sd_cmd_oe, sd_cmd_in       : std_logic;
 signal sd_dat_o, sd_dat_oe, sd_dat_in       : std_logic_vector(3 downto 0);
 signal sd2_cmd_o, sd2_cmd_oe, sd2_cmd_in    : std_logic;
 signal sd2_dat_o, sd2_dat_oe, sd2_dat_in    : std_logic_vector(3 downto 0);
-signal sd_eng_c2q                           : std_logic_vector(74 downto 0);
+signal sd_eng_c2q                           : std_logic_vector(75 downto 0);
 signal sd_eng_q2c                           : std_logic_vector(63 downto 0);
 
 begin

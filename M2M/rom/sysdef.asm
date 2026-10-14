@@ -17,11 +17,11 @@ M2M$CSR                 .EQU 0xFFE0
     ; Bit       3: Keyboard connection between M65 keyb. and the core
     ; Bit       4: Joy. port 1 connection between M65 joy. port and core
     ; Bit       5: Joy. port 2 connection between M65 joy. port and core
-    ; Bit       6: SD Card: Mode: 0=Auto: SD card automatically switches
-    ;             between the internal card (bottom tray) and the external
-    ;             card (back slot). The external card has higher precedence.
-    ; Bit       7: SD Card: If Mode=1: 0=force internal / 1=force external
-    ; Bit       8: SD Card: Currently active: 0=internal / 1=external
+    ; Bit       6: unused (M2M-UPSTREAM sd-host, two slots; it used to be
+    ;             the SD card mode of the smart multiplexer: 0=auto)
+    ; Bit       7: unused (it used to force the internal/external card)
+    ; Bit       8: SD Card: the slot that M2M$SD_SLOT selects: 0=internal /
+    ;             1=external (it used to be the card the multiplexer chose)
     ; Bit       9: SD Card: Internal SD card detected
     ; Bit      10: SD Card: External SD card detected
     ; Bit      11: Ascal autoset: If set to 1: M2M$ASCAL_MODE (which is
@@ -55,6 +55,12 @@ M2M$CSR_SD_DET_EXT      .EQU 0x0400
 M2M$CSR_UN_SD_DET_EXT   .EQU 0xFBFF
 M2M$CSR_ASCAL_AUTO      .EQU 0x0800
 M2M$CSR_UN_ASCAL_AUTO   .EQU 0xF7FF
+
+; M2M-UPSTREAM sd-host (two slots): every slot has its own SD controller.
+; The QNICE SD registers (IO$SD_*, 0xFF20..0xFF26) address the controller
+; that bit 0 of this register selects: 0 = the internal card (bottom tray),
+; 1 = the external card (back slot). See sdcards.asm.
+M2M$SD_SLOT             .EQU 0xFF27
 
 M2M$CSR_KBD_JOY         .EQU 0x0038
 M2M$CSR_UN_KBD_JOY      .EQU 0xFFC7

@@ -398,12 +398,12 @@ any other type is refused.
    the name twice). Many SD cards read never-written blocks as `FF` bytes,
    and an Amiga partition whose first block reads `FF FF FF FF` shows up as
    "No disk present" and cannot be formatted.
-2. Put a link file on the FAT32 side: an `.hdf` file with one line of text,
+2. Pick the partition in the file browser: go to the top of a card with
+   **<..>**, and in the list of the cards every Amiga partition shows up below
+   its card (`SD0: Partition 2: 1024 MB`). Or put a link file on the FAT32
+   side of the same card: an `.hdf` file with one line of text,
    `MEGAMIGA-PARTITION 2` for partition 2 (the release has `part2.hdf`,
-   `part3.hdf` and `part4.hdf`). Name it `a1200.hdf` (master) or
-   `a1200-1.hdf` (slave), and the same for the other profiles, to give a
-   profile that disk - or pick the link file in the file browser like any
-   other HDF.
+   `part3.hdf` and `part4.hdf`), and pick that like any other HDF.
 3. Partition the new disk on the Amiga with HDToolBox (`lide.device`), or
    copy an existing HDF image into the partition on a PC (`dd`); either way
    the partition holds a whole disk with its own RDB.
@@ -824,6 +824,35 @@ and has no collision handling for old hubs. The driver is based on Niklas
 Ekström's a314eth.device; the design is described in
 [doc/developers/ethernet.md](doc/developers/ethernet.md).
 
+### Two SD cards
+
+The MEGA65 has two SD card slots: one in the bottom tray under the trapdoor
+(the internal card, **SD0**) and one at the back (the external card, **SD1**).
+Megamiga uses both at the same time: a hard disk can be on one card and the
+floppy images on the other, in any combination.
+
+* **File browser.** It starts in `/amiga` of the card the settings file is
+  on. **<..>** at the top of a card leads to the list of the cards,
+  `<SD0: internal card>` and `<SD1: external card>`; for the HDF lines the
+  Amiga partitions (type `7F`) of each card are listed below it.
+* **Settings file.** `megamiga-<version>.cfg` is looked for on the external
+  card first, then on the internal one, and the settings are saved back to
+  the card it came from. `kick.rom` and `lide.rom` are read from that card
+  too (without a settings file: from the external card, else the internal).
+* **Profiles** remember their Kickstart and hard disks together with the
+  card, for example `SD1:/amiga/kick31.rom` or `SD0:partition:2`. A file
+  that moved to the other card has to be chosen again in the menu.
+* **Shared folder.** `SDCard:` is always `/amiga` of the external card.
+* **Pulling a card** affects only what is on that card: its drives become
+  empty, and the other card keeps working.
+* **Speed.** The internal card runs on the native 4-bit SD bus at 25 MHz.
+  The external card normally runs in SPI mode at 25 MHz: the MEGA65 reads it
+  in SPI mode before the core starts, and a card leaves SPI mode only when it
+  loses power. Taking it out and putting it back in while the core runs gives
+  4-bit there too. The last line of the main menu shows the mode of both
+  cards, for example `SD0:4-bit  SD1:SPI 25`. For the fastest hard disk, put
+  it on the internal card.
+
 ### Shared folder (SDCard:)
 
 The folder `/amiga` of the SD card can be an Amiga volume, `SDCard:`, so that
@@ -843,12 +872,12 @@ The handler `MegamigaFS` is on the `Megamiga_Share.adf` disk of the release
 With Kickstart 1.3, add the entry from `Devs/MountList` to `DEVS:MountList`
 instead and run `Mount SD:` (in `S:Startup-Sequence` for every start).
 
-`SDCard:` shows the `/amiga` folder of the SD card that is active in the
-MEGA65 - the card in the bottom tray, or the one in the back slot when there
-is one. It behaves like a disk in a drive: pull the card and the volume goes
+`SDCard:` shows the `/amiga` folder of the external SD card, the one in the
+back slot: the card you can take out to copy files on a computer (see
+[Two SD cards](#two-sd-cards)). Without a card in the back slot there is no
+volume. It behaves like a disk in a drive: pull the card and the volume goes
 away; insert one and it comes back about a second later, and Workbench shows
-its icon again. Switching cards with F1/F3 in the core's file browser
-changes it, too. Long file names work (up to 106 characters, the limit of
+its icon again. Long file names work (up to 106 characters, the limit of
 AmigaOS); hidden files and anything outside `/amiga` are not shown.
 
 FAT is not an Amiga file system: of the protection bits only "read-only" is
@@ -930,8 +959,10 @@ Installation
 To install the core you need its `*.cor` file (or a `*.bit` file if you flash
 via JTAG). Then:
 
-1. Use a FAT32 formatted SD card with a maximum capacity of 32 GB. The card
-   in the back slot has precedence over the card in the bottom slot.
+1. Use a FAT32 formatted SD card with a maximum capacity of 32 GB, or two:
+   Megamiga uses both slots at the same time (see
+   [Two SD cards](#two-sd-cards)); the settings file is looked for on the
+   card in the back slot first.
 2. Copy the Kickstart ROM to `/amiga/kick.rom` as described above.
 3. Optional: copy the `megamiga-<version>.cfg` file that comes with the build
    into `/amiga` so that the core remembers your menu settings. Without the

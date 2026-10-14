@@ -16,6 +16,7 @@
 #include "llist.asm"
 
 _DIRBR_DOT      .ASCII_W "."                    ; filter this from dir. views
+_DIRBR_DOTDOT   .ASCII_W ".."                   ; (M2M-UPSTREAM sd-host)
 _DIRBR_UPDIR    .ASCII_W "<..>"                 ; (M2M-UPSTREAM cfg-strings)
 _DIRBR_DS       .EQU    0x3C                    ; ASCII of "<"
 _DIRBR_DE       .EQU    0x3E                    ; ASCII of ">"
@@ -116,14 +117,49 @@ _DIRBR_LOOP     MOVE    R7, R8                  ; R8: directory handle
                 MOVE    R8, R5                  ; R5: (new) head of linked lst
                 RBRA    _DIRBR_LOOP, 1          ; next iteration
 
+                ; M2M-UPSTREAM sd-host (two slots), in the Shell only (R6: a
+                ; filter is given): the root of a card has no "..", so the
+                ; Shell gets one: it leads to the list of the cards
+                ; (SELECT_FILE). It goes to the head of the list.
+_DIRBR_LOOPEND  CMP     0, R6
+                RBRA    _DIRBR_LEND2, Z
+                MOVE    @R7, R8                 ; the device handle (of the
+                RSUB    FB_ATROOT, 1            ; directory handle in R7)
+                RBRA    _DIRBR_XS, !C
+                MOVE    _DIRBR_ENTRY, R9        ; ".." as a directory entry
+                ADD     FAT32$DE_NAME, R9
+                MOVE    _DIRBR_DOTDOT, R8
+                SYSCALL(strcpy, 1)
+                MOVE    _DIRBR_ENTRY, R9
+                ADD     FAT32$DE_ATTRIB, R9
+                MOVE    FAT32$FA_DIR, @R9
+                MOVE    R1, R8
+                MOVE    R2, R9
+                MOVE    R3, R10
+                RSUB    _DIRBR_NEWELM, 1
+                MOVE    R8, R1
+                MOVE    R10, R3
+                CMP     0, R11
+                RBRA    _DIRBR_RD_WOOM, !Z
+                MOVE    R9, R10                 ; at the head
+                ADD     SLL$NEXT, R10
+                MOVE    R5, @R10
+                CMP     0, R5
+                RBRA    _DIRBR_UPH, Z
+                MOVE    R5, R10
+                ADD     SLL$PREV, R10
+                MOVE    R9, @R10
+_DIRBR_UPH      MOVE    R9, R5
+                ADD     1, R4
+
                 ; M2M-UPSTREAM cfg-strings (Megamiga): entries of the core
                 ; that are no files (BROWSE_EXTRA, e.g. SD card partitions),
                 ; in the Shell only (R6: a filter is given). They come first,
                 ; behind "<..>", in the order of the core, unsorted; their flag
                 ; word is 2 + the id of the core (see SELECT_FILE).
-_DIRBR_LOOPEND  CMP     0, R6
-                RBRA    _DIRBR_LEND2, Z
-                XOR     R0, R0                  ; R0: insert behind (0: head)
+                ; M2M-UPSTREAM sd-host: here BROWSE_EXTRA gets R11 = 0xFFFF
+                ; (a directory); for the list of the cards, the slot.
+_DIRBR_XS       XOR     R0, R0                  ; R0: insert behind (0: head)
                 CMP     0, R5
                 RBRA    _DIRBR_X0, Z
                 MOVE    R5, R8                  ; the list starts with "<..>"?
@@ -139,6 +175,7 @@ _DIRBR_XL       MOVE    R7, R8
                 MOVE    @R9, R9
                 MOVE    SF_CONTEXT_DATA, R10
                 MOVE    @R10, R10
+                MOVE    0xFFFF, R11             ; (a directory)
                 RSUB    BROWSE_EXTRA, 1         ; R8: name (0: no more), R9: id
                 CMP     0, R8
                 RBRA    _DIRBR_LEND2, Z
@@ -213,6 +250,112 @@ _DIRBR_RD_RET   DECRB
                 MOVE    R1, R12
                 DECRB
                 RET
+
+; ----------------------------------------------------------------------------
+; M2M-UPSTREAM sd-host (two slots): the list of the SD cards for SELECT_FILE,
+; above the roots: for every slot with a card "<SD0: internal card>" or
+; "<SD1: external card>" (a directory entry) and behind it the entries that
+; BROWSE_EXTRA names for that card (R11 = the slot; flag word 2 + id), in this
+; order, unsorted.
+; Input:
+;  R10: Pointer to heap
+;  R11: Maximum amount of available heap memory
+; Output:
+;   R9: Amount of entries
+;  R10: head of the linked list
+;  R11: 0 = OK, 2 = more entries than memory permits
+; ----------------------------------------------------------------------------
+
+DIRBROWSE_CARDS INCRB
+                MOVE    R10, R1                 ; R1: current heap ptr
+                MOVE    R11, R2                 ; R2: max memory on heap
+                XOR     R3, R3                  ; R3: current heap mem. usage
+                XOR     R4, R4                  ; R4: amount of entries
+                XOR     R5, R5                  ; R5: head of linked list
+                XOR     R6, R6                  ; R6: its tail
+                XOR     R7, R7                  ; R7: slot
+
+_DBC_SL         MOVE    R7, R8
+                RSUB    SDC$PRESENT, 1
+                RBRA    _DBC_NS, !C             ; no card in this slot
+                MOVE    _DBC_NAMES, R8          ; the card: a directory
+                ADD     R7, R8
+                MOVE    @R8, R8
+                MOVE    _DIRBR_ENTRY, R9
+                ADD     FAT32$DE_NAME, R9
+                SYSCALL(strcpy, 1)
+                MOVE    _DIRBR_ENTRY, R9
+                ADD     FAT32$DE_ATTRIB, R9
+                MOVE    FAT32$FA_DIR, @R9
+                RSUB    _DBC_ADD, 1
+                RBRA    _DBC_OOM, C
+
+                XOR     R0, R0                  ; R0: index of the extra entry
+_DBC_XL         MOVE    R0, R8
+                MOVE    SF_CONTEXT, R9
+                MOVE    @R9, R9
+                MOVE    SF_CONTEXT_DATA, R10
+                MOVE    @R10, R10
+                MOVE    R7, R11                 ; the slot
+                RSUB    BROWSE_EXTRA, 1         ; R8: name (0: no more), R9: id
+                CMP     0, R8
+                RBRA    _DBC_NS, Z
+                MOVE    R9, @--SP               ; (the id)
+                MOVE    _DIRBR_ENTRY, R9        ; as a file entry
+                ADD     FAT32$DE_NAME, R9
+                SYSCALL(strcpy, 1)
+                MOVE    _DIRBR_ENTRY, R9
+                ADD     FAT32$DE_ATTRIB, R9
+                MOVE    0, @R9
+                RSUB    _DBC_ADD, 1
+                MOVE    @SP++, R12              ; (MOVE keeps C)
+                RBRA    _DBC_OOM, C
+                MOVE    R1, R10                 ; its flag word: the last one
+                SUB     1, R10
+                ADD     2, R12
+                MOVE    R12, @R10
+                ADD     1, R0
+                RBRA    _DBC_XL, 1
+
+_DBC_NS         ADD     1, R7
+                CMP     2, R7
+                RBRA    _DBC_SL, !Z
+                XOR     R11, R11                ; 0 = no error
+                RBRA    _DBC_RET, 1
+_DBC_OOM        MOVE    2, R11
+_DBC_RET        MOVE    R4, R9
+                MOVE    R5, R10
+                DECRB
+                RET
+
+; _DBC_ADD: the entry in _DIRBR_ENTRY as a new element at the tail of the list
+; (registers of DIRBROWSE_CARDS). C=1 if the memory is full.
+_DBC_ADD        MOVE    R1, R8
+                MOVE    R2, R9
+                MOVE    R3, R10
+                RSUB    _DIRBR_NEWELM, 1
+                MOVE    R8, R1
+                MOVE    R10, R3
+                CMP     0, R11
+                RBRA    _DBCA_OOM, !Z
+                CMP     0, R6                   ; the first one: the head
+                RBRA    _DBCA_T, !Z
+                MOVE    R9, R5
+                RBRA    _DBCA_E, 1
+_DBCA_T         MOVE    R6, R10                 ; behind the tail
+                ADD     SLL$NEXT, R10
+                MOVE    R9, @R10
+                MOVE    R9, R10
+                ADD     SLL$PREV, R10
+                MOVE    R6, @R10
+_DBCA_E         MOVE    R9, R6
+                ADD     1, R4
+                AND     0xFFFB, SR              ; C=0
+                RET
+_DBCA_OOM       OR      0x0004, SR              ; C=1
+                RET
+
+_DBC_NAMES      .DW     STR_SD0_CARD, STR_SD1_CARD
 
 ; ----------------------------------------------------------------------------
 ; Internal helper functions

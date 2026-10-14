@@ -60,7 +60,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 
 package sdhost_pkg is
-   subtype t_sd_c2q is std_logic_vector(74 downto 0);
+   subtype t_sd_c2q is std_logic_vector(75 downto 0);
    subtype t_sd_q2c is std_logic_vector(63 downto 0);
    -- C2Q
    constant C2Q_START   : natural := 0;
@@ -70,6 +70,7 @@ package sdhost_pkg is
    subtype  C2Q_COUNT   is natural range 50 downto 35;
    subtype  C2Q_LIMIT   is natural range 66 downto 51;
    subtype  C2Q_WRDATA  is natural range 74 downto 67;
+   constant C2Q_SLOT    : natural := 75;   -- two slots: 0 = bottom tray, 1 = back slot (qnice.vhd)
    -- Q2C
    constant Q2C_READY   : natural := 0;
    constant Q2C_BUSY    : natural := 1;
@@ -1750,7 +1751,7 @@ begin
          end if;
 
          ---------------------------------------------------------------------------------
-         -- reset (sdmux: slot switch, QNICE reset)
+         -- reset (QNICE reset, no card in the slot)
          ---------------------------------------------------------------------------------
          if reset_i = '1' then
             st         <= S_RESET;

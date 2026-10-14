@@ -157,6 +157,12 @@ WRN_EMPTY_BRW   .ASCII_P "The root directory of the SD card contains\n"
 
 WRN_ERROR_CODE  .ASCII_W "Error code: "
 
+; M2M-UPSTREAM sd-host (two slots): the list of the SD cards in the browser
+STR_SD0_CARD    .ASCII_W "SD0: internal card"
+STR_SD1_CARD    .ASCII_W "SD1: external card"
+STR_SD_SPACE    .ASCII_W "Press Space to continue."
+
+
 ; ----------------------------------------------------------------------------
 ; Error Messages
 ; ----------------------------------------------------------------------------

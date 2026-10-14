@@ -17,7 +17,10 @@
 ; returns a string pointer to the filename.
 ;
 ; Input: This function needs a lot of context to run:
-;   * HANDLE_DEV needs to be valid.
+;   * FB_PREPARE ran (M2M-UPSTREAM sd-host, two slots): the card of the
+;     browser (FB_SLOT) is mounted, or the browser shows the list of the
+;     cards (FB_CARDS = 1). Above the root of a card, "<..>" leads to that
+;     list: the cards and, after each, the entries BROWSE_EXTRA names for it.
 ;   * Expects FB_STACK to be initialized (as well as the stack itself)
 ;   * B_STACK_SIZE needs to contain the correct number
 ;   * SD_WAIT needs to be defined (.EQU) and SD_CYC_MID & SD_CYC_HI need
@@ -56,14 +59,17 @@ _S_CONT_CHECK   MOVE    FB_HEAD, R10
 
                 ; retrieve default file browsing start path from config.vhd
                 ; DIRBROWSE_READ expects the start path in R9
-_S_START        MOVE    M2M$RAMROM_DEV, R9
+_S_START        MOVE    FB_CARDS, R9            ; or the list of the SD cards
+                CMP     1, @R9
+                RBRA    _S_CARDS, Z
+                MOVE    M2M$RAMROM_DEV, R9
                 MOVE    M2M$CONFIG, @R9
                 MOVE    M2M$RAMROM_4KWIN, R9
                 MOVE    M2M$CFG_DIR_START, @R9
                 MOVE    M2M$RAMROM_DATA, R9
 
                 ; load sorted directory list into memory
-                MOVE    HANDLE_DEV, R8
+                RSUB    FB_DEV, 1               ; R8: the browser's card
 _S_CD_AND_READ  MOVE    FB_HEAP, R10            ; start address of heap
                 MOVE    @R10, R10
                 MOVE    HEAP_SIZE, R11          ; maximum memory available
@@ -75,6 +81,17 @@ _S_CD_AND_READ  MOVE    FB_HEAP, R10            ; start address of heap
                 CMP     1, R11                  ; error: path not found?
                 RBRA    _S_ERR_PNF, Z
                 CMP     2, R11                  ; max files? (only warn)
+                RBRA    _S_WRN_MAX, Z
+                RBRA    _S_ERR_UNKNOWN, 1
+
+                ; M2M-UPSTREAM sd-host (two slots): the list of the SD cards
+_S_CARDS        MOVE    FB_HEAP, R10
+                MOVE    @R10, R10
+                MOVE    HEAP_SIZE, R11
+                RSUB    DIRBROWSE_CARDS, 1
+                CMP     0, R11
+                RBRA    _S_SAVE_FB_HEAD, Z
+                CMP     2, R11
                 RBRA    _S_WRN_MAX, Z
                 RBRA    _S_ERR_UNKNOWN, 1
 
@@ -230,11 +247,11 @@ _S_INPUT_LOOP   RSUB    HANDLE_IO, 1            ; IO handling (e.g. vdrives)
                 CMP     0, R8                   ; has a key been pressed?
                 RBRA    _IL_KEYPRESSED, !Z      ; yes: handle key press
 
-                ; check, if the SD card changed in the meantime
-                MOVE    SD_CHANGED, R8
-                CMP     1, @R8
-                RBRA    _S_INPUT_LOOP, !Z       ; SD card did not change
-                MOVE    0, @R8                  ; reset change-flag            
+                ; check, if the SD card changed in the meantime (M2M-UPSTREAM
+                ; sd-host, two slots: the card of the list, or any card while
+                ; the list of the cards is shown)
+                RSUB    FB_CHANGED, 1
+                RBRA    _S_INPUT_LOOP, !C       ; SD card did not change
 
                 ; SD card changed
 _S_SD_CHANGED   RSUB    WAIT1SEC, 1             ; debounce SD insert process
@@ -255,10 +272,8 @@ _IL_KEYPRESSED  CMP     M2M$KEY_UP, R8          ; cursor up: prev file
                 RBRA    _IL_KEY_RETURN, Z
                 CMP     M2M$KEY_RUNSTOP, R8     ; Run/Stop key
                 RBRA    _IL_KEY_RUNSTOP, Z
-                CMP     M2M$KEY_F1, R8          ; F1 key: internal SD card
-                RBRA    _IL_KEY_F1_F3, Z
-                CMP     M2M$KEY_F3, R8          ; F3 key: external SD card
-                RBRA    _IL_KEY_F1_F3, Z
+                ; M2M-UPSTREAM sd-host (two slots): F1/F3 used to switch the
+                ; SD card; "<..>" above the root of a card shows the cards
                 RBRA    _S_INPUT_LOOP, 1        ; unknown key
 
                 ; CURSOR UP has been pressed
@@ -397,30 +412,6 @@ _IL_KEY_RUNSTOP MOVE    R6, @--SP               ; rem. abs itm idx for cursor
                 MOVE    2, R9                   ; R9=2: Run/Stop
                 RBRA    _S_RET, 1
 
-                ; let the user switch SD cards: F1=internal / F3=external
-_IL_KEY_F1_F3   MOVE    0, R9                   ; R9 = chosen SD card, 0=int
-                CMP     M2M$KEY_F3, R8
-                RBRA    _IL_SD_INT, !Z          ; not F3: skip
-                MOVE    M2M$CSR_SD_ACTIVE, R9   ; R9 = external SD card
-_IL_SD_INT      MOVE    SD_ACTIVE, R10          ; curr. active equ. keypress?
-                CMP     @R10, R9
-                RBRA    _S_INPUT_LOOP, Z        ; yes: ignore keypress
-
-                MOVE    SD_CHANGED, R11         ; SD card change flag
-                MOVE    0, @R11                 ; reset SD card changed flag
-
-                MOVE    M2M$CSR, R9             ; switch sd mode to manual
-                OR      M2M$CSR_SD_MODE, @R9
-                CMP     M2M$KEY_F3, R8          ; F3: switch to external
-                RBRA    _IL_SD_INT2, !Z
-                OR      M2M$CSR_SD_FORCE, @R9
-                MOVE    M2M$CSR_SD_ACTIVE, @R10 ; remember new active: ext.
-                RBRA    _S_SD_CHANGED, 1
-
-_IL_SD_INT2     AND     M2M$CSR_UN_SD_FORCE, @R9 ; F1: switch to internal
-                MOVE    0, @R10                 ; remember new active: int
-                RBRA    _S_SD_CHANGED, 1
-
                 ; "Return" has been pressed: change directory or return
                 ; the filename of the selected file.
                 ; Iterate the linked list: find the currently seleted element
@@ -474,7 +465,44 @@ _ELEM_CD        MOVE    R4, R8                  ; deselect current line
                 SYSCALL(puts, 1)                ; log it to UART
                 SYSCALL(crlf, 1)
 
-                MOVE    FN_UPDIR, R9            ; are we going one dir. up?
+                ; M2M-UPSTREAM sd-host (two slots): a card of the list of the
+                ; cards ("SD0: ...", "SD1: ..."): its root
+                MOVE    FB_CARDS, R9
+                CMP     1, @R9
+                RBRA    _ELEM_CD2, !Z
+                MOVE    R8, R9                  ; the slot: the third character
+                ADD     2, R9
+                MOVE    @R9, R8
+                SUB     0x0030, R8
+                AND     1, R8
+                RSUB    FB_ENTER, 1             ; mount it; R9: 0 = OK
+                CMP     0, R9
+                RBRA    _ELEM_CDM, !Z
+                MOVE    R6, @--SP               ; rem. abs itm idx for cursor
+                MOVE    0, @--SP                ; ..and the root starts at 0
+                MOVE    FN_ROOT_DIR, R9
+                RSUB    FB_DEV, 1
+                RBRA    _S_CD_AND_READ, 1
+_ELEM_CDM       MOVE    R9, R0                  ; cannot mount it: say so, then
+                MOVE    ERR_MOUNT, R8           ; the list of the cards again
+                RSUB    SCR$PRINTSTR, 1
+                MOVE    R0, R8
+                MOVE    SCRATCH_HEX, R9
+                RSUB    WORD2HEXSTR, 1
+                MOVE    R9, R8
+                RSUB    SCR$PRINTSTR, 1
+                MOVE    NEWLINE, R8
+                RSUB    SCR$PRINTSTR, 1
+                MOVE    NEWLINE, R8
+                RSUB    SCR$PRINTSTR, 1
+                MOVE    STR_SD_SPACE, R8        ; "Press Space to continue."
+                RSUB    SCR$PRINTSTR, 1
+                RSUB    _S_WAIT_SPC, 1
+                RSUB    SCR$CLRINNER, 1
+                MOVE    R6, @--SP               ; the cursor stays where it was
+                RBRA    _S_CARDS, 1
+
+_ELEM_CD2       MOVE    FN_UPDIR, R9            ; are we going one dir. up?
                 SYSCALL(strcmp, 1)
                 CMP     0, R10
                 RBRA    _CHANGEDIR, Z           ; yes: get crsr pos from stack
@@ -483,8 +511,13 @@ _ELEM_CD        MOVE    R4, R8                  ; deselect current line
                 MOVE    0, @--SP                ; ..and new dir. starts at 0
 
 _CHANGEDIR      MOVE    R8, R9                  ; use this directory
-                MOVE    HANDLE_DEV, R8
-                RBRA    _S_CD_AND_READ, 1       ; create new linked-list
+                RSUB    FB_DEV, 1
+                RSUB    FB_ATROOT, 1            ; M2M-UPSTREAM sd-host: ".."
+                RBRA    _S_CD_AND_READ, !C      ; at a root: the list of the
+                CMP     0, R10                  ; cards (R10 = 0 from strcmp:
+                RBRA    _S_CD_AND_READ, !Z      ; it was "..")
+                RSUB    FB_TOCARDS, 1
+                RBRA    _S_CARDS, 1
 
 _RETNAME        MOVE    R6, @--SP               ; rem. abs itm idx for cursor
 
@@ -578,9 +611,177 @@ FB_RE_INIT      INCRB
                 MOVE    @R0, R0
                 MOVE    0, @--R0                ; see comment in shell.asm
                 MOVE    0, @--R0
+                MOVE    0, @--R0                ; (M2M-UPSTREAM sd-host)
                 MOVE    FB_STACK, R1
                 MOVE    R0, @R1
 
+                DECRB
+                RET
+
+; ----------------------------------------------------------------------------
+; M2M-UPSTREAM sd-host (two slots): the card of the file browser
+;
+; FB_SLOT is the card whose directories the browser shows; FB_CARDS = 1 while
+; it shows the list of the cards instead (above the roots). FB_GEN holds the
+; card generations (sdcards.asm) the list on the screen was read at: when the
+; card of the list changes - or any card while the list of the cards is shown
+; - the browser starts over.
+; ----------------------------------------------------------------------------
+
+; FB_PREPARE: before the browser runs. A slot without a card gives way to the
+; other one; the card is mounted; after a card change the browser starts over
+; (on the card list it reads the list again).
+; Output: R9 = 0 = OK, else the mount error code. All other registers
+; preserved.
+FB_PREPARE      INCRB
+                MOVE    R8, R7
+                MOVE    FB_CARDS, R0
+                CMP     1, @R0
+                RBRA    _FBP_CL, Z
+                MOVE    FB_SLOT, R1
+                MOVE    @R1, R8
+                RSUB    SDC$PRESENT, 1
+                RBRA    _FBP_M, C
+                XOR     1, R8                   ; no card: the other one?
+                RSUB    SDC$PRESENT, 1
+                RBRA    _FBP_SW, C
+                XOR     1, R8                   ; none: the mount error
+                RBRA    _FBP_M, 1
+_FBP_SW         MOVE    R8, @R1
+_FBP_M          MOVE    R8, R2                  ; R2: slot
+                RSUB    SDC$MOUNT, 1            ; R9: 0 or the error
+                CMP     0, R9
+                RBRA    _FBP_RET, !Z
+                MOVE    R2, R8                  ; a new card since the list?
+                RSUB    SDC$GEN, 1
+                MOVE    FB_GEN, R3
+                ADD     R2, R3
+                CMP     @R3, R8
+                RBRA    _FBP_OK, Z
+                MOVE    R8, @R3
+                RSUB    FB_RE_INIT, 1
+                RBRA    _FBP_OK, 1
+_FBP_CL         XOR     R8, R8                  ; the list of the cards: read
+                RSUB    SDC$GEN, 1              ; it again if a card changed
+                MOVE    FB_GEN, R3
+                CMP     @R3++, R8
+                RBRA    _FBP_CLN, !Z
+                MOVE    1, R8
+                RSUB    SDC$GEN, 1
+                CMP     @R3, R8
+                RBRA    _FBP_OK, Z
+_FBP_CLN        RSUB    FB_TOCARDS, 1
+                RSUB    FB_RE_INIT, 1
+_FBP_OK         XOR     R9, R9
+_FBP_RET        MOVE    R7, R8
+                DECRB
+                RET
+
+; FB_CHANGED: C=1 if the card of the list (or, on the list of the cards, any
+; card) changed since the list was read. All registers preserved.
+FB_CHANGED      INCRB
+                MOVE    R8, R7
+                MOVE    FB_GEN, R1
+                MOVE    FB_CARDS, R0
+                CMP     1, @R0
+                RBRA    _FBC_CL, Z
+                MOVE    FB_SLOT, R0
+                MOVE    @R0, R8
+                ADD     R8, R1
+                RSUB    SDC$GEN, 1
+                CMP     @R1, R8
+                RBRA    _FBC_YES, !Z
+                RBRA    _FBC_NO, 1
+_FBC_CL         XOR     R8, R8
+                RSUB    SDC$GEN, 1
+                CMP     @R1++, R8
+                RBRA    _FBC_YES, !Z
+                MOVE    1, R8
+                RSUB    SDC$GEN, 1
+                CMP     @R1, R8
+                RBRA    _FBC_YES, !Z
+_FBC_NO         MOVE    R7, R8
+                DECRB
+                AND     0xFFFB, SR              ; C=0
+                RET
+_FBC_YES        MOVE    R7, R8
+                DECRB
+                OR      0x0004, SR              ; C=1
+                RET
+
+; FB_TOCARDS: the browser shows the list of the cards (of the generations of
+; now). All registers preserved.
+FB_TOCARDS      INCRB
+                MOVE    R8, R7
+                MOVE    FB_CARDS, R0
+                MOVE    1, @R0
+                MOVE    FB_GEN, R1
+                XOR     R8, R8
+                RSUB    SDC$GEN, 1
+                MOVE    R8, @R1++
+                MOVE    1, R8
+                RSUB    SDC$GEN, 1
+                MOVE    R8, @R1
+                MOVE    R7, R8
+                DECRB
+                RET
+
+; FB_ENTER: from the list of the cards into card R8: mount it. Output: R9 = 0
+; = OK (the browser shows that card now), else the mount error and nothing
+; changed. All other registers preserved.
+FB_ENTER        INCRB
+                MOVE    R8, R0                  ; R0: slot
+                RSUB    SDC$MOUNT, 1
+                CMP     0, R9
+                RBRA    _FBE_RET, !Z
+                MOVE    FB_SLOT, R1
+                MOVE    R0, @R1
+                MOVE    FB_CARDS, R1
+                MOVE    0, @R1
+                MOVE    R0, R8
+                RSUB    SDC$GEN, 1
+                MOVE    FB_GEN, R1
+                ADD     R0, R1
+                MOVE    R8, @R1
+_FBE_RET        MOVE    R0, R8
+                DECRB
+                RET
+
+; FB_DEV: R8 = the device handle of the browser's card. Other registers
+; preserved.
+FB_DEV          MOVE    FB_SLOT, R8
+                MOVE    @R8, R8
+                RBRA    SDC$DEV, 1
+
+; FB_ATROOT: C=1 if the current directory of device handle R8 is its root.
+; All registers preserved.
+FB_ATROOT       INCRB
+                MOVE    R8, R0
+                MOVE    R8, R1
+                ADD     FAT32$DEV_AD_1STCLUS_LO, R0
+                ADD     FAT32$DEV_RD_1STCLUS_LO, R1
+                CMP     @R0++, @R1++
+                RBRA    _FBA_NO, !Z
+                CMP     @R0, @R1                ; (_HI follows _LO)
+                RBRA    _FBA_NO, !Z
+                DECRB
+                OR      0x0004, SR
+                RET
+_FBA_NO         DECRB
+                AND     0xFFFB, SR
+                RET
+
+; _S_WAIT_SPC: wait until Space is pressed and released (HANDLE_IO runs).
+; All registers preserved.
+_S_WAIT_SPC     INCRB
+_SWS_1          RSUB    HANDLE_IO, 1
+                MOVE    M2M$KEYBOARD, R0
+                AND     M2M$KEY_SPACE, @R0
+                RBRA    _SWS_1, !Z              ; low-active
+_SWS_2          RSUB    HANDLE_IO, 1
+                MOVE    M2M$KEYBOARD, R0
+                AND     M2M$KEY_SPACE, @R0
+                RBRA    _SWS_2, Z
                 DECRB
                 RET
 

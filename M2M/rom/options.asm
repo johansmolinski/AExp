@@ -389,25 +389,35 @@ _HLP_CA_1       MOVE    LOG_STR_CFG_ON, R8
                 ; the case, see also CSR_DEFAULT in M2M/vhdl/QNICE/qnice.vhd
                 RSUB    WAIT_FOR_SD, 1
 
-                ; Mount SD card
-                MOVE    CONFIG_DEVH, R8         ; device handle
-                MOVE    1, R9                   ; partition #1 hardcoded
-                SYSCALL(f32_mnt_sd, 1)
+                ; Mount SD card: M2M-UPSTREAM sd-host (two slots): the
+                ; settings file is looked for on the external card first,
+                ; then on the internal one; it is saved back to the card it
+                ; came from (SDC_HOME, see ROSM_INTEGRITY)
+                MOVE    1, R6                   ; R6: slot
+_HLP_CA_SL      MOVE    R6, R8
+                RSUB    SDC$MOUNT, 1            ; R8: device, R9: 0 = OK
                 CMP     0, R9                   ; R9=error code; 0=OK
                 RBRA    _HLP_CA_4, Z
 
                 MOVE    LOG_STR_CFG_E1, R8      ; cannot mount
                 SYSCALL(puts, 1)
-                RBRA    _HLP_STDSEL, 1          ; use factory defaults
+                RBRA    _HLP_CA_NX, 1
 
                 ; Open config file
-_HLP_CA_4       MOVE    M2M$CFG_CFG_FILE, @R0
+_HLP_CA_4       MOVE    M2M$RAMROM_DEV, R10     ; (the name in the config
+                MOVE    M2M$CONFIG, @R10        ; window again: the file
+                MOVE    M2M$CFG_CFG_FILE, @R0   ; system ran in between)
                 MOVE    CONFIG_FILE, R9
                 MOVE    M2M$RAMROM_DATA, R10
                 XOR     R11, R11
                 SYSCALL(f32_fopen, 1)
                 CMP     0, R10                  ; file open worked
-                RBRA    _HLP_CA_5, Z            ; yes
+                RBRA    _HLP_CA_HOME, Z         ; yes
+_HLP_CA_NX      SUB     1, R6                   ; the next card
+                RBRA    _HLP_CA_SL, !N
+                MOVE    M2M$RAMROM_DEV, R10
+                MOVE    M2M$CONFIG, @R10
+                MOVE    M2M$CFG_CFG_FILE, @R0
 
                 ; No config file or corrupt config file
                 MOVE    LOG_STR_CFG_E2, R8
@@ -419,6 +429,17 @@ _HLP_CA_NCF     SYSCALL(puts, 1)
                 MOVE    CONFIG_FILE, R8         ; file handle dubs as flag
                 MOVE    0, @R8                  ; therefore reset it
                 RBRA    _HLP_STDSEL, 1          ; use factory defaults
+
+                ; M2M-UPSTREAM sd-host: the card of the settings file, its
+                ; generation now, and the file browser starts there
+_HLP_CA_HOME    MOVE    SDC_HOME, R10
+                MOVE    R6, @R10
+                MOVE    R6, R8
+                RSUB    SDC$GEN, 1
+                MOVE    SDC_HGEN, R10
+                MOVE    R8, @R10
+                MOVE    FB_SLOT, R10
+                MOVE    R6, @R10
 
                 ; Check filesize of config file
 _HLP_CA_5       MOVE    R9, R8                  ; R9: file handle
@@ -791,13 +812,14 @@ ROSM_INTEGRITY  SYSCALL(enter, 1)
                 CMP     0, @R0
                 RBRA    _ROSMI_RET, Z
 
-                ; If the currently active SD card is different than the one
-                ; we remembered upon startup then we clear the CONFIG_FILE
-                ; handle as this will stop us from remembering settings.
-                MOVE    M2M$CSR, R8             ; get active SD card
+                ; If the card of the settings file changed since the file was
+                ; loaded (M2M-UPSTREAM sd-host, two slots: its generation,
+                ; see sdcards.asm), then we clear the CONFIG_FILE handle as
+                ; this will stop us from remembering settings.
+                MOVE    SDC_HOME, R8
                 MOVE    @R8, R8
-                AND     M2M$CSR_SD_ACTIVE, R8   ; isolate the relevant bit
-                MOVE    INITIAL_SD, R9
+                RSUB    SDC$GEN, 1
+                MOVE    SDC_HGEN, R9
                 CMP     R8, @R9                 ; SD card the same?
                 RBRA    _ROSMI_RET, Z           ; yes
 
@@ -884,7 +906,7 @@ ROSM_SAVE       SYSCALL(enter, 1)
 
                 ; If any write cache of any virtual drive is dirty then
                 ; we need to assume that the 512-byte hardware buffer is
-                ; currently in use by HANDLE_DEV. See also the comment about
+                ; currently in use by the browser's card. See also the comment about
                 ; us not following the QNICE best practice here and the
                 ; @TODO that we might want to refactor this in future.
                 RSUB    VD_ACTIVE, 1            ; any vdrives at all?
@@ -1010,9 +1032,10 @@ _ROSMS_8        MOVE    LOG_STR_CFG_REM, R8
                 SYSCALL(puts, 1)
                 MOVE    CFGS_DIRTY, R8          ; M2M-UPSTREAM cfg-strings
                 MOVE    0, @R8
-                MOVE    CONFIG_DEVH, R8         ; (nobody owns the buffer:
-                ADD     FAT32$DEV_BUFFERED_FDH, R8  ; the other handles read
-                MOVE    0, @R8                  ;  their sectors again)
+                MOVE    CONFIG_FILE, R8         ; (nobody owns the buffer of
+                MOVE    @R8, R8                 ;  its device: the other
+                ADD     FAT32$DEV_BUFFERED_FDH, R8  ; handles read their
+                MOVE    0, @R8                  ;  sectors again)
 
 _ROSMS_RET      SYSCALL(leave, 1)
                 RET

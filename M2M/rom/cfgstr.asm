@@ -202,18 +202,18 @@ _CFGS_FULL      SYSCALL(leave, 1)
 ; ----------------------------------------------------------------------------
 ; CFGS_SIZE: before ROSM_SAVE writes: make the settings file R8 (CONFIG_FILE)
 ; OPTM_ICOUNT + CFGS_LEN bytes long (FAT32$W_SETSIZE; ROSM_SAVE then seeks to
-; the start). The sector buffer is taken from the Shell's device handle
-; first. On an error the text is dropped (CFGS_LEN = 0) and the file keeps
-; its size. Registers preserved.
+; the start). The sector buffer of its device is released first. On an
+; error the text is dropped (CFGS_LEN = 0) and the file keeps its size.
+; Registers preserved.
 ; ----------------------------------------------------------------------------
 
 CFGS_SIZE       SYSCALL(enter, 1)
                 MOVE    R8, R0                  ; R0: the file handle
-                MOVE    HANDLE_DEV, R8          ; the buffer of the Shell's
-                CMP     0, @R8                  ; handle (written back, then
+                MOVE    @R0, R8                 ; the buffer of its device
+                CMP     0, @R8                  ; (written back, then
                 RBRA    _CFGZ_1, Z              ; nobody's)
                 RSUB    FAT32$FLUSH_OWNER, 1
-                MOVE    HANDLE_DEV, R8
+                MOVE    @R0, R8
                 ADD     FAT32$DEV_BUFFERED_FDH, R8
                 MOVE    0, @R8
 _CFGZ_1         MOVE    OPTM_ICOUNT, R10        ; R11:R10: the new size
