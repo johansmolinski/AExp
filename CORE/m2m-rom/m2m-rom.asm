@@ -56,9 +56,11 @@
                 ; d) Live Hardware Floppy status line
                 ; e) IDE board: no disk, out of the autoconfig chain
 ; SD_SPI_ONLY 1 keeps the SD host controller (M2M/vhdl/QNICE/sdhost.vhd) off the
-; native 4-bit SD bus: SPI at 25 MHz only. A firmware-only variant for cards or
-; boards where the native bus misbehaves (CORE/patch_firmware.sh, no synthesis).
+; native 4-bit SD bus: SPI at 25 MHz only. IDE_ENGINE 0 leaves READ/WRITE SECTORS
+; with the firmware ATA server (IDE_STEP) instead of the board's sector engine
+; (ide_engine.vhd). Firmware-only variants (CORE/patch_firmware.sh, no synthesis).
 #define SD_SPI_ONLY 0
+#define IDE_ENGINE 1
 
 START_FIRMWARE
 #if SD_SPI_ONLY
@@ -3403,6 +3405,9 @@ _HGI_D          MOVE    HDF_SPC_SHIFT, R0
 ; engine reads the other values when a command arrives.
 ; Input: R8: drive. Output: none; R8..R12 clobbered. Selects the IDE device.
 HDF_ENG_SETUP   INCRB
+#if !IDE_ENGINE
+                RBRA    _HES_RET, 1             ; (the engine stays off)
+#endif
                 MOVE    IDE_ENG_U0, R0          ; R0: the unit's registers
                 CMP     0, R8
                 RBRA    _HES_U, Z
