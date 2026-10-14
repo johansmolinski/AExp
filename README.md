@@ -14,23 +14,11 @@ menu; version 0.6 adds a 68040 with MMU, FPU and caches at 42 MHz. Megamiga need
 else - and most of this README - is AExp; where the text says "AExp", it
 describes the core Megamiga is built on.
 
-Experience the [Commodore Amiga 500](https://en.wikipedia.org/wiki/Amiga_500)
-on your [MEGA65](https://mega65.org/)!
-
-This core turns the MEGA65 into an Amiga 500 with the original OCS chipset
-(PAL), a cycle accurate 68000 CPU, 512 KB of Chip RAM and a 512 KB memory
-expansion in the trapdoor slot (known as Slow RAM, this is what the classic
-Commodore A501 expansion did). The Amiga therefore has 1 MB of RAM in total.
-
-This is Version 1, the first official release. The core is feature complete
-and, as far as we can assess, rock solid: it runs 99.9% of all games and demos.
-
-![Amiga500](doc/assets/a500_ocs.jpg)
-
 Credits
 -------
 
-* This core is based on the
+* This core is based on [AExp](https://github.com/sy2002/AExp) by sy2002,
+  which in turn is based on the
   [Minimig-AGA core of the MiSTer project](https://github.com/MiSTer-devel/Minimig-AGA_MiSTer).
   Minimig was originally created by Dennis van Weeren and has been improved
   by many others over the years.
