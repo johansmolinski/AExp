@@ -58,6 +58,7 @@ RELEASE_DOCUMENTS = {
 }
 
 RELEASE_ASSETS = {
+    Path("doc/assets/megamiga-logo.png"): Path("doc/megamiga-logo.png"),
     Path("doc/assets/a500_ocs.jpg"): Path("doc/a500_ocs.jpg"),
     Path("doc/assets/keyboard.png"): Path("doc/keyboard.png"),
     Path("doc/assets/vga-to-bnc.jpg"): Path("doc/vga-to-bnc.jpg"),

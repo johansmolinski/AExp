@@ -341,3 +341,9 @@ body {
     box-shadow: none;
   }
 }
+
+/* Megamiga wordmark in the header: wide, so taller than Material's 1.2rem */
+.md-header__button.md-logo img {
+  height: 1.8rem;
+  width: auto;
+}

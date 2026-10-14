@@ -338,11 +338,11 @@ def not_in_nav_yaml(graph: DocumentationGraph) -> str:
 
 def mkdocs_configuration(graph: DocumentationGraph, docs_dir: Path, site_dir: Path) -> str:
     return f"""\
-site_name: "AExp Documentation"
-site_description: "Amiga 500 for the MEGA65"
+site_name: "Megamiga Documentation"
+site_description: "Amiga 500, 600 and 1200 for the MEGA65"
 site_url: "https://sy2002.github.io/AExp/"
-repo_url: "https://github.com/sy2002/AExp"
-repo_name: "sy2002/AExp"
+repo_url: "https://github.com/johansmolinski/Megamiga"
+repo_name: "johansmolinski/Megamiga"
 docs_dir: {yaml_string(docs_dir)}
 site_dir: {yaml_string(site_dir)}
 use_directory_urls: true
@@ -352,8 +352,8 @@ strict: true
 theme:
   name: material
   language: en
-  logo: "_theme/logo.svg"
-  favicon: "_theme/favicon.svg"
+  logo: "_theme/logo.png"
+  favicon: "_theme/favicon.png"
   font: false
   features:
     - navigation.sections
@@ -389,7 +389,7 @@ markdown_extensions:
 extra_css:
   - "_theme/extra.css"
 
-copyright: "AExp · Amiga 500 for MEGA65"
+copyright: "Megamiga · Amiga 500, 600 and 1200 for MEGA65 · based on AExp"
 
 {navigation_yaml(graph)}
 """
@@ -398,7 +398,7 @@ copyright: "AExp · Amiga 500 for MEGA65"
 def copy_theme(docs_dir: Path) -> None:
     theme_target = docs_dir / "_theme"
     theme_target.mkdir(parents=True, exist_ok=True)
-    for name in ("extra.css", "logo.svg", "favicon.svg"):
+    for name in ("extra.css", "logo.png", "favicon.png"):
         source = THEME_DIR / name
         if not source.is_file():
             raise DocumentationError(f"Theme asset is missing: {source}")

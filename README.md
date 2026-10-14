@@ -1,3 +1,5 @@
+![Megamiga](doc/assets/megamiga-logo.png)
+
 Megamiga - Amiga 500, 600 and 1200 for MEGA65
 =============================================
 
