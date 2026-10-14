@@ -55,7 +55,22 @@
                 ; c) Real-Time-Clock connector
                 ; d) Live Hardware Floppy status line
                 ; e) IDE board: no disk, out of the autoconfig chain
-START_FIRMWARE  RSUB    ADF_WB_INIT, 1
+; SD_SPI_ONLY 1 keeps the SD host controller (M2M/vhdl/QNICE/sdhost.vhd) off the
+; native 4-bit SD bus: SPI at 25 MHz only. A firmware-only variant for cards or
+; boards where the native bus misbehaves (CORE/patch_firmware.sh, no synthesis).
+#define SD_SPI_ONLY 0
+
+START_FIRMWARE
+#if SD_SPI_ONLY
+                MOVE    0xFF26, R0              ; sdhost register 6: SPI only,
+                MOVE    1, @R0                  ; then re-initialise the card
+                MOVE    IO$SD_CSR, R0           ; (busy ends after the init,
+                MOVE    0, @R0                  ; also without a card)
+_SF_SDW         MOVE    @R0, R1
+                AND     0x8000, R1
+                RBRA    _SF_SDW, !Z
+#endif
+                RSUB    ADF_WB_INIT, 1
                 RSUB    SCR_INIT, 1
                 RSUB    RTC_INIT, 1
                 RSUB    HWF_OSM_INIT, 1

@@ -31,8 +31,10 @@
 --       block into the buffer, 2 = write the buffer to the block; read: bit 15 busy,
 --       bit 14 error (sticky until a reset), bits 13..12 card type (00 none/unknown,
 --       01 SD V1, 10 SD V2, 11 SDHC)
---   6 : (new, read only) bit 0 native SD bus, bit 1 SPI at 12.5 MHz, bit 2 ready,
---       bits 15..8 the number of transfers that were retried (mode fallbacks)
+--   6 : (new) read: bit 0 native SD bus, bit 1 SPI at 12.5 MHz, bit 2 ready, bit 3
+--       SPI only, bits 15..8 the number of transfers that were retried (mode
+--       fallbacks); write: bit 0 = SPI only (the native bus is not tried at the next
+--       init: write it, then the reset command 0x0000 to the CSR)
 -- 512-byte block addressing on all card types.
 --
 -- Pins (before the slot multiplexer): sd_clk_o, CMD (cmd_*), DAT3..DAT0 (dat_*), each
@@ -241,8 +243,9 @@ architecture synthesis of sdhost is
    signal cmd_r, cmd_oe_r, cmd_nx, cmd_oe_nx : std_logic := '1';
    signal dat_r, dat_nx                      : std_logic_vector(3 downto 0) := "1111";
    signal dat_oe_r, dat_oe_nx                : std_logic_vector(3 downto 0) := "1000";
-   signal cmd_in, cmd_in0 : std_logic := '1';
-   signal dat_in, dat_in0 : std_logic_vector(3 downto 0) := "1111";
+   signal cmd_in : std_logic := '1';
+   signal dat_in : std_logic_vector(3 downto 0) := "1111";
+   signal spi_only  : std_logic := '0';     -- register 6 bit 0: never try the native bus
 
    -- mode
    signal native    : std_logic := '0';
@@ -380,6 +383,7 @@ begin
                when "000" => q_addr_lo <= data_i;
                when "001" => q_addr_hi <= data_i;
                when "010" => q_pos     <= data_i;
+               when "110" => spi_only  <= data_i(0);
                when "101" =>
                   -- a command toggles its request; the controller copies the toggle
                   -- (q_seen_*) when it takes the command, the busy bit covers the gap
@@ -426,7 +430,7 @@ begin
             when "011" => data_o <= x"00" & q_rd;
             when "100" => data_o <= q_errcode;
             when "101" => data_o <= csr;
-            when "110" => data_o <= std_logic_vector(retries) & "00000" & ready & slow & native;
+            when "110" => data_o <= std_logic_vector(retries) & "0000" & spi_only & ready & slow & native;
             when others => null;
          end case;
       end if;
@@ -480,11 +484,14 @@ begin
    begin
       if rising_edge(clk_i) then
 
-         -- input samples (two flip-flops: the first one may go into the IOB)
-         cmd_in0 <= cmd_i;
-         dat_in0 <= dat_i;
-         cmd_in  <= cmd_in0;
-         dat_in  <= dat_in0;
+         -- input samples: ONE flip-flop. The register captures the lines at the edge
+         -- that starts the next SD cycle (the falling SD clock edge), so a step
+         -- sees the card's bit of the cycle that just ended: launched one full SD
+         -- clock earlier. (No synchroniser: the card's outputs are synchronous to
+         -- the clock we drive; a second stage would move the sample point half an
+         -- SD clock earlier, to the rising edge, and eat the card's output delay.)
+         cmd_in <= cmd_i;
+         dat_in <= dat_i;
 
          -- one-clock pulses
          tick    <= '0';
@@ -549,7 +556,7 @@ begin
                dat_nx <= "1111"; dat_oe_nx <= "1000";
                cmd_r  <= '1'; cmd_oe_r <= '1';
                dat_r  <= "1111"; dat_oe_r <= "1000";
-               if G_NATIVE then
+               if G_NATIVE and spi_only = '0' then
                   native_ok <= '1';
                else
                   native_ok <= '0';
@@ -594,7 +601,7 @@ begin
                   q_error    <= '0';
                   q_errcode  <= (others => '0');
                   q_busy     <= '1';
-                  if G_NATIVE then
+                  if G_NATIVE and spi_only = '0' then
                      native_ok <= '1';
                   else
                      native_ok <= '0';
