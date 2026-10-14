@@ -1868,6 +1868,89 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   22/23 (+9 new, all killed after a 64 GB partition was added for the
   16-bit overflow of the MB count). Build share-e (`~/aexp-builds/Megamiga-share-e`): R6 WNS +0.008, WHS +0.046, fully routed; NOT hardware-tested.
 
+- **Megamiga 0.6.1-dev, FAST HARD DISKS (branch `fastdisk` from `share`,
+  2026-10-14; `c4b5229`).** The user: HDFs run at 100-250 KB/s, a real Amiga
+  hard disk does 1-10 MB/s; do all three steps (sector engine in hardware, SPI
+  at 25 MHz, 4-bit SD bus). Cause of the old speed: every sector went through
+  the firmware ATA server (one time slice per QNICE main-loop pass, two passes
+  per sector, a byte-wise copy) behind QNICE's SPI controller at 12.5 MHz with
+  one block per command. (a) M2M exception 18 `sd-host` (see AGENTS):
+  `M2M/vhdl/QNICE/sdhost.vhd` replaces `sdcard.vhd` with the same six QNICE
+  registers (plus register 6: native / slow / ready / retry count). It tries
+  the native SD bus first (CMD0 with DAT3 high, CMD8, ACMD41, CMD2, CMD3,
+  CMD7, ACMD6 = 4 bits, CMD16 for SDSC, then a test read of block 0 with the
+  CRC16 of all four lines checked), 400 kHz during the identification, 25 MHz
+  after it; if the card does not answer in SD mode - a card that was used in
+  SPI mode since its power-up (the MEGA65 boot ROM, the previous core) STAYS in
+  SPI mode until it loses power - or the test read fails, it initialises SPI
+  (CMD0 with CS low, CMD8, ACMD41, CMD58, CMD59 = CRC on, CMD16) and runs it at
+  25 MHz. A failed transfer re-initialises one step down (native -> SPI 25
+  MHz -> SPI 12.5 MHz) and resumes at the first unfinished block; the third
+  failure is an error. Timing: outputs change with the falling SD clock edge,
+  inputs are sampled just before the next falling edge (a full SD clock after
+  the card launched them); the clock stops high for flow control. Engine
+  port: multi-block CMD18/CMD25 streams with a per-block limit (flow
+  control), QNICE commands end an engine transfer at the next block boundary.
+  The lines CMD and DAT3..0 now have output, output enable and input through
+  sdmux, qnice, qnice_wrapper and framework; the R4/R5/R6 tops make the pins
+  bidirectional (names unchanged: mosi = CMD, miso = DAT0, reset = DAT3) and
+  CORE.xdc adds pull-ups; the engine port is packed into two vectors
+  (`sdhost_pkg` in sdhost.vhd) top -> core. common.xdc: the generated clock of
+  sdcard.vhd's divider is commented out. R3's top was not adapted (R3 does
+  not build since 0.2.0). (b) `CORE/vhdl/ide_engine.vhd` (QNICE clock) serves
+  READ SECTORS / WRITE SECTORS (0x20/0x21/0x30/0x31, LBA28) of a unit whose
+  engine mode is not 0: it takes the command from the task-file snapshot,
+  checks LBA mode and the size, translates the sectors with the extent map
+  (FAT32$FILE_MAP format: cluster runs; block = base + (cluster << shift) +
+  sector, base = DEV_CLUSTER - (2 << shift)) or the partition start, and
+  streams through the engine port into rings of 8 sectors per direction in
+  block RAM (`tdp_ram`, one RAMB36 each, + the 4K-word map RAM). Every other
+  command, and every one it cannot serve, is forwarded: the firmware sees the
+  command event only then (event bit 0 of 0x100 is now the engine's toggle).
+  ide_board keeps DRQ across sector boundaries while the ring has data (read)
+  or room (write); a write ends (BSY -> READY/ERR) when the last sector is on
+  the card; errors end with ERR + UNC. Handshake: single-bit toggles (acc, rdy,
+  fin, free) through 2-FF synchronisers, the direction/error bits set 4 clocks
+  before their toggle. Registers 0x120-0x12D (unit 0/1: mode, sectors, base,
+  shift), 0x130-0x133 (status, statistics), window 1 = the maps. (c)
+  Firmware: `HDF_ENG_SETUP` after a successful mount (partition: base = its
+  first block; file: FAT32$FILE_MAP straight into window 1, up to 511
+  extents, more = the firmware path as before), engine off in `HDF_DROP` and
+  `IDE_INIT`. ROM 30029/32768, no new variables. Tests: `~/aexp-work/sdhost`
+  (ghdl; `sdcard_model.vhd` = native 4-bit + SPI card with CRC checks,
+  multi-block, CMD12, busy and fault injection; `tb_sdhost.vhd` scenarios 0
+  native SDHC, 1 card stuck in SPI, 2 SDSC V2, 3 SDSC V1, 4 DAT1..3 not
+  connected, 5 no card: QNICE reads/writes, engine reads/writes with slow
+  consumers/producers and QNICE preemption, read CRC error -> SPI -> slow SPI,
+  rejected write, reset recovery: ALL PASS) and `~/aexp-work/ideng` (ghdl
+  end to end: lide-style ATA master -> ide_board + ide_engine -> sdhost ->
+  card model, firmware stand-in for forwarded commands (IDENTIFY, out of
+  range) and random firmware SD reads; file map with 5 extents and a
+  partition; reads/writes of 1..256 sectors with fast and slow CPU, Amiga
+  reset and SRST in the middle, a failing card: PASS in native (~11 MB/s at
+  the card with a fast bus master) and SPI (~2.5 MB/s)); the 0.6.0
+  firmware-path board TB still passes. `~/aexp-work/ideng/mut.py`: 16 mutants
+  over sdhost/ide_engine/ide_board, 16 killed (the first round left 4: the
+  controller TB never filled the ring, the model corrupted only the CRC bytes
+  of a bad read, and two skip counts were equivalent - TB, model and mutants
+  were strengthened). Found in review after the first build: the inputs went
+  through two registers, which put the sample point on the RISING SD clock
+  edge (20 ns after the card's launch at 25 MHz, minus its up to 14 ns output
+  delay); now one register samples just before the next falling edge (`90deacd`;
+  the card model's output delay is 14 ns now). Register 6 bit 0 = SPI only.
+  Firmware switches (`#define` at START_FIRMWARE, for patch_firmware.sh
+  variants): `SD_SPI_ONLY` (0) and `IDE_ENGINE` (1). Builds: fastdisk-a (`c4b5229`, before the
+  sampling fix) R6 WNS +0.021 / WHS +0.036, fully routed, LUTs 87.6k (65.5%),
+  BRAM 115.5 tiles; NOT for hardware (the sampling bug). fastdisk-b (`90deacd`)
+  missed hold by 0.054 ns on the known framework HyperRAM input
+  (`hr_d_io[4]` -> IDDR, clock hr_rwds); re-roll 2/15 (place ExtraTimingOpt,
+  route Explore) WNS +0.005 / WHS +0.036, LUTs 87.8k. Saved to
+  `~/aexp-builds/Megamiga-fastdisk-b` with the RE-ROLLED checkpoint copied over
+  `routed.dcp` by hand (`patch_firmware.sh save` takes the postroute one).
+  Patched variants of b: `mega65_r6_fastdisk_b_fw.bit` (`d5bbe35` firmware,
+  default), `_spionly.bit` (SD_SPI_ONLY 1), `_noengine.bit` (IDE_ENGINE 0).
+  Awaiting hardware tests.
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).

@@ -107,7 +107,10 @@ Megamiga fork (johansmolinski):
   remembers its Kickstart and HDFs by path; everything explicit (no
   `aNNN.rom/.hdf` defaults; `kick.rom` optional, the one fallback; no
   Kickstart = Amiga held in reset), SPACE forgets an HDF, 0x7F partitions in
-  the HDF browser (`partition:N`). Next: `.uaem`.
+  the HDF browser (`partition:N`). Fast hard disks (branch `fastdisk`): M2M
+  exception 18 `sd-host` (native 4-bit SD / SPI 25 MHz) + `ide_engine.vhd`
+  (READ/WRITE SECTORS in hardware, extent map from the firmware). Next:
+  `.uaem`.
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
@@ -132,7 +135,8 @@ mutant set.
   written back to SD in the background via `HANDLE_CORE_IO`) or the
   Hardware Floppy (read + write, at most one unit). Default: one drive.
 - **IDE**: RIPPLE-compatible Zorro II board, master + slave HDF,
-  `/amiga/lide.rom` boot ROM.
+  `/amiga/lide.rom` boot ROM; READ/WRITE SECTORS by the sector engine
+  (`ide_engine.vhd`, 0.6.1), everything else by the firmware ATA server.
 - **RTG**, **network card**, **PMOD serial**, audio filters/stereo/volume,
   battery RTC.
 
@@ -143,7 +147,7 @@ the dated facts.
 
 ## Repository map
 
-- `M2M/` — the framework. **NEVER modify**, with SEVENTEEN sanctioned
+- `M2M/` — the framework. **NEVER modify**, with EIGHTEEN sanctioned
   exceptions (all testbeds for a later M2M upstream merge, tagged
   `M2M-UPSTREAM <name>` in-code, greppable): (1) `interlace` — new
   `video_fl_i` input through framework → av_pipeline → digital_pipeline
@@ -283,6 +287,19 @@ the dated facts.
   + 1, `LOAD_IMAGE` hands `PREP_LOAD_IMAGE` an empty handle instead of opening
   a file (Megamiga: the MBR 0x7F partitions in the HDF browser). Emulator TB
   `~/aexp-work/cfgstr` (+ `mut.py`). Added in the JS fork 2026-10-13.
+  (18) `sd-host` — `M2M/vhdl/QNICE/sdhost.vhd` replaces QNICE's `sdcard.vhd`
+  (same registers + read-only register 6: native/slow/ready/retries): native
+  4-bit SD bus at 25 MHz first, SPI at 25 MHz (CRC on) when the card does not
+  answer in SD mode (a card used in SPI mode since power-up stays there) or
+  the test read fails, 12.5 MHz after a failed transfer; an ENGINE PORT
+  streams multi-block transfers for the core (QNICE commands end them at a
+  block boundary). CMD/DAT3..0 with output enables through `sdmux.vhd`,
+  `qnice.vhd`, `qnice_wrapper.vhd`, `framework.vhd`; the R4/R5/R6 tops make
+  the SD pins bidirectional (XDC names unchanged) and pass the engine port
+  (`sdhost_pkg`, two vectors) to the core; pull-ups in CORE.xdc; the old
+  divider clock in `common.xdc` is commented out. R3's top was not adapted.
+  TBs `~/aexp-work/sdhost`, `~/aexp-work/ideng`. Added in the JS fork
+  2026-10-14.
   All other framework fixes
   go into `CORE/CORE.xdc` (constraints) or get documented for upstreaming.
   Git remote `upstream` = sy2002/MiSTer2MEGA65 (master = V2.0.1).
