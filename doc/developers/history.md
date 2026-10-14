@@ -1950,6 +1950,25 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   Patched variants of b: `mega65_r6_fastdisk_b_fw.bit` (`d5bbe35` firmware,
   default), `_spionly.bit` (SD_SPI_ONLY 1), `_noengine.bit` (IDE_ENGINE 0).
   Awaiting hardware tests.
+  SD STATUS LINE (user, the next morning: no menu choice of the SD mode - the
+  setting lives on the card it would configure - but show the mode): the main
+  menu ends `About & Help`, `Close Menu`, Line, and a TEXT line (group 0, the
+  cursor skips it) that `SD_STATUS_STEP` (m2m-rom.asm, called from
+  HANDLE_CORE_IO next to HWF_STATUS_STEP, same gates and throttle) fills via
+  OPTM_LIVE_TEXT from sdhost register 6: `SD: 4-bit 25 MHz` / `SPI 25 MHz` /
+  `SPI 12.5 MHz` / `no card`. The line is dimmed with `M2M$SA_DARK` (0x4F); the
+  OSM renderer halves foreground AND background with that bit, so it shows as a
+  darker bar - real grey on the normal blue would need `vga_osm.vhd`. The
+  attributes are rewritten every poll (a full OPTM_SHOW repaints the line in
+  the standard colours). OPTM_SIZE 213 -> 214 (`C_MENU_SD_STATUS` 213),
+  MENU_HEAP_SIZE 3616 (demand 3586), release HEAP_SIZE 14944. So that the
+  existing 0.6.1-dev settings file (menu bytes + profile text) survives the
+  longer menu, HELP_MENU_INIT accepts a file from a menu that grew at its END
+  (M2M exception 17): before, the first text character landed in the new menu
+  byte and stopped the core with ERR_FATAL_ROSMC. Emulator TB
+  `~/aexp-work/cfgold` (the real loader block, 9 file layouts incl. bank
+  seams, 0xFF default, invalid byte, empty file): PASS; the HEAD loader fails
+  5 of them (FATAL 0E03 / no settings). Firmware 30347/32768 words.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the

@@ -991,6 +991,7 @@ constant C_MENU_OSMKEY_COMBO  : natural := 200;
 
 constant C_MENU_DRV_SPINUP    : natural := 91;   -- Drive Settings: spin-up delay of the simulated drives
 constant C_MENU_SERIAL        : natural := 206;  -- Settings: Amiga serial port on PMOD1 (default OFF)
+constant C_MENU_SD_STATUS     : natural := 213;  -- main menu: live SD card status TEXT line (firmware only: AEXP_OSM_SD_STATUS)
 
 -- Megamiga 0.3 machine profiles. The main page carries the profile radio (A500 / A600 /
 -- A1200); Profile Settings holds one block of radios and toggles per profile, and only

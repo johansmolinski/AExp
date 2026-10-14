@@ -281,7 +281,11 @@ the dated facts.
   (`FAT32$W_SETSIZE`, entry date kept). Megamiga uses it for the files a
   machine profile remembers (`a1200.hdf0=/amiga/disks/work.hdf`, keys
   `a500|a600|a1200` x `.hdf0|.hdf1|.kick`; code in bank 2: `B2_PROF_*`).
-  A file with text is refused by older cores (size check). Also browser
+  A file with text is refused by older cores (size check). A file from a
+  menu that grew at its END loads (`_HLP_CA_OLD`: its bytes end at EOF or at the
+  first byte that is not 0/1, the new items get their defaults, the text is
+  kept; TB `~/aexp-work/cfgold`); items inserted in the middle still need a new
+  file. Also browser
   entries that are no files: core callback `BROWSE_EXTRA` (dirbrowse.asm lists
   them behind `<..>`, flag word 2 + id), `SELECT_FILE` sets `SF_VIRTUAL` = id
   + 1, `LOAD_IMAGE` hands `PREP_LOAD_IMAGE` an empty handle instead of opening

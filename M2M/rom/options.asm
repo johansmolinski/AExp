@@ -430,9 +430,11 @@ _HLP_CA_5       MOVE    R9, R8                  ; R9: file handle
                 ; M2M-UPSTREAM cfg-strings: text may follow the menu bytes
                 ; CMP     R7, @R8                 ; filesize = menu size?
                 ; RBRA    _HLP_CA_CCF, !Z         ; no: corrupt config file
-                CMP     R7, @R8                 ; filesize < menu size?
-                RBRA    _HLP_CA_CCF, N          ; yes: corrupt config file
-                RBRA    _HLP_CA_6, 1            ; no
+                ; CMP     R7, @R8                 ; filesize < menu size?
+                ; RBRA    _HLP_CA_CCF, N          ; yes: corrupt config file
+                ; ...and a shorter file comes from a shorter menu: see
+                ; _HLP_CA_OLD
+                RBRA    _HLP_CA_6, 1
 
 _HLP_CA_CCF     MOVE    LOG_STR_CFG_E4, R8      ; corrupt config file
                 RBRA    _HLP_CA_NCF, 1          ; use factory defaults
@@ -483,6 +485,8 @@ _HLP_CA_9       MOVE    R2, @R0                 ; currently active window
 _HLP_CA_10      SYSCALL(f32_fread, 1)           ; read byte from config file
                 CMP     0, R10                  ; error?
                 RBRA    _HLP_CA_11, Z           ; no: proceed
+                CMP     FAT32$EOF, R10          ; M2M-UPSTREAM cfg-strings:
+                RBRA    _HLP_CA_OLD, Z          ; EOF = from a shorter menu
                 MOVE    ERR_FATAL_ROSMR, R8     ; yes: fatal; R9: error code
                 RBRA    FATAL, 1
 
@@ -490,8 +494,11 @@ _HLP_CA_11      CMP     0, R9                   ; current bit not set?
                 RBRA    _HLP_CA_12, Z           ; yes: delete current bit
                 CMP     1, R9                   ; current bit set?
                 RBRA    _HLP_CA_13, Z           ; yes: set current bit
-                MOVE    ERR_FATAL_ROSMC, R8     ; illegal value: corrupt file
-                RBRA    FATAL, 1                ; and this is fatal
+                ; M2M-UPSTREAM cfg-strings: any other byte is the first
+                ; character of the text of a file from a shorter menu
+                ; MOVE    ERR_FATAL_ROSMC, R8     ; illegal value: corrupt file
+                ; RBRA    FATAL, 1                ; and this is fatal
+                RBRA    _HLP_CA_OLD, 1
 
 _HLP_CA_12      MOVE    R4, R5                  ; delete current bit
                 NOT     R5, R5
@@ -513,6 +520,52 @@ _HLP_CA_14      SUB     1, R3                   ; done reading config file?
 
 _HLP_CA_15      RSUB    CFGS_LOAD, 1            ; M2M-UPSTREAM cfg-strings
                 RBRA    _HLP_S3, 1              ; Case (a) successful
+
+                ; M2M-UPSTREAM cfg-strings: the file was written by a menu
+                ; with fewer items (the menu grew at its END since then). Its
+                ; menu bytes end here (EOF or the first text character), the
+                ; remaining items get their standard selectors, the text
+                ; starts behind the bytes read and the next save writes the
+                ; file in the current layout. Items inserted in the MIDDLE of
+                ; a menu would shift: that still needs a new settings file.
+                ; R2/R4: bank/bit of the current item, R3: items left
+                ; including the current one, R7: all items, R8: file handle
+_HLP_CA_OLD     MOVE    R7, R9                  ; seek to the bytes read
+                SUB     R3, R9
+                XOR     R10, R10
+                SYSCALL(f32_fseek, 1)
+                CMP     0, R9
+                RBRA    _HLP_CA_O1, Z
+                MOVE    ERR_FATAL_ROSMS, R8
+                RBRA    FATAL, 1
+_HLP_CA_O1      MOVE    R8, R6                  ; R6: file handle
+                MOVE    LOG_STR_CFG_OLD, R8
+                SYSCALL(puts, 1)
+                MOVE    M2M$RAMROM_DEV, R5      ; the standard selectors
+                MOVE    M2M$CONFIG, @R5
+                MOVE    M2M$RAMROM_4KWIN, R5
+                MOVE    M2M$CFG_OPTM_STDSEL, @R5
+                MOVE    M2M$RAMROM_DATA, R5
+                ADD     R7, R5
+                SUB     R3, R5                  ; R5: that of the current item
+_HLP_CA_O2      CMP     0, @R5++
+                RBRA    _HLP_CA_O3, Z
+                OR      R4, @R1                 ; set
+                RBRA    _HLP_CA_O4, 1
+_HLP_CA_O3      MOVE    R4, R9                  ; clear
+                NOT     R9, R9
+                AND     R9, @R1
+_HLP_CA_O4      SUB     1, R3
+                RBRA    _HLP_CA_O5, Z
+                AND     0xFFFD, SR              ; clear X flag
+                SHL     1, R4
+                RBRA    _HLP_CA_O2, !Z
+                ADD     1, R2                   ; next M2M$CFM_DATA window
+                MOVE    R2, @R0
+                MOVE    1, R4
+                RBRA    _HLP_CA_O2, 1
+_HLP_CA_O5      MOVE    R6, R8
+                RBRA    _HLP_CA_15, 1
 
                 ; ------------------------------------------------------------
                 ; Case (b): Use standard selectors from config.vhd

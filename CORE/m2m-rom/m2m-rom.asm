@@ -76,6 +76,7 @@ _SF_SDW         MOVE    @R0, R1
                 RSUB    SCR_INIT, 1
                 RSUB    RTC_INIT, 1
                 RSUB    HWF_OSM_INIT, 1
+                RSUB    SD_OSM_INIT, 1
                 RSUB    IDE_INIT, 1
                 RSUB    SHARE_INIT, 1           ; Megamiga 0.6.1: shared folder
                 RBRA    START_SHELL, 1
@@ -1785,6 +1786,7 @@ _HCIO_RTC       RSUB    IDE_STEP, 1             ; the IDE board (HDF image)
                 ; reads and out while the OSM is closed, which is the case in
                 ; the tightest loops.
                 RSUB    HWF_STATUS_STEP, 1
+                RSUB    SD_STATUS_STEP, 1       ; and the SD card status line
 
 _HCIO_RET       MOVE    R1, @R0                 ; restore RAMROM selection
                 MOVE    R3, @R2
@@ -2471,6 +2473,149 @@ _HWF_HIDE       MOVE    HWF_OSM_LAST, R0
                 MOVE    HWF_DRV_NONE, @R0
 
 _HWF_RET        DECRB
+                RET
+
+; ----------------------------------------------------------------------------
+; Live SD card status line at the bottom of the main menu
+;
+; The last main-menu item (AEXP_OSM_SD_STATUS) is a TEXT line of exactly
+; OPTM_DX characters; group 0, so the cursor skips it. While the main menu is
+; on screen it shows the mode of the SD host controller (sdhost.vhd), read from
+; its register 6 (bit 0 native 4-bit, bit 1 slow = SPI 12.5 MHz, bit 2 ready).
+; sdhost falls back on its own (native -> SPI 25 MHz -> SPI 12.5 MHz after a
+; failed transfer; a card used in SPI mode since power-up stays in SPI mode),
+; and this line is where the user sees it. Same gates, throttle and label
+; buffer as HWF_STATUS_STEP (the two never interleave).
+;
+; The line is dimmed with M2M$SA_DARK. The OSM renderer halves foreground AND
+; background with it, so the line reads as a darker status bar. The attributes
+; are rewritten on every poll, because a full menu redraw (OPTM_SHOW) paints
+; the line in the standard colours again.
+; ----------------------------------------------------------------------------
+
+SD_OSM_INIT     INCRB
+                MOVE    SD_OSM_LAST, R0
+                MOVE    HWF_OS_INVALID, @R0
+                MOVE    IO$CYC_MID, R0
+                MOVE    SD_OSM_TICK, R1
+                MOVE    @R0, @R1
+                DECRB
+                RET
+
+; SD_STATUS_STEP: one poll of the SD card status line. Changes the RAMROM
+; selection (HANDLE_CORE_IO restores it). Input/Output: none.
+SD_STATUS_STEP  INCRB
+
+                MOVE    M2M$CSR, R0             ; the OSM on screen?
+                MOVE    @R0, R0
+                AND     M2M$CSR_OSM, R0
+                RBRA    _SDS_HIDE, Z
+                MOVE    OSM_SUB_ACTIVE, R0      ; no browser or help page?
+                CMP     0, @R0
+                RBRA    _SDS_HIDE, !Z
+                MOVE    OPTM_MENULEVEL, R0      ; the main menu?
+                CMP     0, @R0
+                RBRA    _SDS_HIDE, !Z
+                MOVE    OPTM_STRUCT, R0         ; is OPTM_RUN running?
+                CMP     0, @R0
+                RBRA    _SDS_HIDE, Z
+
+                ; throttle as HWF_STATUS_STEP; invalid = paint at once
+                MOVE    IO$CYC_MID, R0
+                MOVE    @R0, R1
+                MOVE    SD_OSM_TICK, R0
+                MOVE    SD_OSM_LAST, R2
+                CMP     HWF_OS_INVALID, @R2
+                RBRA    _SDS_POLL, Z
+                CMP     @R0, R1
+                RBRA    _SDS_RET, Z             ; same timer slice
+                MOVE    R1, @R0
+                AND     HWF_OSM_POLL_MASK, R1
+                RBRA    _SDS_RET, !Z
+                RBRA    _SDS_CLS0, 1
+_SDS_POLL       MOVE    R1, @R0
+
+_SDS_CLS0       MOVE    SD_REG_MODE, R0         ; classify
+                MOVE    @R0, R0
+                MOVE    SD_OS_NONE, R6
+                MOVE    R0, R1
+                AND     SD_MODE_READY, R1
+                RBRA    _SDS_CLS, Z
+                MOVE    SD_OS_4BIT, R6
+                MOVE    R0, R1
+                AND     SD_MODE_NATIVE, R1
+                RBRA    _SDS_CLS, !Z
+                MOVE    SD_OS_SPI25, R6
+                AND     SD_MODE_SLOW, R0
+                RBRA    _SDS_CLS, Z
+                MOVE    SD_OS_SPI12, R6
+
+_SDS_CLS        MOVE    SD_OSM_LAST, R0         ; changed: new text
+                CMP     @R0, R6
+                RBRA    _SDS_DIM, Z
+                MOVE    R6, @R0
+                MOVE    SD_OSM_STR, R0
+                ADD     R6, R0
+                MOVE    @R0, R8
+                RSUB    RODATA_STR, 1           ; (read-only data: in RAM)
+                MOVE    HWF_LABEL, R9
+                SYSCALL(strcpy, 1)
+                MOVE    AEXP_OSM_SD_STATUS, R8
+                MOVE    1, R9                   ; skip the selection marker
+                MOVE    HWF_LABEL, R10
+                MOVE    HWF_LABEL_LEN, R11
+                RSUB    OPTM_LIVE_TEXT, 1
+
+                ; the screen row of the line: its position among the items
+                ; shown at this level (as OPTM_LIVE_TEXT finds it)
+_SDS_DIM        MOVE    OPTM_STRUCT, R0
+                MOVE    @R0, R0
+                ADD     2, R0
+                MOVE    @R0++, R1               ; R1: number of items
+                XOR     R2, R2                  ; R2: visible position
+                XOR     R3, R3                  ; R3: flat position
+_SDS_MAP        CMP     R3, R1
+                RBRA    _SDS_RET, Z             ; not in the structure
+                CMP     AEXP_OSM_SD_STATUS, R3
+                RBRA    _SDS_ROW, Z
+                MOVE    @R0++, R4
+                SHL     1, R4                   ; bit 15: shown
+                RBRA    _SDS_MAPN, !C
+                ADD     1, R2
+_SDS_MAPN       ADD     1, R3
+                RBRA    _SDS_MAP, 1
+_SDS_ROW        MOVE    @R0, R4
+                SHL     1, R4
+                RBRA    _SDS_RET, !C            ; hidden
+
+                MOVE    OPTM_Y, R9              ; y = frame + 1 + position
+                MOVE    @R9, R9
+                ADD     1, R9
+                ADD     R2, R9
+                MOVE    SCR$SYS_DX, R8          ; attribute address
+                MOVE    @R8, R8
+                SYSCALL(mulu, 1)                ; R10: y * screen width
+                MOVE    OPTM_X, R0
+                ADD     @R0, R10
+                ADD     1, R10
+                ADD     M2M$RAMROM_DATA, R10
+                MOVE    OPTM_DX, R1             ; R1: inner width
+                MOVE    @R1, R1
+                SUB     2, R1
+                MOVE    M2M$RAMROM_DEV, R0
+                MOVE    M2M$VRAM_ATTR, @R0
+                MOVE    M2M$RAMROM_4KWIN, R0
+                MOVE    0, @R0
+_SDS_ATTR       MOVE    SD_OSM_ATTR, @R10++
+                SUB     1, R1
+                RBRA    _SDS_ATTR, !Z
+                RBRA    _SDS_RET, 1
+
+                ; not visible: the next visible poll paints at once
+_SDS_HIDE       MOVE    SD_OSM_LAST, R0
+                MOVE    HWF_OS_INVALID, @R0
+
+_SDS_RET        DECRB
                 RET
 
 ; ----------------------------------------------------------------------------
@@ -5024,6 +5169,19 @@ HWF_ASCII_ZERO  .EQU    0x0030
 ; digit is patched in at runtime (HWF_LABEL_DIGIT), so one set covers all three
 ; drives.
 HWF_OSM_STR     .DW HWF_OSM_IDLE, HWF_OSM_MOTOR, HWF_OSM_READ  ; (in m2m-rodata.asm)
+
+; Live SD card status line (SD_STATUS_STEP). The order is the index into
+; SD_OSM_STR; every label is EXACTLY HWF_LABEL_LEN characters.
+SD_REG_MODE     .EQU    0xFF26              ; sdhost register 6 (read only)
+SD_MODE_NATIVE  .EQU    0x0001              ; native 4-bit SD bus
+SD_MODE_SLOW    .EQU    0x0002              ; 12.5 MHz (SPI after a failure)
+SD_MODE_READY   .EQU    0x0004              ; card initialised
+SD_OS_NONE      .EQU    0
+SD_OS_4BIT      .EQU    1
+SD_OS_SPI25     .EQU    2
+SD_OS_SPI12     .EQU    3
+SD_OSM_ATTR     .EQU    0x004F              ; M2M$SA_DARK + white on blue
+SD_OSM_STR      .DW SD_OSM_NONE, SD_OSM_4BIT, SD_OSM_SPI25, SD_OSM_SPI12 ; (rodata)
 
 ; MEGA65 battery RTC (issue #13): framework device C_DEV_RTC (qnice_wrapper.vhd)
 ; exposing the QNICE date/time interface of M2M/vhdl/i2c/rtc_controller.vhd. The
@@ -8376,6 +8534,9 @@ HWF_OSM_TICK    .BLOCK 1                        ; last IO$CYC_MID value seen
 HWF_LAST_CNT    .BLOCK 1                        ; served-word count last poll
 HWF_LABEL       .BLOCK 23                       ; the built label: 22 chars
                                                 ; plus the terminator
+                                                ; (SD_STATUS_STEP uses it too)
+SD_OSM_LAST     .BLOCK 1                        ; SD status line: last state
+SD_OSM_TICK     .BLOCK 1                        ; last IO$CYC_MID value seen
 
 ; Battery-RTC reseed state (see HANDLE_CORE_IO / RTC_STEP, issue #13)
 RTC_LAST_MIN    .BLOCK 1                        ; last internal minute seen by
@@ -8494,7 +8655,11 @@ SHR_RNOBJ       .BLOCK 8                        ; RENAME: the object
 ; Megamiga 0.6.1: " SDCard: inserted" (shared folder toggle) and a line after the
 ; profile radio: 213 items, demand 3557, MENU_HEAP_SIZE 3584, headroom 27, release
 ; HEAP_SIZE -32 (the combined total is unchanged).
-MENU_HEAP_SIZE  .EQU 3584
+; Megamiga 0.6.1 fast disks: the live SD card status line at the bottom of the
+; main menu (+25 characters, 214 items): demand 3586, MENU_HEAP_SIZE 3616,
+; headroom 30, release HEAP_SIZE -32 (the combined total is unchanged).
+;MENU_HEAP_SIZE  .EQU 3584
+MENU_HEAP_SIZE  .EQU 3616
 
 #ifndef RELEASE
 
@@ -8543,7 +8708,8 @@ HEAP            .BLOCK 1
 ; the combined total is 736 words smaller: 18592, stack margin 287 words.
 ; Partitions in the HDF browser (HDF_VPART, BRX_*) and SF_VIRTUAL: 45 words,
 ; the combined total is 32 words smaller: 18560, stack margin 274 words.
-HEAP_SIZE       .EQU 14976                      ; 18560 - 3584 = 14976
+;HEAP_SIZE       .EQU 14976                      ; 18560 - 3584 = 14976
+HEAP_SIZE       .EQU 14944                      ; 18560 - 3616 = 14944
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

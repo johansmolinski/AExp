@@ -500,7 +500,7 @@ constant OPTM_S_SAVING     : string := "<Saving>";          -- the internal writ
 --             Do use a lower case \n. If you forget one of them or if you use upper case, you will run into undefined behavior.
 --          2. Start each line that contains an actual menu item (multi- or single-select) with a Space character,
 --             otherwise you will experience visual glitches.
-constant OPTM_SIZE         : natural := 213; -- amount of items including empty lines:
+constant OPTM_SIZE         : natural := 214; -- amount of items including empty lines:
                                              -- needs to be equal to the number of lines in OPTM_ITEMS and amount of items in OPTM_GROUPS
                                              -- IMPORTANT: If SAVE_SETTINGS is true and OPTM_SIZE changes: Make sure to re-generate and
                                              -- and re-distribute the config file. You can make a new one using M2M/tools/make_config.sh
@@ -832,8 +832,9 @@ constant OPTM_ITEMS        : string :=
    " Back to main menu\n"   &    -- 208: Close Settings
    "\n"                     &    -- 209: Line
    " About & Help\n"        &    -- 210: About & Help (WHS(1))
-   "\n"                     &    -- 211: Line
-   " Close Menu\n"         ;    -- 212: Close Menu
+   " Close Menu\n"          &    -- 211: Close Menu (was 212; the Line moved below it)
+   "\n"                     &    -- 212: Line
+   " SD card               \n" ;  -- 213: Text: live SD card status (exactly OPTM_DX characters, see SD_STATUS_STEP in m2m-rom.asm)
 -- also make sure that your group numbers are monotonic increasing (e.g. 1, 2, 3, 4, ...)
 -- single-select items and therefore also drive mount items need to have unique identifiers
 constant OPTM_G_ADF0       : integer := 1;   -- mount ADF for df0 (manual CRT/ROM load 0)
@@ -1145,8 +1146,9 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_CLOSE + OPTM_G_SUBMENU,                            -- 208: Close Settings
                                               OPTM_G_LINE,                                              -- 209: Line
                                               OPTM_G_About + OPTM_G_HELP,                               -- 210: About & Help (WHS(1))
-                                              OPTM_G_LINE,                                              -- 211: Line
-                                              OPTM_G_CLOSE                                              -- 212: Close Menu
+                                              OPTM_G_CLOSE,                                             -- 211: Close Menu
+                                              OPTM_G_LINE,                                              -- 212: Line
+                                              OPTM_G_TEXT                                               -- 213: Text: live SD card status
                                            );
 
 --------------------------------------------------------------------------------------------------------------------
