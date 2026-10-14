@@ -1969,6 +1969,9 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   `~/aexp-work/cfgold` (the real loader block, 9 file layouts incl. bank
   seams, 0xFF default, invalid byte, empty file): PASS; the HEAD loader fails
   5 of them (FATAL 0E03 / no settings). Firmware 30347/32768 words.
+  Build fastdisk-c (`9b0082d`): R6 WNS +0.061 / WHS +0.013 first pass, fully
+  routed, LUTs 87.7k, BRAM 115.5; saved to `~/aexp-builds/Megamiga-fastdisk-c`
+  (`mega65_r6_fastdisk_c.bit`). Awaiting hardware tests.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
