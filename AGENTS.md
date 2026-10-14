@@ -302,6 +302,9 @@ the dated facts.
   the SD pins bidirectional (XDC names unchanged) and pass the engine port
   (`sdhost_pkg`, two vectors) to the core; pull-ups in CORE.xdc; the old
   divider clock in `common.xdc` is commented out. R3's top was not adapted.
+  `START_SHELL` (shell.asm) forces the internal card when both slots hold one:
+  the MEGA65 boot firmware leaves the back card in SPI mode (only a power loss
+  ends it), the tray card is untouched and runs 4-bit (HW-confirmed with F1).
   TBs `~/aexp-work/sdhost`, `~/aexp-work/ideng`. Added in the JS fork
   2026-10-14.
   All other framework fixes

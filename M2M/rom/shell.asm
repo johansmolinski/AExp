@@ -65,8 +65,27 @@ START_SHELL     MOVE    LOG_M2M, R8             ; M2M start message
                 MOVE    CRTROM_AUT_FILE, R8
                 MOVE    0, @R8
 
+                ; M2M-UPSTREAM sd-host: with a card in both slots, use the
+                ; internal one (bottom tray). The MEGA65's boot firmware puts
+                ; the card in the back slot into SPI mode, and a card leaves
+                ; SPI mode only when it loses power; the internal card is
+                ; untouched and runs on the native 4-bit bus. F1/F3 in the
+                ; file browser still switch for the session.
+                MOVE    M2M$CSR, R8
+                MOVE    @R8, R9
+                AND     M2M$CSR_SD_DET_INT, R9
+                RBRA    _SS_SD_SEL, Z           ; no internal card: auto
+                MOVE    @R8, R9
+                AND     M2M$CSR_SD_DET_EXT, R9
+                RBRA    _SS_SD_SEL, Z           ; no external card: auto
+                AND     M2M$CSR_UN_SD_FORCE, @R8 ; force the internal card
+                OR      M2M$CSR_SD_MODE, @R8
+_SS_SD_WAIT     MOVE    @R8, R9                 ; sdmux switches within a
+                AND     M2M$CSR_SD_ACTIVE, R9   ; few cycles: wait for it
+                RBRA    _SS_SD_WAIT, !Z
+
                 ; initialize file browser persistence variables
-                MOVE    M2M$CSR, R8             ; get active SD card
+_SS_SD_SEL      MOVE    M2M$CSR, R8             ; get active SD card
                 MOVE    @R8, R8
                 AND     M2M$CSR_SD_ACTIVE, R8
                 MOVE    SD_ACTIVE, R9
