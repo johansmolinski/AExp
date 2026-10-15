@@ -12,7 +12,8 @@ RAM, 512 KB Kickstart ROMs, all Amiga memory in the board SDRAM), and version
 and three machine profiles - A500, A600 and A1200 - on the main page of the
 menu; version 0.6 adds a 68040 with MMU, FPU and caches at 42 MHz, and
 0.6.1 a shared folder (`SDCard:`), both SD card slots at once and hard disks
-served by the FPGA itself. Megamiga needs a MEGA65 R4 or newer; the R3 has no
+served by the FPGA itself; 0.6.2 adds freezer cartridges (HRTmon built in, the
+Action Replay III with your own ROM). Megamiga needs a MEGA65 R4 or newer; the R3 has no
 SDRAM. Everything
 else - and most of this README - is AExp; where the text says "AExp", it
 describes the core Megamiga is built on.
@@ -43,6 +44,10 @@ Credits
     integration Megamiga's follows.
   * Megamiga runs it on its own 42 MHz clock with a 32-bit path into the SDRAM
     for Fast RAM, next to TG68K.
+* The built-in freezer cartridge (Megamiga 0.6.2) is
+  [HRTmon](http://www.whdload.de/whdload/Tools/hrtmon238.lha) 2.38 by Alain
+  Malek (Hornet of Alcatraz), later maintained by Bert Jahn and others
+  (GPL-2.0-or-later); the cartridge logic is Minimig's `cart.v`.
 * [sy2002](http://www.sy2002.de) ported the core to the MEGA65 in 2026.
 * The core uses the [MiSTer2MEGA65](https://github.com/sy2002/MiSTer2MEGA65)
   framework and [QNICE-FPGA](https://github.com/sy2002/QNICE-FPGA) for
@@ -89,6 +94,8 @@ Features
   on either card
 * The Amiga serial port on the MEGA65's PMOD header (R4/R5/R6, off by
   default): a terminal, a null-modem link or MIDI
+* Freezer cartridges, per profile: HRTmon built in (68000 and 68020), or the
+  Action Replay III with your own ROM (68000); freeze with CTRL + MEGA + HELP
 * Kickstart 1.3 (256 KB) or 2.04 / 3.x (512 KB), chosen per profile in the
   menu
 * Real Amiga mouse in port 1, joystick in port 2, exactly like on a real

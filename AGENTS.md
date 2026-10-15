@@ -31,7 +31,8 @@ the history file.
   (RTG card + blitter, text/plane masks/read-ahead, PMOD serial), 0.5.0
   (network card), 0.5.1 (AmigaVision fix), 0.5.2 (32K ROM, hard disks
   on SD card partitions), 0.6.0 (68040, Megamiga.card), 0.6.1 (fast hard
-  disks, both SD cards, SDCard:, explicit profiles). All hardware-confirmed
+  disks, both SD cards, SDCard:, explicit profiles), 0.6.2 (freezer
+  cartridges HRTmon + Action Replay III). All hardware-confirmed
   by the user, the PMOD serial port by an outside tester.
 
 ### Increment index (details: `doc/developers/history.md`)
@@ -90,7 +91,8 @@ Megamiga fork (johansmolinski):
   base is GPL-2.0-or-later (Adam Polkosnik confirmed to the user on
   2026-10-11 and will update the terms in his repository), so it may ship
   next to the GPLv3 code.
-- cart (worktree `cart-ar3-hrtmon`, from 0.6.0): freezer cartridges per
+- 0.6.2 = cart (released 2026-10-15, tag `V0.6.2`; worktree `cart-ar3-hrtmon`,
+  rebased onto 0.6.1, Minimig branch `cart`): freezer cartridges per
   profile - HRTmon built in (`CORE/hrtmon`, image copied to `$A10000` at cold
   boot; 68000 + 68020, HW-confirmed) and the Action Replay III (bring your own
   ROM, `rtl/ar3.v`, QNICE device 0x010C, 68000 only, Zorro II board 2 MB;
