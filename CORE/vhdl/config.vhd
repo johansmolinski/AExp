@@ -67,7 +67,7 @@ type WHS_RECORD_ARRAY_TYPE is array (0 to WHS_RECORDS - 1) of WHS_RECORD_TYPE;
 -- config filename further down). Update this one line when releasing a new
 -- version; make_release.py parses it and uses it as the official version
 -- string for that release.
-constant CORE_VERSION : string := "0.6.2";
+constant CORE_VERSION : string := "0.6.3";
 
 constant SCR_WELCOME : string :=
 
@@ -254,8 +254,9 @@ constant HELP_5 : string :=
    " HDMI stays active in every VGA mode.\n\n" &
 
    " Normal VGA displays cannot show 15 kHz\n" &
-   " or its menu. Recover using HDMI.\n\n" &
-   "\n\n" &  -- keep footer at bottom
+   " or its menu. Recover using HDMI.\n" &
+   " RTG native resolution: RTG screens get\n" &
+   " their own HDMI mode (up to 1080p30).\n\n" &
 
    " Crsr left/right: Prev/Next      (5/7)\n" &
    " Space or Run/Stop: Close";
