@@ -2074,6 +2074,25 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   newer than the synthesis when `save` ran, so the reference images in the
   saved folder were rebuilt from `94f1114`'s sources (the patch verifies them
   against the checkpoint). Awaiting hardware tests.
+  Hardware (2026-10-15, fastdisk-e2): the user installed AmigaOS 3.2 from
+  ADF images on SDCard: onto a hard disk with the 68040 + AGA + Z3 RAM: "It
+  all seems to work fine". One screen corruption during that install (chip RAM
+  overwritten after DAControl CHANGE WRITEPROTECTED=NO on GlowIcons3.2) was not
+  reproduced; the share firmware bench got an `ADF=1` mode (trackfile.device's
+  seek/read/write pattern on a 901120-byte file, 1505 records, PASS) and the
+  $DD4000 buffers are outside every AP68040 cache window.
+  0.6.1 release preparation (docs, 2026-10-15): README rewritten for the
+  explicit profiles (no automatic aNNN.rom/.hdf names, kick.rom optional, a
+  missing Kickstart = Amiga stopped), the Kickstart ROM section, the hard disk
+  steps (profile keeps the disk, SPACE forgets it), the sector engine (files up
+  to 511 extents and partitions; more fragmented files through the firmware),
+  partition prep with fatresize/sfdisk, the DAControl syntax verified on
+  hardware (`DAControl DEVICE=DA0: CHANGE WRITEPROTECTED=NO`), features/intro.
+  Settings file from 0.6.0: NOT compatible - "Mount SDCard" and a line were
+  inserted at items 8/9 (OPTM_SIZE 211 -> 214), so a renamed 0.6.0 file loads
+  through `_HLP_CA_OLD` (shorter file) with every item from 8 on shifted by
+  two; the release notes say to start with the new file. Package README.txt
+  and notes061.md in `~/aexp-builds/release/`.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
