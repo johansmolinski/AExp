@@ -51,6 +51,9 @@ use ieee.numeric_std.all;
 library xpm;
 use xpm.vcomponents.all;
 
+library work;
+use work.globals.all;
+
 entity amiga_sdram is
    port (
       clk_i          : in    std_logic;                      -- core clock (28.375 MHz)
@@ -106,6 +109,22 @@ entity amiga_sdram is
       qnice_we_i     : in    std_logic;
       qnice_wait_o   : out   std_logic;
       kick_busy_o    : out   std_logic;                      -- core clock: words still in flight
+      -- Megamiga: the Action Replay III ROM loader, the same byte stream into the AR3 bank
+      -- (QNICE device C_DEV_AMIGA_AR3, byte address = file offset 0..256 KB - 1; mega65.vhd
+      -- passes only window 0..63)
+      qnice_ar3_ce_i : in    std_logic := '0';
+
+      -- Megamiga: cartridge init, once per cold boot (amiga_cold_boot.vhd, core clock):
+      -- cart_type_i "01" HRTmon: copy the built-in HRTmon image to $A10000 (cartridge bank
+      -- $200000, word $8000) with its configuration block patched like MiSTer's
+      -- UploadActionReplay does (AGA flag, chip RAM size); "10" Action Replay III: clear its
+      -- RAM half ($440000-$47FFFF = AR3 bank $2C0000); "00": nothing. cart_busy_o is high
+      -- from the cart_init_i clock on until the last word is written.
+      cart_init_i    : in    std_logic := '0';
+      cart_type_i    : in    std_logic_vector(1 downto 0) := "00";
+      cart_aga_i     : in    std_logic := '0';
+      cart_chip_i    : in    std_logic_vector(1 downto 0) := "00";  -- "00" 512 KB, "01" 1 MB, "11" 2 MB
+      cart_busy_o    : out   std_logic;
 
       -- floppy port: ADF pools + IDE boot ROM (core clock, word address 21:0)
       flp_rst_i             : in  std_logic;
@@ -192,6 +211,46 @@ architecture synthesis of amiga_sdram is
    constant C_KICK_BANK : std_logic_vector(3 downto 0) := "1111";   -- minimig_sram_bridge.v
    constant C_HOLD      : natural := 8;                              -- core clocks per phase
 
+   -- Megamiga: the cartridge banks of the 8 MB chipset space (A22..A19, see minimig.v):
+   -- HRTmon $200000-$27FFFF (where $A00000 lands), Action Replay III $280000-$2FFFFF
+   constant C_HRT_BANK  : std_logic_vector(3 downto 0) := "0100";
+   constant C_AR3_BANK  : std_logic_vector(3 downto 0) := "0101";
+   constant C_HRT_START : natural := 16#8000#;                       -- word of $A10000 in its bank
+   constant C_AR3_RAM_WORDS : natural := 131072;                      -- $440000-$47FFFF
+
+   -- HRTmon's configuration block (WinUAE's HRTCFG at the start of the image), patched like
+   -- MiSTer's Main_MiSTer support/minimig/minimig_config.cpp UploadActionReplay does:
+   --   offset 20: mon_size = $00800000
+   --   24: col0h $00, col0l $5A, col1h $0F, col1l $FF, right $FF, keyboard $00, key $FF,
+   --       ide $00 (MiSTer: Gayle IDE on; Megamiga has no Gayle), a1200 $FF, aga, insert $FF,
+   --       delay $0F, lview $FF, cd32 $00, screenmode $00 (PAL), novbr $FF, entered $00,
+   --       hexmode $01
+   --   68: max_chip = chip RAM size in bytes
+   -- i is the word index in the image; every other word is passed through.
+   function hrt_patch(i : natural; d : std_logic_vector(15 downto 0); aga : std_logic;
+                      chip : std_logic_vector(1 downto 0)) return std_logic_vector is
+   begin
+      case i is
+         when 10     => return x"0080";
+         when 11     => return x"0000";
+         when 12     => return x"005A";
+         when 13     => return x"0FFF";
+         when 14     => return x"FF00";
+         when 15     => return x"FF00";
+         when 16     => if aga = '1' then return x"FFFF"; else return x"FF00"; end if;
+         when 17     => return x"FF0F";
+         when 18     => return x"FF00";
+         when 19     => return x"00FF";
+         when 20     => return x"0001";
+         when 34     => if chip = "00" then return x"0008";      -- 512 KB
+                        elsif chip = "01" then return x"0010";   -- 1 MB
+                        else return x"0020";                     -- 2 MB
+                        end if;
+         when 35     => return x"0000";
+         when others => return d;
+      end case;
+   end function hrt_patch;
+
    -- chipset port of the controller (after the maintenance mux)
    signal c_addr    : std_logic_vector(24 downto 1);
    signal c_data    : std_logic_vector(15 downto 0);
@@ -209,14 +268,26 @@ architecture synthesis of amiga_sdram is
    signal m_mirror  : std_logic := '0';                        -- second write pending
    signal m_scrub   : std_logic := '0';                        -- current write is a scrub
 
-   -- Kickstart loader FIFO: {word address 17:0, data 15:0}
+   -- Kickstart loader FIFO: {AR3, word address 17:0, data 15:0} (Megamiga: + the AR3 tag)
    signal q_hi      : std_logic_vector(7 downto 0) := (others => '0');
    signal q_wr_en   : std_logic := '0';
-   signal q_din     : std_logic_vector(33 downto 0) := (others => '0');
+   signal q_din     : std_logic_vector(34 downto 0) := (others => '0');
    signal q_full    : std_logic;
    signal q_wr_rst_busy : std_logic;
    signal f_rd_en   : std_logic;
-   signal f_dout    : std_logic_vector(33 downto 0);
+   signal f_dout    : std_logic_vector(34 downto 0);
+
+   -- Megamiga: cartridge init (core clock)
+   signal c_run     : std_logic := '0';                        -- words left to write
+   signal c_tail    : std_logic := '0';                        -- last word still being written
+   signal c_hrt     : std_logic := '0';                        -- '1' HRTmon copy, '0' AR3 clear
+   signal c_prime   : std_logic := '0';                        -- rom_q shows word c_idx
+   signal c_idx     : unsigned(16 downto 0) := (others => '0');
+   signal c_aga     : std_logic := '0';
+   signal c_chip    : std_logic_vector(1 downto 0) := "00";
+   signal rom_q     : std_logic_vector(15 downto 0);
+   type t_rom_q is array (0 to 3) of std_logic_vector(15 downto 0);
+   signal rom_qs    : t_rom_q;                                 -- the four HRTmon ROM parts
    signal f_empty   : std_logic;
    signal f_rd_rst_busy : std_logic;
 
@@ -266,11 +337,15 @@ begin
    begin
       if falling_edge(qnice_clk_i) then
          q_wr_en <= '0';
-         if qnice_ce_i = '1' and qnice_we_i = '1' and q_full = '0' and q_wr_rst_busy = '0' then
+         if (qnice_ce_i = '1' or qnice_ar3_ce_i = '1') and qnice_we_i = '1' and
+            q_full = '0' and q_wr_rst_busy = '0' then
             if qnice_addr_i(0) = '0' then
                q_hi <= qnice_data_i(7 downto 0);                       -- even byte: high byte
+            elsif qnice_ar3_ce_i = '1' then                            -- Megamiga: AR3 ROM word
+               q_din   <= '1' & '0' & qnice_addr_i(17 downto 1) & q_hi & qnice_data_i(7 downto 0);
+               q_wr_en <= '1';
             else
-               q_din   <= qnice_addr_i(18 downto 1) & q_hi & qnice_data_i(7 downto 0);
+               q_din   <= '0' & qnice_addr_i(18 downto 1) & q_hi & qnice_data_i(7 downto 0);
                q_wr_en <= '1';
             end if;
          end if;
@@ -281,8 +356,8 @@ begin
       generic map (
          FIFO_MEMORY_TYPE    => "distributed",
          FIFO_WRITE_DEPTH    => 16,
-         WRITE_DATA_WIDTH    => 34,
-         READ_DATA_WIDTH     => 34,
+         WRITE_DATA_WIDTH    => 35,
+         READ_DATA_WIDTH     => 35,
          READ_MODE           => "fwft",
          FIFO_READ_LATENCY   => 0,
          CDC_SYNC_STAGES     => 2,
@@ -317,6 +392,14 @@ begin
    p_maint : process (clk_i)
    begin
       if rising_edge(clk_i) then
+         -- Megamiga: cartridge init. rom_q follows c_idx one clock later, so a word is
+         -- taken only after one clock with an unchanged c_idx (c_prime). Every clock that
+         -- does not take a word primes (the M_IDLE branch that takes one clears it again);
+         -- priming only outside M_IDLE never started the first word.
+         if c_run = '1' then
+            c_prime <= '1';
+         end if;
+
          case m_state is
             when M_IDLE =>
                m_active <= '0';
@@ -334,10 +417,36 @@ begin
                   m_active   <= '1';
                   m_cnt      <= C_HOLD - 1;
                   m_state    <= M_WRITE;
+               elsif f_rd_en = '1' and f_dout(34) = '1' then         -- Megamiga: AR3 ROM word
+                  m_addr   <= C_AR3_BANK & f_dout(33 downto 16);     -- (bit 33 = '0': the ROM half)
+                  m_data   <= f_dout(15 downto 0);
+                  m_scrub  <= '0';
+                  m_active <= '1';
+                  m_cnt    <= C_HOLD - 1;
+                  m_state  <= M_WRITE;
                elsif f_rd_en = '1' then                              -- next Kickstart word
                   m_addr   <= C_KICK_BANK & f_dout(33 downto 16);
                   m_data   <= f_dout(15 downto 0);
                   m_mirror <= not f_dout(33);                        -- word in the first 256 KB
+                  m_scrub  <= '0';
+                  m_active <= '1';
+                  m_cnt    <= C_HOLD - 1;
+                  m_state  <= M_WRITE;
+               elsif c_run = '1' and c_prime = '1' then              -- Megamiga: cartridge init
+                  if c_hrt = '1' then
+                     m_addr <= C_HRT_BANK & std_logic_vector(to_unsigned(C_HRT_START, 18) + c_idx);
+                     m_data <= hrt_patch(to_integer(c_idx), rom_q, c_aga, c_chip);
+                  else
+                     m_addr <= C_AR3_BANK & '1' & std_logic_vector(c_idx);
+                     m_data <= (others => '0');
+                  end if;
+                  if (c_hrt = '1' and c_idx = C_HRTMON_WORDS - 1) or
+                     (c_hrt = '0' and c_idx = C_AR3_RAM_WORDS - 1) then
+                     c_run  <= '0';
+                     c_tail <= '1';
+                  end if;
+                  c_idx    <= c_idx + 1;
+                  c_prime  <= '0';
                   m_scrub  <= '0';
                   m_active <= '1';
                   m_cnt    <= C_HOLD - 1;
@@ -355,19 +464,65 @@ begin
 
             when M_GAP =>                                            -- idle slots: refresh
                if m_cnt = 0 then
+                  c_tail  <= '0';                                    -- Megamiga: write done
                   m_state <= M_IDLE;
                else
                   m_cnt <= m_cnt - 1;
                end if;
          end case;
 
+         if cart_init_i = '1' then
+            c_run   <= cart_type_i(0) or cart_type_i(1);
+            c_hrt   <= cart_type_i(0);
+            c_idx   <= (others => '0');
+            c_prime <= '0';
+            c_aga   <= cart_aga_i;
+            c_chip  <= cart_chip_i;
+         end if;
+
          if rst_i = '1' then
             m_state  <= M_IDLE;
             m_active <= '0';
             m_mirror <= '0';
+            c_run    <= '0';
+            c_tail   <= '0';
          end if;
       end if;
    end process p_maint;
+
+   cart_busy_o <= c_run or c_tail or cart_init_i;
+
+   -- Megamiga: the HRTmon cartridge image (CORE/hrtmon, GPL-2.0-or-later, built from the
+   -- HRTmon 2.38 source by CORE/hrtmon/build.sh): C_HRTMON_WORDS words in block RAM, as
+   -- four 32K-word parts hrtmon_0..3.hex - Vivado stops tdp_ram's file loader at 65536
+   -- loop iterations (Synth 8-403), one per line. c_idx is unchanged while a word is taken
+   -- (c_prime), so its top bits select the part directly.
+   rom_q <= rom_qs(to_integer(c_idx(16 downto 15)));
+
+   g_hrtmon : for i in 0 to 3 generate
+   i_hrtmon : entity work.tdp_ram
+      generic map (
+         ADDR_WIDTH   => 15,
+         DATA_WIDTH   => 16,
+         ROM_PRELOAD  => true,
+         ROM_FILE     => HRTMON_ROM_PREFIX & character'val(character'pos('0') + i) & ".hex",
+         ROM_FILE_HEX => true
+      )
+      port map (
+         clock_a   => clk_i,
+         clen_a    => '1',
+         address_a => std_logic_vector(c_idx(14 downto 0)),
+         data_a    => (others => '0'),
+         wren_a    => '0',
+         q_a       => rom_qs(i),
+         clock_b   => clk_i,
+         clen_b    => '0',
+         address_b => (others => '0'),
+         data_b    => (others => '0'),
+         wren_b    => '0',
+         q_b       => open
+      ); -- i_hrtmon
+   end generate g_hrtmon;
 
    ---------------------------------------------------------------------------------------
    -- CPU port chip select (see the declaration of ram_cs); Minimig.sv, clk_114 process:

@@ -36,6 +36,14 @@ constant QNICE_FIRMWARE_M2M       : string  := "../../../CORE/m2m-rom/m2m-rom.ro
 -- the firmware by make_rom.sh (m2m-rodata.asm); see mega65.vhd.
 constant QNICE_RODATA_M2M         : string  := "../../../CORE/m2m-rom/m2m-rodata.rom";
 
+-- Megamiga: the built-in HRTmon cartridge image (CORE/hrtmon: HRTmon 2.38, GPL-2.0-or-later,
+-- built from the source archive there by build.sh) as one hex word per line, in four parts of
+-- 32K words: HRTMON_ROM_PREFIX & "0".."3" & ".hex" (Vivado's loop limit, see amiga_sdram.vhd);
+-- amiga_sdram.vhd holds them in block RAM and copies the image to $A10000 at every cold boot.
+-- C_HRTMON_WORDS must be the word count of the image (build.sh prints it).
+constant HRTMON_ROM_PREFIX        : string  := "../../../CORE/hrtmon/hrtmon_";
+constant C_HRTMON_WORDS           : natural := 99770;
+
 -- Select firmware here
 constant QNICE_FIRMWARE           : string  := QNICE_FIRMWARE_M2M;
 
@@ -225,6 +233,13 @@ constant C_DEV_AMIGA_RODATA   : std_logic_vector(15 downto 0) := x"0109";
 -- 4K words the Amiga sees, window 1 word 0 = the Amiga reset counter
 constant C_DEV_AMIGA_SHARE    : std_logic_vector(15 downto 0) := x"010B";
 
+-- Megamiga 0.6.2: the Action Replay III ROM (bring your own: a 256 KB dump, e.g. version 3.17),
+-- window 0..63 = the ROM bytes (byte address = file offset, streamed into the AR3 bank of the
+-- SDRAM by amiga_sdram.vhd), window 0xFFFE = control (a write to word 0 presses the
+-- cartridge's freeze button), window 0xFFFF = the M2M CSR of the " AR3 ROM:%s" menu line.
+-- Keep it on ONE line - make_rom.sh scrapes it.
+constant C_DEV_AMIGA_AR3      : std_logic_vector(15 downto 0) := x"010C";
+
 ----------------------------------------------------------------------------------------------------------
 -- Virtual Drive Management System
 ----------------------------------------------------------------------------------------------------------
@@ -286,13 +301,17 @@ constant C_CRTROMTYPE_OPTIONAL   : std_logic_vector(15 downto 0) := x"0004";
 -- 6th OPTM_G_LOAD_ROM occurrence) into the same device the boot-time kick.rom goes to.
 -- The firmware checks the size and loads the ROM in PREP_LOAD_IMAGE; mega65.vhd answers
 -- the CSR handshake and cold-boots the Amiga once the ROM is in place.
-constant C_CRTROMS_MAN_NUM       : natural := 6;                                       -- amount of manually loadable ROMs and carts; maximum is 16
+-- Entry 6 (Megamiga): the Action Replay III ROM (OSM " AR3 ROM:%s" line in Profile Settings,
+-- the 7th OPTM_G_LOAD_ROM occurrence) into C_DEV_AMIGA_AR3. The firmware accepts exactly
+-- 256 KB; mega65.vhd answers the CSR handshake and cold-boots the Amiga once it is loaded.
+constant C_CRTROMS_MAN_NUM       : natural := 7;                                       -- amount of manually loadable ROMs and carts; maximum is 16
 constant C_CRTROMS_MAN           : crtrom_buf_array := ( C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_ADF0,
                                                          C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_ADF1,
                                                          C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_ADF2,
                                                          C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_IDE,
                                                          C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_IDE1,
                                                          C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_KICK,
+                                                         C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_AR3,
                                                          x"EEEE");                     -- Always finish the array using x"EEEE"
 
 -- Automatically loaded ROMs: These ROMs are loaded before the core starts
@@ -314,12 +333,20 @@ constant KICK_ROM_NAME_START     : std_logic_vector(15 downto 0) := x"0000";
 constant LIDE_ROM_NAME           : string := "/amiga/lide.rom" & ENDSTR;
 constant LIDE_ROM_NAME_START     : std_logic_vector(15 downto 0) := std_logic_vector(to_unsigned(KICK_ROM_NAME'length, 16));
 
-constant C_CRTROMS_AUTO_NUM      : natural := 2;                                       -- Amount of automatically loadable ROMs and carts, maximum is 16
-constant C_CRTROMS_AUTO_NAMES    : string  := KICK_ROM_NAME & LIDE_ROM_NAME;
+-- Megamiga: the Action Replay III ROM, OPTIONAL. The HDL counts it as loaded only when exactly
+-- the bytes 0..256 KB - 1 arrived (mega65.vhd), so a file of another size never plugs in the
+-- cartridge; the menu line above loads another one for the running session.
+constant AR3_ROM_NAME            : string := "/amiga/ar3.rom" & ENDSTR;
+constant AR3_ROM_NAME_START      : std_logic_vector(15 downto 0) := std_logic_vector(to_unsigned(KICK_ROM_NAME'length + LIDE_ROM_NAME'length, 16));
+
+constant C_CRTROMS_AUTO_NUM      : natural := 3;                                       -- Amount of automatically loadable ROMs and carts, maximum is 16
+constant C_CRTROMS_AUTO_NAMES    : string  := KICK_ROM_NAME & LIDE_ROM_NAME & AR3_ROM_NAME;
 constant C_CRTROMS_AUTO          : crtrom_buf_array := ( C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_KICK,
                                                          C_CRTROMTYPE_OPTIONAL, KICK_ROM_NAME_START,
                                                          C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_IDEROM,
                                                          C_CRTROMTYPE_OPTIONAL, LIDE_ROM_NAME_START,
+                                                         C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_AR3,
+                                                         C_CRTROMTYPE_OPTIONAL, AR3_ROM_NAME_START,
                                                          x"EEEE");                     -- Always finish the array using x"EEEE"
 
 ----------------------------------------------------------------------------------------------------------

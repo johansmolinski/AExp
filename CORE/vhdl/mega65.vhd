@@ -174,6 +174,9 @@ port (
    osm_key_a_o             : out integer range 0 to 79;
    osm_key_b_o             : out integer range 0 to 79;
    osm_combo_o             : out std_logic;
+   -- Megamiga (M2M-UPSTREAM osm-hotkey): '1' = the menu key must not open the menu now
+   -- (CTRL+MEGA are held: CTRL+MEGA+HELP is the cartridge's freeze button)
+   osm_block_o             : out std_logic;
 
    -- Joysticks and paddles input
    main_joy_1_up_n_i       : in  std_logic;
@@ -390,6 +393,33 @@ signal main_cpu_040           : std_logic;                       -- Megamiga: th
 signal main_z3_ram            : std_logic;                       -- Megamiga: 16 MB Zorro III board
 signal main_chipset           : std_logic_vector(1 downto 0);    -- Megamiga: 00 OCS, 01 ECS, 10 AGA
 signal main_chip_size         : std_logic_vector(1 downto 0);    -- Megamiga: 00 512K, 01 1M, 11 2M chip RAM
+
+-- Megamiga: freezer cartridges (HRTmon built in, Action Replay III with its own ROM)
+signal main_cart_hrt_sel      : std_logic;                       -- the profile's radio: HRTmon
+signal main_cart_ar3_sel      : std_logic;                       -- the profile's radio: AR3
+signal main_cart_req          : std_logic_vector(1 downto 0);    -- 00 none, 01 HRTmon, 10 AR3 (with ROM)
+signal main_cart_type         : std_logic_vector(1 downto 0);    -- what is plugged in (amiga_cold_boot)
+signal main_cart_hrtmon       : std_logic;                       -- main_cart_type decoded
+signal main_cart_ar3          : std_logic;
+signal main_cart_init         : std_logic;
+signal main_cart_busy         : std_logic;
+signal main_ar3_ok            : std_logic;                       -- a complete 256 KB AR3 ROM is loaded
+signal main_ar3_ldng          : std_logic;
+signal main_frz_t             : std_logic;                       -- menu freeze toggle (from QNICE)
+signal main_frz_d             : std_logic := '0';
+signal main_frz_cnt           : unsigned(16 downto 0) := (others => '0');
+signal main_menu_freeze       : std_logic := '0';                -- the menu's freeze, ~4.6 ms
+signal qnice_ar3_ce           : std_logic;                       -- AR3 ROM bytes into amiga_sdram
+signal qnice_ar3_dev_ce       : std_logic;
+signal qnice_ar3_csr          : std_logic;
+signal qnice_ar3_csr_data     : std_logic_vector(15 downto 0);
+signal qnice_ar3_csr_wait     : std_logic;
+signal qnice_ar3_req          : std_logic_vector(3 downto 0);
+signal qnice_ar3_resp         : std_logic_vector(3 downto 0);
+signal qnice_ar3_ldng         : std_logic;
+signal qnice_ar3_ok           : std_logic := '0';
+signal qnice_ar3_bad          : std_logic := '0';
+signal qnice_frz_t            : std_logic := '0';
 signal main_slow_ram          : std_logic;                       -- Megamiga: 512 KB Slow RAM present
 signal main_fram_uds_n        : std_logic;
 signal main_fram_lds_n        : std_logic;
@@ -880,17 +910,17 @@ signal mem_arb_waitrequest         : std_logic_vector(C_ARB_SLAVES - 1 downto 0)
 -- derived drive count. The firmware keeps these two radios consistent in
 -- OSM_SEL_POST; the HDL never has to repair an inconsistent combination, it
 -- just decodes what it is given.
-constant C_MENU_DRIVES_1      : natural := 70;
-constant C_MENU_DRIVES_2      : natural := 71;
-constant C_MENU_DRIVES_3      : natural := 72;
-constant C_MENU_DF0_IMG       : natural := 76;
-constant C_MENU_DF0_HW        : natural := 77;
-constant C_MENU_DF1_IMG       : natural := 81;
-constant C_MENU_DF1_HW        : natural := 82;
-constant C_MENU_DF1_OFF       : natural := 83;
-constant C_MENU_DF2_IMG       : natural := 87;
-constant C_MENU_DF2_HW        : natural := 88;
-constant C_MENU_DF2_OFF       : natural := 89;
+constant C_MENU_DRIVES_1      : natural := 83;
+constant C_MENU_DRIVES_2      : natural := 84;
+constant C_MENU_DRIVES_3      : natural := 85;
+constant C_MENU_DF0_IMG       : natural := 89;
+constant C_MENU_DF0_HW        : natural := 90;
+constant C_MENU_DF1_IMG       : natural := 94;
+constant C_MENU_DF1_HW        : natural := 95;
+constant C_MENU_DF1_OFF       : natural := 96;
+constant C_MENU_DF2_IMG       : natural := 100;
+constant C_MENU_DF2_HW        : natural := 101;
+constant C_MENU_DF2_OFF       : natural := 102;
 
 -- Flat main-menu indexes of the six twin lines, one pair per drive: the mount
 -- line and its "Hardware Floppy" TEXT twin. These carry NO osm_control meaning
@@ -917,52 +947,52 @@ constant C_DRV_IMAGE          : std_logic_vector(1 downto 0) := "00";  -- simula
 constant C_DRV_HW             : std_logic_vector(1 downto 0) := "01";  -- the MEGA65 mechanism
 constant C_DRV_OFF            : std_logic_vector(1 downto 0) := "10";  -- unit does not exist
 
-constant C_MENU_HDMI_16_9_50  : natural := 102;
-constant C_MENU_HDMI_4_3_50   : natural := 103;
-constant C_MENU_HDMI_5_4_50   : natural := 104;
+constant C_MENU_HDMI_16_9_50  : natural := 115;
+constant C_MENU_HDMI_4_3_50   : natural := 116;
+constant C_MENU_HDMI_5_4_50   : natural := 117;
 
 -- DVI (no sound): single-select, default OFF. Drives the framework's qnice_dvi
 -- input, which makes M2M's vga_to_hdmi.vhd force plain DVI encoding on every
 -- non-video period - no audio sample packets and no HDMI data islands at all.
 -- Pixel timing is untouched, so the picture geometry stays identical. The bit is
 -- consumed in the qnice_clk domain; vga_to_hdmi.vhd does its own CDC.
-constant C_MENU_HDMI_DVI      : natural := 106;
+constant C_MENU_HDMI_DVI      : natural := 119;
 
 -- The HDMI Filter radio is read by the firmware only (dispatcher
 -- LOAD_HDMI_FILTER with ASCAL_USAGE=1), never by any VHDL: these eight
 -- lines exist solely as the scrape source for osm_const.asm.
-constant C_MENU_FLT_NO_FILTER     : natural := 112;
-constant C_MENU_FLT_SHARP         : natural := 113;
-constant C_MENU_FLT_BICUBIC       : natural := 114;
-constant C_MENU_FLT_SMOOTH        : natural := 115;
-constant C_MENU_FLT_LANCZOS       : natural := 116;
-constant C_MENU_FLT_SCANLINES     : natural := 117;
-constant C_MENU_FLT_CRT_SVIDEO    : natural := 118;
-constant C_MENU_FLT_CRT_COMPOSITE : natural := 119;
+constant C_MENU_FLT_NO_FILTER     : natural := 125;
+constant C_MENU_FLT_SHARP         : natural := 126;
+constant C_MENU_FLT_BICUBIC       : natural := 127;
+constant C_MENU_FLT_SMOOTH        : natural := 128;
+constant C_MENU_FLT_LANCZOS       : natural := 129;
+constant C_MENU_FLT_SCANLINES     : natural := 130;
+constant C_MENU_FLT_CRT_SVIDEO    : natural := 131;
+constant C_MENU_FLT_CRT_COMPOSITE : natural := 132;
 
 -- HDMI flicker-free toggle (issue #12): single-select, default ON, read here in HDL
 -- (like the VGA radio) and CDC'd into the hr_clk domain to drive the core-speed FSM.
-constant C_MENU_HDMI_FF       : natural := 122;
+constant C_MENU_HDMI_FF       : natural := 135;
 
-constant C_MENU_VGA_STD       : natural := 126;   -- VGA: Standard (scandoubled 31.25 kHz); default
-constant C_MENU_VGA_15KHZHSVS : natural := 130;   -- VGA: raw 15.625 kHz RGB with separate HS/VS
-constant C_MENU_VGA_15KHZCS   : natural := 131;   -- VGA: raw 15.625 kHz RGB with composite sync (SCART)
+constant C_MENU_VGA_STD       : natural := 139;   -- VGA: Standard (scandoubled 31.25 kHz); default
+constant C_MENU_VGA_15KHZHSVS : natural := 143;   -- VGA: raw 15.625 kHz RGB with separate HS/VS
+constant C_MENU_VGA_15KHZCS   : natural := 144;   -- VGA: raw 15.625 kHz RGB with composite sync (SCART)
 
 -- OSM Scaling follows the C64 layout: line 77 (100%, default) maps to bit 0,
 -- while line 85 (50%) maps to bit 8 for the framework's first_nonzero_bit decode.
-subtype C_MENU_OSM_SCALING is natural range 144 downto 136;
+subtype C_MENU_OSM_SCALING is natural range 157 downto 149;
 
 -- Volume radio (master volume, 5% steps): line 94 (100%, default) down to line 114
 -- (0% = mute). Decoded below into main_volume (0..20 step index) and applied in
 -- main.vhd as a perceptual Q15 attenuation (C_VOL_LUT) on the final Paula mix,
 -- ahead of the framework's split into the HDMI and analog audio paths.
-subtype C_MENU_VOLUME is natural range 173 downto 153;
+subtype C_MENU_VOLUME is natural range 186 downto 166;
 
 -- Stereo crossfeed radio ("Stereo: %s" submenu): line 120 (Full Stereo, default)
 -- down to line 123 (Mono). Decoded below into main_stereo_mix using MiSTer's
 -- aud_mix encoding (00 = full separation, 01 = 87.5%/12.5%, 10 = 75%/25%,
 -- 11 = mono) and applied in main.vhd's audio_filters ahead of the master volume.
-subtype C_MENU_STEREO is natural range 182 downto 179;
+subtype C_MENU_STEREO is natural range 195 downto 192;
 
 -- Paula output filters (MiSTer Minimig.sv parity), both single-select toggles
 -- with OPTM_G_STDSEL = default ON. A500 Filter inserts the fixed 4400 Hz
@@ -970,28 +1000,28 @@ subtype C_MENU_STEREO is natural range 182 downto 179;
 -- Filter arms the switchable 3 kHz low-pass on CIA-A PA1, which then follows
 -- the emulated power LED live (MiSTer's "Auto(LED)"). Both are static OSM bits
 -- wired straight into main.vhd like the keyboard/VGA bits.
-constant C_MENU_A500FILT      : natural := 187;
-constant C_MENU_LEDFILT       : natural := 188;
+constant C_MENU_A500FILT      : natural := 200;
+constant C_MENU_LEDFILT       : natural := 201;
 
 -- Keyboard mapping mode radio (issue #6): '1' = Amiga (pure positional), '0' = MEGA65
 -- (semantic "cap is law"; default). Read here in HDL and wired straight into
 -- keyboard.vhd via main.vhd, exactly like the VGA/flicker-free bits. Line 132 (MEGA65)
 -- carries OPTM_G_STDSEL, so this Amiga bit is 0 at power-up.
-constant C_MENU_KBD_AMIGA     : natural := 192;
+constant C_MENU_KBD_AMIGA     : natural := 205;
 
 -- OSM-open key radio (issue #8): selects which key(s) drive the framework's
 -- menu-open bit (qnice_keys bit 7). Decoded below into m2m_keyb's osm_key_a/b +
 -- combo inputs and threaded core->framework->m2m_keyb, so the firmware stays
 -- byte-identical (bit 7 keeps its "the menu key" meaning). Line 136 (Help) carries
 -- OPTM_G_STDSEL = the classic default. MEGA+Run/Stop is a two-key combo.
-constant C_MENU_OSMKEY_HELP   : natural := 197;
-constant C_MENU_OSMKEY_F11    : natural := 198;
-constant C_MENU_OSMKEY_F13    : natural := 199;
-constant C_MENU_OSMKEY_COMBO  : natural := 200;
+constant C_MENU_OSMKEY_HELP   : natural := 210;
+constant C_MENU_OSMKEY_F11    : natural := 211;
+constant C_MENU_OSMKEY_F13    : natural := 212;
+constant C_MENU_OSMKEY_COMBO  : natural := 213;
 
-constant C_MENU_DRV_SPINUP    : natural := 91;   -- Drive Settings: spin-up delay of the simulated drives
-constant C_MENU_SERIAL        : natural := 206;  -- Settings: Amiga serial port on PMOD1 (default OFF)
-constant C_MENU_SD_STATUS     : natural := 213;  -- main menu: empty TEXT line at the end (the SD status is painted on the bottom row; unused by the firmware)
+constant C_MENU_DRV_SPINUP    : natural := 104;   -- Drive Settings: spin-up delay of the simulated drives
+constant C_MENU_SERIAL        : natural := 219;  -- Settings: Amiga serial port on PMOD1 (default OFF)
+constant C_MENU_SD_STATUS     : natural := 228;  -- main menu: empty TEXT line at the end (the SD status is painted on the bottom row; unused by the firmware)
 
 -- Megamiga 0.3 machine profiles. The main page carries the profile radio (A500 / A600 /
 -- A1200); Profile Settings holds one block of radios and toggles per profile, and only
@@ -1005,8 +1035,8 @@ constant C_MENU_SD_STATUS     : natural := 213;  -- main menu: empty TEXT line a
 constant C_MENU_PROF_A500     : natural := 10;
 constant C_MENU_PROF_A600     : natural := 11;
 constant C_MENU_PROF_A1200    : natural := 12;
-constant C_MENU_PROF_BASE     : natural := 21;   -- first line of the A500 block
-constant C_MENU_PROF_STRIDE   : natural := 14;   -- lines per profile block
+constant C_MENU_PROF_BASE     : natural := 22;   -- first line of the A500 block
+constant C_MENU_PROF_STRIDE   : natural := 18;   -- lines per profile block
 constant C_PROF_CPU_020       : natural := 1;    -- CPU radio: 0 = 68000, 1 = 68020, 2 = 68040
 constant C_PROF_CPU_040       : natural := 2;
 constant C_PROF_CS_OCS        : natural := 3;    -- chipset radio: 3 OCS, 4 ECS, 5 AGA
@@ -1016,6 +1046,8 @@ constant C_PROF_CHIP_2M       : natural := 9;
 constant C_PROF_SLOW          : natural := 11;   -- Slow RAM (512 KB) toggle
 constant C_PROF_FAST          : natural := 12;   -- Zorro II Fast RAM (8 MB) toggle, R4+ only
 constant C_PROF_Z3            : natural := 13;   -- Zorro III RAM (16 MB) toggle, 68020 only
+constant C_PROF_CART_HRT      : natural := 16;   -- cartridge radio: 15 none, 16 HRTmon, 17 Action Replay III
+constant C_PROF_CART_AR3      : natural := 17;
 
 -- Network card (eth_card.vhd): CPU side on main_clk, MAC side on eth_clk50
 signal main_eth_sel           : std_logic;
@@ -1338,7 +1370,28 @@ begin
       else
          main_chip_size <= "00";
       end if;
+      -- Megamiga: the cartridge radio (None is the STDSEL default and the fall-through)
+      main_cart_hrt_sel <= main_osm_control_i(v_base + C_PROF_CART_HRT);
+      main_cart_ar3_sel <= main_osm_control_i(v_base + C_PROF_CART_AR3);
    end process prof_decode;
+
+   -- Megamiga: the cartridge that should be plugged in. The Action Replay III only counts
+   -- with a complete ROM; loading one (or losing it) is a topology change like the others.
+   -- It also needs the 68000: its ROM expects the 68000's 6-byte exception frame, and the
+   -- 68040 core would not even reach it (AP68040 caches the Zorro II window $200000-$9FFFFF
+   -- and its island sends that window straight to the Fast RAM port, past $400000). With a
+   -- 68020/68040 profile the radio's "Action Replay 3" therefore plugs in nothing.
+   -- HRTmon runs on the 68000 and the 68020. On the 68040 it froze only before the OS
+   -- turned the caches on (the level 7 vector read then never reaches cart.v); the fix
+   -- cost too much timing in the 68040 island, see doc/developers/freezer-68040.md.
+   -- With a 68040 profile "HRTmon" therefore plugs in nothing either.
+   --main_cart_req <= "01" when main_cart_hrt_sel = '1' else
+   main_cart_req <= "01" when main_cart_hrt_sel = '1' and main_cpu_040 = '0' else
+                    "10" when main_cart_ar3_sel = '1' and main_ar3_ok = '1' and
+                              main_cpu_020 = '0' and main_cpu_040 = '0' else
+                    "00";
+   main_cart_hrtmon <= '1' when main_cart_type = "01" else '0';
+   main_cart_ar3    <= '1' when main_cart_type = "10" else '0';
 
    i_amiga_cold_boot : entity work.amiga_cold_boot
       port map (
@@ -1352,6 +1405,10 @@ begin
          chip_size_i       => main_chip_size,
          drv_map_i         => main_drv_map,
          kick_hold_i       => main_kick_hold,
+         cart_i            => main_cart_req,
+         cart_busy_i       => main_cart_busy,
+         cart_init_o       => main_cart_init,
+         cart_type_o       => main_cart_type,
          amiga_reset_o     => amiga_cold_reset,
          chip_scrub_o      => amiga_chip_scrub,
          chip_scrub_addr_o => amiga_chip_scrub_addr
@@ -1513,6 +1570,10 @@ begin
          shr_sel_o            => main_shr_sel,
          shr_data_i           => main_shr_rddata,
          shr_ready_i          => main_shr_ready,
+         cart_hrtmon_i        => main_cart_hrtmon,
+         cart_ar3_i           => main_cart_ar3,
+         cart_freeze_i        => main_menu_freeze,
+         osm_block_o          => osm_block_o,
 
          -- Floppy configuration, plus the Hardware Floppy CIA-B taps,
          -- conditioned real drive status and reconstructed word stream
@@ -1763,6 +1824,12 @@ begin
          qnice_we_i     => qnice_dev_we_i,
          qnice_wait_o   => qnice_kick_wait,
          kick_busy_o    => main_kick_busy,
+         qnice_ar3_ce_i => qnice_ar3_ce,
+         cart_init_i    => main_cart_init,
+         cart_type_i    => main_cart_type,
+         cart_aga_i     => main_chipset(1),                -- "10" = AGA
+         cart_chip_i    => main_chip_size,
+         cart_busy_o    => main_cart_busy,
          flp_rst_i               => main_rst,
          flp_avm_write_i         => mem_avm_write,
          flp_avm_read_i          => mem_avm_read,
@@ -1977,7 +2044,107 @@ begin
          dst_data_o(0) => main_kick_ldng
       ); -- i_cdc_kick_ldng
 
-   main_kick_hold <= main_kick_ldng or main_kick_busy;
+   -- Megamiga: an AR3 ROM load from the menu holds the Amiga in reset like a Kickstart load
+   --main_kick_hold <= main_kick_ldng or main_kick_busy;
+   main_kick_hold <= main_kick_ldng or main_kick_busy or main_ar3_ldng;
+
+   ---------------------------------------------------------------------------------------------
+   -- Megamiga: the Action Replay III ROM (C_DEV_AMIGA_AR3). Bring your own: the optional
+   -- boot-time /amiga/ar3.rom or the " AR3 ROM:%s" line of Profile Settings (manual CRT/ROM 6,
+   -- the firmware accepts exactly 256 KB). Window 0..63: the ROM bytes, streamed into the AR3
+   -- bank of the SDRAM through the Kickstart loader FIFO of amiga_sdram.vhd. Window 0xFFFF:
+   -- the M2M CSR of the menu line (like the Kickstart selector: READY at once, the Amiga is
+   -- held in reset while LOADING). Window 0xFFFE: a write presses the freeze button (the
+   -- menu's "Freeze cartridge"; for both cartridges).
+   -- The ROM counts as loaded (qnice_ar3_ok) only after a byte stream that starts at offset 0
+   -- reached offset $3FFFF without a byte beyond it: the auto-load has no size check of its
+   -- own, so a file of any other size never plugs in the cartridge.
+   ---------------------------------------------------------------------------------------------
+
+   qnice_ar3_dev_ce <= qnice_dev_ce_i when qnice_dev_id_i = C_DEV_AMIGA_AR3 else '0';
+
+   i_ar3_csr : entity work.qnice_csr
+      generic map (
+         G_ERROR_STRINGS => (others => "OK                 \n")
+      )
+      port map (
+         qnice_clk_i          => qnice_clk_i,
+         qnice_rst_i          => qnice_rst_i,
+         qnice_addr_i         => qnice_dev_addr_i,
+         qnice_data_i         => qnice_dev_data_i,
+         qnice_ce_i           => qnice_ar3_dev_ce,
+         qnice_we_i           => qnice_dev_we_i,
+         qnice_data_o         => qnice_ar3_csr_data,
+         qnice_wait_o         => qnice_ar3_csr_wait,
+         qnice_csr_o          => qnice_ar3_csr,
+         qnice_req_status_o   => qnice_ar3_req,
+         qnice_req_length_o   => open,
+         qnice_resp_status_i  => qnice_ar3_resp,
+         qnice_resp_error_i   => x"0",
+         qnice_resp_address_i => (others => '0')
+      ); -- i_ar3_csr
+
+   qnice_ar3_resp <= C_CSR_RESP_READY when qnice_ar3_req = C_CSR_REQ_OK else C_CSR_RESP_IDLE;
+   qnice_ar3_ldng <= '1' when qnice_ar3_req = C_CSR_REQ_LDNG else '0';
+
+   -- device writes happen on the falling edge (M2M convention)
+   p_ar3_rom : process (qnice_clk_i)
+      variable v_win : natural range 0 to 65535;
+   begin
+      if falling_edge(qnice_clk_i) then
+         v_win := to_integer(unsigned(qnice_dev_addr_i(27 downto 12)));
+         if qnice_ar3_dev_ce = '1' and qnice_dev_we_i = '1' then
+            if v_win = 16#FFFE# then
+               qnice_frz_t <= not qnice_frz_t;                         -- freeze button
+            elsif v_win < 64 then
+               if unsigned(qnice_dev_addr_i(17 downto 0)) = 0 then      -- a new ROM begins
+                  qnice_ar3_ok  <= '0';
+                  qnice_ar3_bad <= '0';
+               elsif unsigned(qnice_dev_addr_i(17 downto 0)) = 16#3FFFF# and qnice_ar3_bad = '0' then
+                  qnice_ar3_ok  <= '1';
+               end if;
+            elsif v_win /= 16#FFFF# then                               -- beyond 256 KB
+               qnice_ar3_ok  <= '0';
+               qnice_ar3_bad <= '1';
+            end if;
+         end if;
+         if qnice_rst_i = '1' then
+            qnice_ar3_ok  <= '0';
+            qnice_ar3_bad <= '0';
+         end if;
+      end if;
+   end process p_ar3_rom;
+
+   i_cdc_ar3 : entity work.cdc_stable
+      generic map (
+         G_DATA_SIZE    => 3,
+         G_REGISTER_SRC => true
+      )
+      port map (
+         src_clk_i     => qnice_clk_i,
+         src_data_i(0) => qnice_ar3_ok,
+         src_data_i(1) => qnice_ar3_ldng,
+         src_data_i(2) => qnice_frz_t,
+         dst_clk_i     => main_clk,
+         dst_data_o(0) => main_ar3_ok,
+         dst_data_o(1) => main_ar3_ldng,
+         dst_data_o(2) => main_frz_t
+      ); -- i_cdc_ar3
+
+   -- the menu's freeze: each toggle is one press of ~4.6 ms (the cartridges detect the
+   -- rising edge on their 7 MHz enable)
+   p_menu_freeze : process (main_clk)
+   begin
+      if rising_edge(main_clk) then
+         main_frz_d <= main_frz_t;
+         if main_frz_t /= main_frz_d then
+            main_frz_cnt <= (others => '1');
+         elsif main_frz_cnt /= 0 then
+            main_frz_cnt <= main_frz_cnt - 1;
+         end if;
+         main_menu_freeze <= '1' when main_frz_cnt /= 0 else '0';
+      end if;
+   end process p_menu_freeze;
 
    ---------------------------------------------------------------------------------------------
    -- Read-only data of the firmware: the QNICE ROM ends at 0x7000 (the RAMROM window), so
@@ -2038,6 +2205,7 @@ begin
       qnice_dev_wait_o <= '0';
 
       qnice_kick_ce    <= '0';
+      qnice_ar3_ce     <= '0';
       qnice_adf_ce     <= "000";
       qnice_ide_ce     <= '0';
       qnice_ide1_ce    <= '0';
@@ -2056,6 +2224,20 @@ begin
                qnice_kick_ce    <= qnice_dev_ce_i;
                qnice_dev_data_o <= x"0000";
                qnice_dev_wait_o <= qnice_kick_wait;
+            end if;
+
+         -- Megamiga: the Action Replay III ROM (write-only bytes in window 0..63, the same
+         -- FIFO as the Kickstart), the freeze control in window 0xFFFE, the CSR in 0xFFFF
+         when C_DEV_AMIGA_AR3 =>
+            if qnice_ar3_csr = '1' then
+               qnice_dev_data_o <= qnice_ar3_csr_data;
+               qnice_dev_wait_o <= qnice_ar3_csr_wait;
+            elsif unsigned(qnice_dev_addr_i(27 downto 18)) = 0 then
+               qnice_ar3_ce     <= qnice_dev_ce_i;
+               qnice_dev_data_o <= x"0000";
+               qnice_dev_wait_o <= qnice_kick_wait;
+            else
+               qnice_dev_data_o <= x"0000";
             end if;
 
          when C_DEV_AMIGA_ADF0 =>

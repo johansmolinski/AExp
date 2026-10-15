@@ -222,7 +222,12 @@ _PREP_LI_REM    CMP     0, R8                   ; loaded: the profile remembers
                 MOVE    R4, R9
 _PREP_LI_RR     DECRB
                 RET
-_PREP_LI_NKCK   MOVE    R8, R5                  ; R5: keep the new file handle
+_PREP_LI_NKCK   CMP     AEXP_OPTM_G_AR3ROM, R10 ; Megamiga: the Action Replay III
+                RBRA    _PREP_LI_NAR3, !Z       ; ROM: own path
+                RSUB    AR3_PREP, 1             ; R8/R9: result
+                DECRB
+                RET
+_PREP_LI_NAR3   MOVE    R8, R5                  ; R5: keep the new file handle
                 MOVE    R10, R8                 ; one of the three mount items?
                 RSUB    IS_ADF_GROUP, 1         ; (branch on C before anything
                 RBRA    _PREP_LI_ADF, C         ; else can touch the flags)
@@ -659,6 +664,57 @@ _KP_RET         MOVE    R4, R10
                 RET
 
 ; ----------------------------------------------------------------------------
+; AR3_PREP: the PREP_LOAD_IMAGE part of the " AR3 ROM:%s" line (Profile Settings)
+;
+; Megamiga: the Action Replay III cartridge ROM, bring your own. Like KICK_PREP,
+; but only exactly 256 KB is accepted, and it goes into the AR3 device
+; (C_DEV_AMIGA_AR3, mega65.vhd), which streams it into the cartridge bank of the
+; SDRAM. The HDL counts the ROM as loaded once byte $3FFFF arrived; a profile with
+; "Cart: Action Replay 3" then cold-boots with the cartridge plugged in.
+;
+; Input:  R8: the file handle of the Shell (just opened)
+; Output: R8: 0=OK, else error; R9: 0 or pointer to an error message;
+;         R10..R12 preserved (see FAST_LOAD)
+; ----------------------------------------------------------------------------
+AR3_PREP        INCRB
+                MOVE    R10, R4                 ; R4: R10 of the caller
+                MOVE    R8, R0                  ; R0: the handle of the Shell
+                MOVE    R0, R1                  ; R3:R2: file size
+                ADD     FAT32$FDH_SIZE_LO, R1
+                MOVE    @R1, R2
+                MOVE    R0, R1
+                ADD     FAT32$FDH_SIZE_HI, R1
+                MOVE    @R1, R3
+                CMP     0, R2                   ; 256 KB = 0x00040000
+                RBRA    _A3P_BADSZ, !Z
+                CMP     KICK_256K_HI, R3
+                RBRA    _A3P_BADSZ, !Z
+
+                MOVE    R0, R8
+                MOVE    AEXP_DEV_AR3, R9
+                RSUB    FAST_LOAD, 1
+                CMP     0, R9
+                RBRA    _A3P_FAT, !Z
+                XOR     R8, R8
+                XOR     R9, R9
+                RBRA    _A3P_RET, 1
+
+_A3P_BADSZ      MOVE    WRN_AR3_SIZE, R1
+                RBRA    _A3P_ERR, 1
+_A3P_FAT        MOVE    WRN_AR3_FAT, R1
+_A3P_ERR        MOVE    AEXP_DEV_AR3, R8        ; LOADING -> IDLE: let the
+                MOVE    CRTROM_CSR_STATUS, R9   ; Amiga run again
+                MOVE    CRTROM_CSR_ST_IDLE, R10
+                RSUB    CRTROM_CSR_W, 1
+                MOVE    R1, R8                  ; (text in the read-only data
+                RSUB    RODATA_STR, 1           ; device: copy it to RAM)
+                MOVE    R8, R9
+                MOVE    1, R8
+_A3P_RET        MOVE    R4, R10
+                DECRB
+                RET
+
+; ----------------------------------------------------------------------------
 ; PROFILE_APPLY: the Kickstart and the hard disks of a machine profile
 ;
 ; Megamiga 0.3: the main menu selects a machine profile (A500 / A600 / A1200).
@@ -1066,7 +1122,27 @@ _OSM_SP_DRVS    RSUB    DRV_STEAL_HW, 1
                 RSUB    DRV_EJECT_GONE, 1
                 RBRA    _OSM_SEL_POST_R, 1
 
-_OSM_SP_SCR     CMP     AEXP_OPTM_G_SCRRELOAD, R8
+                ; Megamiga: "Freeze cartridge" pressed - the cartridge's freeze
+                ; button (mega65.vhd: a write to window 0xFFFE of the AR3 device
+                ; presses it for ~4.6 ms, for HRTmon and the Action Replay III
+                ; alike; without a cartridge nothing happens). MOMENTARY like
+                ; "Reload Screen Config": no "=" mark stays behind. The Amiga is
+                ; frozen right away; closing the menu shows the freezer.
+_OSM_SP_SCR     CMP     AEXP_OPTM_G_FREEZE, R8
+                RBRA    _OSM_SP_SCR2, !Z
+                MOVE    M2M$RAMROM_DEV, R0
+                MOVE    @R0, R1                 ; R1/R2: the selection, kept
+                MOVE    M2M$RAMROM_4KWIN, R6
+                MOVE    @R6, R2
+                MOVE    AEXP_DEV_AR3, @R0
+                MOVE    0xFFFE, @R6
+                MOVE    M2M$RAMROM_DATA, R7
+                MOVE    1, @R7
+                MOVE    R1, @R0
+                MOVE    R2, @R6
+                RBRA    _OSP_MOMENT, 1
+
+_OSM_SP_SCR2    CMP     AEXP_OPTM_G_SCRRELOAD, R8
                 RBRA    _OSM_SEL_POST_R, !Z
 
                 ; Paint the "loading" label. OPTM_CUR_SEL is the flat index of
@@ -1106,7 +1182,7 @@ _OSP_SCR_RM     RSUB    LOAD_SCREEN_OFFSETS, 1
                 ; label (ours reverts to "Reload Screen Config", markerless) and
                 ; OPTM_SELECT restores the cursor highlight. OPTM_CUR_SEL is
                 ; untouched by these calls, so it still points at our item.
-                MOVE    OPTM_CUR_SEL, R8
+_OSP_MOMENT     MOVE    OPTM_CUR_SEL, R8
                 MOVE    @R8, R8
                 XOR     R9, R9                  ; 0 = unselected
                 RSUB    M2M$FORCE_MENU, 1
@@ -8757,7 +8833,12 @@ SHR_RNOBJ       .BLOCK 8                        ; RENAME: the object
 ; main menu (+25 characters, 214 items): demand 3586, MENU_HEAP_SIZE 3616,
 ; headroom 30, release HEAP_SIZE -32 (the combined total is unchanged).
 ;MENU_HEAP_SIZE  .EQU 3584
-MENU_HEAP_SIZE  .EQU 3616
+;MENU_HEAP_SIZE  .EQU 3616
+; Megamiga 0.6.2 freezer cartridges: a cartridge radio per profile (+4 lines each,
+; with its blank line), the " AR3 ROM:%s" line (7 manual ROMs) and "Freeze
+; cartridge" with its blank line (229 items): demand 3867, MENU_HEAP_SIZE 3872,
+; headroom 5, release HEAP_SIZE -256 (the combined total is unchanged).
+MENU_HEAP_SIZE  .EQU 3872
 
 #ifndef RELEASE
 
@@ -8811,7 +8892,8 @@ HEAP            .BLOCK 1
 ; state, the browser's card and the per-drive card generations added 17 words:
 ; the combined total is 32 words smaller: 18528, stack margin 287 words.
 ;HEAP_SIZE       .EQU 14944                      ; 18560 - 3616 = 14944
-HEAP_SIZE       .EQU 14912                      ; 18528 - 3616 = 14912
+;HEAP_SIZE       .EQU 14912                      ; 18528 - 3616 = 14912
+HEAP_SIZE       .EQU 14656                      ; 18528 - 3872 = 14656
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

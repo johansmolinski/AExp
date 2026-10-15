@@ -90,6 +90,13 @@ Megamiga fork (johansmolinski):
   base is GPL-2.0-or-later (Adam Polkosnik confirmed to the user on
   2026-10-11 and will update the terms in his repository), so it may ship
   next to the GPLv3 code.
+- cart (worktree `cart-ar3-hrtmon`, from 0.6.0): freezer cartridges per
+  profile - HRTmon built in (`CORE/hrtmon`, image copied to `$A10000` at cold
+  boot; 68000 + 68020, HW-confirmed) and the Action Replay III (bring your own
+  ROM, `rtl/ar3.v`, QNICE device 0x010C, 68000 only, Zorro II board 2 MB);
+  freeze = CTRL+MEGA+HELP or the "Freeze cartridge" menu line. No cartridge
+  with the 68040: the fix for its post-Workbench hang failed timing, parked in
+  `doc/developers/freezer-68040.md` (+ `.patch`).
 - 0.5.1: RTG ID register `$4D01`, not MiSTer's `$5001` (AmigaVision took
   the core for a MiSTer and hung on the MiSTer shared-folder mailbox).
 - 0.5.2: 32K QNICE ROM (M2M exception 15 `rom-32k`, window at
@@ -177,7 +184,10 @@ the dated facts.
   `framework.vhd` → `m2m_keyb.vhd` so the core picks which key(s) drive the
   menu-open bit (`qnice_keys` bit 7, the *ungated* scan); the defaults
   reproduce the classic Help-only behaviour and leave the firmware ROM
-  byte-identical, so every existing M2M core is unchanged. Issue #8,
+  byte-identical, so every existing M2M core is unchanged. Megamiga
+  2026-10-13 added a fourth input, `osm_block_i` (default '0'): while it is
+  set the menu key does nothing (CTRL+MEGA held, for the CTRL+MEGA+HELP
+  cartridge freeze). Issue #8,
   2026-07-11 — implemented, awaiting synthesis; **the 4th exception still
   needs sy2002's explicit sign-off** (spec §8).
   (5) `osm-scale` — a RAM-inference override: `tdp_ram.vhd` gains a

@@ -325,6 +325,7 @@ architecture synthesis of mega65_r6 is
    signal osm_key_a              : integer range 0 to 79;  -- M2M-UPSTREAM osm-hotkey (AExp 2026-07-10)
    signal osm_key_b              : integer range 0 to 79;  -- M2M-UPSTREAM osm-hotkey (AExp 2026-07-10)
    signal osm_combo              : std_logic;              -- M2M-UPSTREAM osm-hotkey (AExp 2026-07-10)
+   signal osm_block              : std_logic;              -- M2M-UPSTREAM osm-hotkey (Megamiga 2026-10-13)
 
    -- Joysticks and Paddles
    signal main_joy1_up_n_in      : std_logic;
@@ -739,6 +740,7 @@ begin
       osm_key_a_i             => osm_key_a,    -- M2M-UPSTREAM osm-hotkey (AExp 2026-07-10)
       osm_key_b_i             => osm_key_b,    -- M2M-UPSTREAM osm-hotkey (AExp 2026-07-10)
       osm_combo_i             => osm_combo,    -- M2M-UPSTREAM osm-hotkey (AExp 2026-07-10)
+      osm_block_i             => osm_block,    -- M2M-UPSTREAM osm-hotkey (Megamiga 2026-10-13)
       main_joy1_up_n_o        => main_joy1_up_n_in,
       main_joy1_down_n_o      => main_joy1_down_n_in,
       main_joy1_left_n_o      => main_joy1_left_n_in,
@@ -925,6 +927,7 @@ begin
          osm_key_a_o             => osm_key_a,  -- M2M-UPSTREAM osm-hotkey (AExp 2026-07-10)
          osm_key_b_o             => osm_key_b,  -- M2M-UPSTREAM osm-hotkey (AExp 2026-07-10)
          osm_combo_o             => osm_combo,  -- M2M-UPSTREAM osm-hotkey (AExp 2026-07-10)
+         osm_block_o             => osm_block,  -- M2M-UPSTREAM osm-hotkey (Megamiga 2026-10-13)
 
          -- Audio output (Signed PCM)
          main_audio_left_o       => main_audio_l,

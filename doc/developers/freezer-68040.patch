@@ -1,0 +1,87 @@
+diff --git a/CORE/Minimig_MiSTerMEGA65/rtl/ap040/ap040_pipe_tg68k_compat.v b/CORE/Minimig_MiSTerMEGA65/rtl/ap040/ap040_pipe_tg68k_compat.v
+index eefe75b..b2b8460 100644
+--- a/CORE/Minimig_MiSTerMEGA65/rtl/ap040/ap040_pipe_tg68k_compat.v
++++ b/CORE/Minimig_MiSTerMEGA65/rtl/ap040/ap040_pipe_tg68k_compat.v
+@@ -494,6 +494,23 @@ wire [31:0] ifp_pa;
+ wire        dfp_tok, dfp_tci;
+ wire [31:0] dfp_pa;
+ 
++// Megamiga, October 2026: the freezer cartridge (cart.v) answers the level 7 vector read
++// (VBR + $7C) on the chip bus, and the 68040 has no IACK cycle that would end the request
++// otherwise. While level 7 is pending, that one read must not be served by the data cache
++// (nmi_vec_rd below, and dfp_nmi on the data fast path) - its line also holds the level 6
++// vector and is nearly always resident - nor by the Fast RAM port when the OS moved the
++// VBR there (the island keeps it off that port too, and cpu_wrapper's sel_nmi_vector off
++// its fast paths). The exact address, so no other read can bypass a dirty copyback line.
++reg  [31:2] nmi_vec_q = 30'd0;
++reg         nmi_l7_q  = 1'b0;
++always @(posedge clk) begin
++	nmi_vec_q <= vbr_out[31:2] + 30'h1F;
++	nmi_l7_q  <= (ipl == 3'b000);
++end
++// the data fast path's address is the level 7 vector (registered with that address)
++reg dfp_nmi_q = 1'b0;
++always @(posedge clk) if (ce_core && dfp_req) dfp_nmi_q <= (dfp_addr[31:2] == nmi_vec_q);
++
+ generate if (AP040_HAS_MMU != 0) begin : g_mmu
+ ap040_mmu #(.IFP(IFP_ON ? 1 : 0)) mmu (
+ 	.clk(clk),
+@@ -651,6 +668,7 @@ if (AP040_ENABLE_CACHE != 0) begin : g_cache
+ 	// the bypass out of simulation programs, which run at low addresses
+ 	// and would otherwise lose all I-cache coverage.
+ 	wire cache_chip = (mm_addr[31:21] == 11'd0);          // $000000-$1fffff
++	wire nmi_vec_rd = nmi_l7_q && !mm_write && !mm_instr && (mm_addr[31:2] == nmi_vec_q);   // Megamiga
+ 	//wire cache_win =
+ 	//	((mm_addr[31:24] == cache_z3_base0) && cache_z3_ena0) ||
+ 	//	((mm_addr[31:28] == cache_z3_base1) && cache_z3_ena1) ||
+@@ -766,11 +784,16 @@ if (AP040_ENABLE_CACHE != 0) begin : g_cache
+ 		((dfp_pa[31:19] == {8'h00, 5'b11000}) && w_slow) ||
+ 		(dfp_pa[31:21] == 11'd0);
+ 	wire dfp_thit;
++	// Megamiga, October 2026: never the pending level 7 vector (see nmi_vec_rd)
++	wire dfp_nmi = nmi_l7_q && dfp_nmi_q;
++	//assign dfp_hit = IFP_ON && dfp_ok_q && dfp_tok && !dfp_tci &&
++	//                 (cache_allow_all || da_win) && dfp_thit;
+ 	assign dfp_hit = IFP_ON && dfp_ok_q && dfp_tok && !dfp_tci &&
+-	                 (cache_allow_all || da_win) && dfp_thit;
++	                 (cache_allow_all || da_win) && dfp_thit && !dfp_nmi;
+ 	// (forwarding) the same without the tag hit: the location is RAM
+ 	// (forwarding: the store supplies the bytes, so any alignment)
+-	assign dfp_ram = IFP_ON && dfp_rok_q && dfp_tok && !dfp_tci && (cache_allow_all || da_win);
++	//assign dfp_ram = IFP_ON && dfp_rok_q && dfp_tok && !dfp_tci && (cache_allow_all || da_win);
++	assign dfp_ram = IFP_ON && dfp_rok_q && dfp_tok && !dfp_tci && (cache_allow_all || da_win) && !dfp_nmi;
+ 
+ 	ap040_cache #(
+ 		.POST_STORES(AP040_POST_STORES),
+@@ -807,8 +830,10 @@ if (AP040_ENABLE_CACHE != 0) begin : g_cache
+ 		.c_addr(mm_addr),
+ 		.c_wdata(mm_wdata),
+ 		.c_fc(mm_fc),
++		//.c_nocache(mm_nocache | ~cache_allow |
++		//           (mm_instr & cache_chip & ~cache_allow_all)),
+ 		.c_nocache(mm_nocache | ~cache_allow |
+-		           (mm_instr & cache_chip & ~cache_allow_all)),
++		           (mm_instr & cache_chip & ~cache_allow_all) | nmi_vec_rd),   // Megamiga
+ 		.c_cb((AP040_COPYBACK != 0) && mm_cb && cb_win),
+ 		.walk_busy(mm_walk),
+ 		.wk_pend(wk_pend),
+diff --git a/CORE/Minimig_MiSTerMEGA65/rtl/ap040_island.v b/CORE/Minimig_MiSTerMEGA65/rtl/ap040_island.v
+index 4cfe318..ca859de 100644
+--- a/CORE/Minimig_MiSTerMEGA65/rtl/ap040_island.v
++++ b/CORE/Minimig_MiSTerMEGA65/rtl/ap040_island.v
+@@ -379,7 +379,14 @@ wire        e_z3   = cache_z3_ena0 && (e_addr[31:24] == cache_z3_base0);
+ wire        e_fit  = (e_size == `AP040_SZ_B) ||
+                      (e_size == `AP040_SZ_W && e_addr[1:0] != 2'b11) ||
+                      (e_size == `AP040_SZ_L && e_addr[1:0] == 2'b00);
+-wire        e_fp   = FASTRAM != 0 && (e_fill || ((e_z2 || e_z3) && e_fit));
++//wire        e_fp   = FASTRAM != 0 && (e_fill || ((e_z2 || e_z3) && e_fit));
++// Megamiga, October 2026: the level 7 vector read while level 7 is pending stays on the
++// chip bus, where the freezer cartridge (cart.v) answers it - also with the VBR in Fast
++// RAM (the core reads it uncached then, see ap040_pipe_tg68k_compat.v nmi_vec_rd)
++reg  [31:2] b_nmi_vec = 30'd0;
++always @(posedge clk) b_nmi_vec <= vbr_out[31:2] + 30'h1F;
++wire        e_nmi  = (ipl == 3'b000) && !b_ent[QW-4] && !e_fill && (e_addr[31:2] == b_nmi_vec);
++wire        e_fp   = FASTRAM != 0 && (e_fill || ((e_z2 || e_z3) && e_fit && !e_nmi));
+ wire  [3:0] e_be   = (e_size == `AP040_SZ_B) ? (4'b1000 >> e_addr[1:0]) :
+                      (e_size == `AP040_SZ_W) ? (4'b1100 >> e_addr[1:0]) : 4'b1111;
+ wire [31:0] e_wpos = (e_size == `AP040_SZ_B) ? {4{e_wdat[7:0]}} :

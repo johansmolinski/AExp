@@ -50,6 +50,10 @@ entity m2m_keyb is
       osm_key_a_i          : in integer range 0 to 79 := 67;   -- primary menu-open key
       osm_key_b_i          : in integer range 0 to 79 := 67;   -- second key of a combo
       osm_combo_i          : in std_logic := '0';              -- '1' = require osm_key_a_i AND osm_key_b_i
+      -- M2M-UPSTREAM osm-hotkey (Megamiga 2026-10-13): '1' = the menu key does nothing now
+      -- (the core uses it in a key combination, e.g. Megamiga's CTRL+MEGA+HELP); the
+      -- default keeps every other core unchanged
+      osm_block_i          : in std_logic := '0';
 
       -- control the drive led on the MEGA65 keyboard
       power_led_i          : in std_logic;
@@ -171,7 +175,9 @@ begin
          -- bit 7 = the core-selected OSM-open key(s), latched per scan pass
          if key_num = osm_key_a_i then osm_sa_n <= key_status_n; end if;
          if key_num = osm_key_b_i then osm_sb_n <= key_status_n; end if;
-         if osm_combo_i = '1' then
+         if osm_block_i = '1' then
+            keys_n(7) <= '1';                    -- M2M-UPSTREAM osm-hotkey: blocked by the core
+         elsif osm_combo_i = '1' then
             keys_n(7) <= osm_sa_n or osm_sb_n;   -- pressed only when BOTH are pressed
          else
             keys_n(7) <= osm_sa_n;               -- single key

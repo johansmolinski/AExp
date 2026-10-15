@@ -171,6 +171,7 @@ port (
    osm_key_a_i             : in    integer range 0 to 79 := 67;
    osm_key_b_i             : in    integer range 0 to 79 := 67;
    osm_combo_i             : in    std_logic := '0';
+   osm_block_i             : in    std_logic := '0';   -- M2M-UPSTREAM osm-hotkey (Megamiga 2026-10-13)
    main_joy1_up_n_o        : out   std_logic;
    main_joy1_down_n_o      : out   std_logic;
    main_joy1_left_n_o      : out   std_logic;
@@ -613,6 +614,7 @@ begin
          osm_key_a_i          => osm_key_a_i,
          osm_key_b_i          => osm_key_b_i,
          osm_combo_i          => osm_combo_i,
+         osm_block_i          => osm_block_i,  -- M2M-UPSTREAM osm-hotkey (Megamiga 2026-10-13)
 
          -- control the drive led on the MEGA65 keyboard
          power_led_i          => main_power_led_i,

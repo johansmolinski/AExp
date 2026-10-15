@@ -1767,6 +1767,159 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   credits (Adam Polkosnik, Renee Cousins, Paul Honig), upgrade steps for the
   driver rename, HDToolBox tool type SCSI_DEVICE_NAME=lide.device. Settings
   file unchanged (211 bytes).
+- **FREEZER CARTRIDGES: HRTmon + Action Replay III (2026-10-13, worktree
+  `.claude/worktrees/cart-ar3-hrtmon`, branch `worktree-cart-ar3-hrtmon` from
+  0.6.0 `d7cafdc`, Minimig submodule branch `cart`). NOT built yet.** The user
+  wants both: HRTmon (built in, technically the better freezer) and the Action
+  Replay Mk III (history preservation, bring your own ROM), selectable per
+  profile. Decisions (user, 2026-10-13): freeze = CTRL+MEGA+HELP plus a
+  "Freeze cartridge" menu line; a "Cart: None / HRTmon / Action Replay 3" radio
+  in each profile block; with the AR3 the Zorro II board shrinks to 2 MB.
+  - HRTmon: `CORE/hrtmon/` holds the unmodified 2.38 archive (GPL-2.0-or-later,
+    source headers), `build.sh` rebuilds the cartridge image byte-identically
+    (`UAE = 1`, `CARTRIDGE = 1`, vasm, NDK 3.2), README.md. The image
+    (99,370 words) lives in a block RAM in `amiga_sdram.vhd`, which copies it to
+    the HRTmon bank (A22..A19 = 0100, where `$A00000` lands) at every cold boot
+    with MiSTer's `UploadActionReplay` configuration patch (AGA flag, chip size).
+    `amiga_cold_boot.vhd` gained a CART_INIT state: the Amiga stays in reset
+    until `cart_busy` drops. Minimig's `cart.v` is the cartridge.
+  - AR3: `rtl/ar3.v`, a port of Jakub Bednarski's Minimig 1.x
+    `ActionReplay3.v` to Minimig-AGA's clocking (clk + clk7_en; ROM loaded by
+    the core instead of the CPU; registers, map and freeze sequence unchanged).
+    Bank A22..A19 = 0101 (`$400000` = Slow RAM's slot in the bridge, so
+    minimig.v steers `ar3_selmem` there; also for the overlay at `$000000`).
+    QNICE device 0x010C (0x010B is the shared folder on `share`): window 0..63
+    = ROM bytes through the Kickstart loader FIFO (tag bit 34), 0xFFFE = the
+    menu's freeze, 0xFFFF = CSR of the " AR3 ROM:%s" line (manual ROM 6); the
+    optional `/amiga/ar3.rom` auto-load. Counts as loaded only after byte
+    $3FFFF of a stream that started at 0. cpu_wrapper: with `cart_ar3` the
+    Zorro II decode is the 2 MB board only (`addr[23:21]` = 1), which keeps
+    `$400000-$47FFFF` off the fast path; `fastramcfg` 2 MB.
+  - AR3 = 68000 only (mega65.vhd `main_cart_req`): the ROM expects the 68000
+    frame and IACK cycle, and the AP68040 would not even reach it - it caches
+    the whole Zorro II window and its island sends that window straight to the
+    Fast RAM port (`e_fp`, `cache_zwin`).
+  - cart.v on the 68040: the AP68040 autovectors without an IACK cycle, and its
+    chip bus cycles are so short that `~_cpu_as & rd` (3 clocks) can fall
+    between two 7 MHz enables. New `vec_ack`: the vector read of a pending
+    request (`l_int7`), caught on every clock, does at the next enable what the
+    IACK path does (int7 off, request done, active + stealth on); `ovr` is also
+    on while `l_int7`, so that very read already gets `$00A1000C`. A 68000 is
+    unchanged (its IACK clears `l_int7` before the vector read). Limitation: a
+    VBR in Zorro II/III RAM is served by the island's Fast RAM port on the
+    68040, so the cartridge never sees the vector read there.
+  - Freeze key: keyboard.vhd `freeze_o` = CTRL+MEGA+HELP (HELP mirrored but not
+    sent; the MEGA hold counts as used), `osm_block_o` = CTRL+MEGA held. M2M
+    exception 4 (`osm-hotkey`) grew `osm_block_i` (m2m_keyb, framework, four
+    board tops; default '0'): the menu key does nothing while it is set.
+    ciaa.v's Help-key freeze is tied off. The menu's freeze is a momentary item
+    like "Reload Screen Config" (OSM_SEL_POST writes window 0xFFFE; ~4.6 ms
+    press); the framework cannot close the menu from a callback.
+  - Menu: 226 items (+15), demand 3809, MENU_HEAP_SIZE 3840 (headroom 31),
+    release HEAP_SIZE 21504 -> 21216; HEAP 0x9602 + 25056 leaves 1790 stack
+    words. Firmware 29063/32768 words, rodata 2863/4096. Settings file 226
+    bytes (dev SD cards need `make_config.sh`).
+  - Tests: `~/aexp-work/cart/sdram` (amiga_sdram + sdram_ctrl + SDRAM model:
+    AR3 ROM loader, HRTmon copy + patch, AR3 RAM clear, busy). `~/aexp-work/
+    cart/frz` (Verilator: real fx68k / TG68K netlist / AP68040 + cpu_wrapper +
+    minimig_m68k_bridge + cart.v + ar3.v + RAM models; two freezes each, entry,
+    resume, override off afterwards): fx68k+HRTmon, TG68K+HRTmon,
+    AP68040+HRTmon, fx68k+AR3 (with the 2 MB board configured, status 0,
+    overlay read of `$7C`) all PASS; the 68040 run with the original cart.v
+    FAILS (INT7 never acknowledged); mutants `mut/m2..m4` (ovr without
+    `l_int7`, no `vec_ack` for active / for int7) all killed. Static: iverilog
+    over the whole Verilog set, ghdl analysis of every changed VHDL file and
+    elaboration of `mega65_r6` (only the known av_pipeline bound noise).
+  - The SDRAM TB found two init bugs (2026-10-14), both fixed, TB PASS
+    (HRTmon copy 1,689,292 core clocks for 99,370 words, 428 words checked):
+    `c_prime` was only set outside `M_IDLE`, so the first word never started
+    and `cart_busy` stayed high forever (red: still busy after 19M clocks);
+    now every clock that takes no word primes. And `cart_busy` dropped when
+    the last word was ISSUED, while its write still owned the port for
+    2 x `C_HOLD` clocks (red: first chip read after the init = `zzzz`); now
+    `c_tail` holds it to the end of that write's `M_GAP`.
+  - Synthesis: Vivado's file loader stops at 65536 lines (Synth 8-403), so the
+    image is four 32K-word parts `hrtmon_0..3.hex` (`HRTMON_ROM_PREFIX`).
+    R6 build b (before the init fix): BRAM 94/365, post-route WNS -0.37
+    (AP68040 island paths and main_clk -> sdram_ctrl address; the latter
+    routes at -0.2..-0.35 in earlier builds too).
+  - Timing (build c, with the init fix): first pass WNS -0.352, re-roll best
+    -0.153 after 11 of 16 attempts. All 73 failing native_clk4x paths run
+    TG68K -> cpu_wrapper RAM decode -> sdram_ctrl CPU port, and none touches the
+    cartridge init mux. The first AR3 decode (`sel_ar3win`, a 5-bit compare
+    carving `$400000-$47FFFF` out of the 8 MB window) added three LUT inputs to
+    `sel_z2ram`; now `cart_ar3` selects the 2 MB decode of `addr[23:21]`, one
+    input more than upstream. Freeze TB check added: with AR3 `$200000` takes the
+    fast path and `$480000` does not (red with `sel_ar3win`: 28 clocks beyond
+    2 MB).
+  - Field test of build c (2026-10-14, A500, Kickstart 1.3, HRTmon,
+    CTRL+MEGA+HELP): nothing visible, then Guru 00000004 - the CPU took the
+    $A1000C override into an EMPTY cartridge bank and ran zeros (`ori.b
+    #0,d0`) until something illegal. Cause: `amiga_cold_boot` drove
+    `cart_type_o` from `cart_applied`, which CART_INIT updates only at its END,
+    so `amiga_sdram` latched the PREVIOUS cartridge at the init clock (None ->
+    HRTmon copied nothing). Fix: `cart_q` during CART_INIT. ghdl TB
+    `~/aexp-work/cart/coldboot/run.sh` (latches the type at `cart_init_o` like
+    amiga_sdram; 4 changes None/HRTmon/AR3/None/HRTmon): PASS; red with the old
+    line (`init with cart_type 00, want 01`). Neither existing TB could see it
+    (the SDRAM TB drives type + init itself, the freeze TB preloads memory).
+    Build d (decode fix only, first pass WNS -0.018) was stopped for build e.
+  - Field test 2 (after a forced cold boot): HRTmon works with the 68020 (A1200
+    and A500 profiles), the 68000 still crashes (Guru 00000004 after a few
+    seconds), the 68040 hangs. The 68000 crash is the IMAGE: the source selects
+    MC68030 for its 030/040 routines, and vasm's default absolute -> PC-relative
+    optimisation then also rewrites destinations, e.g. `cmp.b #1,config_screen`
+    in mon_setscreen -> `cmpi.b #1,(d16,PC)` (68020+ only), executed at every
+    entry before HRTmon has its own illegal-instruction handler. The prebuilt
+    HRTmon.data of the 2.38 archive has the same flaw. build.sh now passes
+    `-opt-a-`: 199,540 bytes, 99,770 words (`C_HRTMON_WORDS`), same header
+    layout, no PC-relative cmp/tst destinations left (the 60ff/61ff words are
+    disassembler table data). Freeze TB with the REAL image (`-DREALHRT
+    -DTRACE=..`, `HRTDIR=`): old image on fx68k -> vector $10 read with no
+    handler installed (red); new image: 68000, 68020 and 68040 all install
+    their vector, probe and settle in the same main loop ($A18Dxx/$A215xx).
+    The 68040 also reached that loop with the OLD image, so its hang on the
+    board is environmental (VBR in Fast RAM? caches?), still open.
+    Builds d/e stopped with the user's OK; build f has all three fixes.
+  - Build f (image + cold-boot + decode fix): first pass OK, WNS +0.017,
+    WHS +0.050, BRAM 94/365 - the decode fix took the -0.35 away.
+  - 68040 hang after Workbench (field test 3: KS 3.1, OS 3.1, Z3 RAM; the
+    freeze works at the Kickstart screen, after Workbench the machine hangs).
+    The level 7 vector read never reached cart.v: with the data cache on, the
+    line with $78/$7C (the level 6 vector, read by every CIA-B interrupt) is
+    resident and the read is answered from the cache - chip RAM is D-cacheable
+    on this core (snooped) - and with the VBR moved into Fast RAM it also goes
+    to the Fast RAM port. Nothing then ends the request (no IACK cycle on the
+    68040), IPL stays at 7, every lower interrupt is shut out: the hang.
+    Fix, active only while IPL = 7 and only for the exact long VBR + $7C:
+    `ap040_pipe_tg68k_compat.v` adds it to `c_nocache` (`nmi_vec_rd`) and keeps
+    it off the data fast path (`dfp_nmi`, the compare registered with the fast
+    path's address latch); `ap040_island.v` keeps it off the Fast RAM port
+    (`e_nmi`). cpu_wrapper's existing `sel_nmi_vector` then puts it on the chip
+    bus, where cart.v overrides it. Exact address on purpose: an uncached read
+    must never bypass a dirty copyback line it does not override.
+    Freeze TB (real image, AP68040, Fast RAM port model added): Kickstart state,
+    caches on (A), VBR in Fast RAM (B), B with the vector line kept resident
+    (C), VBR 0 with the line resident (D): all enter HRTmon's main loop. Red:
+    B, C, D take the OS NMI handler without the fix; C also with only
+    `c_nocache` (the data fast path answers it) and without the island part.
+  - Field test of build f (2026-10-15): HRTmon freezes on the A500 with the
+    68000 (the image fix confirmed on the board).
+  - 68020 confirmed on the board as well (user, 2026-10-15).
+  - Build g (68040 fix, 2026-10-15): TIMING-FAILED, WNS -0.547 ns after four
+    placement passes (-0.743/-0.509/-0.878/-0.270), not re-rolled (> 0.5 ns);
+    the identical sources on the new Fedora build host gave the identical
+    result. The failing paths do not contain the fix's cells: all inside the
+    AP68040 (ALU flags -> branch condition -> stall/redirect -> fetch PC
+    adder, 43 levels, 74 % route) - the added logic moved the placement.
+    DECISION (user): no freezer with the 68040. The fix is removed from the
+    RTL and parked as `doc/developers/freezer-68040.patch`, the analysis,
+    TB table and resume plan in `doc/developers/freezer-68040.md`;
+    `main_cart_req` plugs in no cartridge with a 68040 profile (HRTmon now
+    like the AR3), README says 68000/68020. Build h = that state (Fedora).
+  - Open: field test of build h, a real AR3 run on the board, the AR3
+    breakpoint/trainer paths (not simulated), merge with `share` (code banks,
+    device IDs).
 
 - **Megamiga 0.6.1-dev, SHARED FOLDER (branch `share` from main, 2026-10-12;
   Minimig `share` 39b2d9c).** The user: mount `/amiga` as a removable AmigaOS

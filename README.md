@@ -947,6 +947,29 @@ inputs at a time. MIDI needs the usual opto-coupler (IN) and driver (OUT)
 circuit; an MT32-pi can take MIDI OUT directly on its RXD pin (GPIO 15). DTR,
 DSR, CD and RI are not connected: the Amiga reads them as inactive.
 
+### Freezer cartridges (HRTmon, Action Replay III)
+
+A freezer cartridge stops the running program at the press of a button and
+opens a monitor: look at and change memory, disassemble, rip graphics and
+music, set breakpoints, then continue the program where it stopped. Megamiga
+has two, chosen per machine profile in **Profile Settings > Cart**:
+
+* **HRTmon** is built in (HRTmon 2.38 by Alain Malek, GPL). It works with the
+  68000 and the 68020 and with Kickstart 1.3 to 3.x. With a 68040 profile no
+  cartridge is plugged in.
+* **Action Replay 3** is the Datel Action Replay Mk III for the Amiga 500.
+  Bring your own ROM: put a raw 256 KB dump on the SD card as
+  `/amiga/ar3.rom`, or load one at **Profile Settings > AR3 ROM**. The AR3 is
+  a 68000 cartridge: it is only plugged in while the profile's CPU is the
+  68000, and it wants Kickstart 1.3 or 2.04. It sits at `$400000`, so with
+  the AR3 the Zorro II Fast RAM board shrinks to 2 MB, just like on a real
+  A500 with this cartridge.
+
+Changing the cartridge restarts the Amiga (a cold boot). To freeze, press
+**CTRL + MEGA + HELP**, or select **Freeze cartridge** in the menu and then
+close the menu. HELP alone still opens the menu, and the Amiga never sees the
+HELP of the key combination.
+
 ### Real-time clock
 
 AExp can feed the Amiga the MEGA65's own battery-backed clock, so Workbench

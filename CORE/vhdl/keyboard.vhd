@@ -245,6 +245,13 @@ entity keyboard is
       -- CTRL+MEGA+RESTORE = Ctrl+LAmiga+RAmiga warm boot (one-shot pulse, see header)
       core_reset_o         : out std_logic;
 
+      -- Megamiga: CTRL+MEGA+HELP = the freeze button of the cartridge (level while held; the
+      -- cartridges react to the press). Help never reaches the Amiga as part of the combo.
+      -- osm_block_o: CTRL and MEGA are held, so Help must not open the menu now (to the
+      -- framework's m2m_keyb, same clock).
+      freeze_o             : out std_logic;
+      osm_block_o          : out std_logic;
+
       -- RUN/STOP held = Amiga right mouse button substitute (level, active high, see header)
       mouse_rmb_o          : out std_logic
    );
@@ -795,6 +802,12 @@ signal core_reset    : std_logic := '0';
 
 begin
 
+   -- Megamiga: the cartridge freeze combo (see the port list). From the key mirror, like the
+   -- warm-boot combo; both modes, since CTRL, MEGA and HELP are the same keys in both.
+   osm_block_o       <= (not key_pressed_n(m65_ctrl)) and (not key_pressed_n(m65_mega));
+   freeze_o          <= (not key_pressed_n(m65_ctrl)) and (not key_pressed_n(m65_mega)) and
+                        (not key_pressed_n(m65_help));
+
    kbd_mouse_data_o  <= kbd_data;
    kbd_mouse_type_o  <= "10";       -- constant: 2 = keyboard event (raw Amiga keycode)
    kms_level_o       <= kms_level;
@@ -965,6 +978,17 @@ begin
                   -- key with no Amiga event (unmapped, or a graphic-only shifted cap): mirror only
                   key_pressed_n(kb_key_num_i) <= '0';
                   key_valid(kb_key_num_i)     <= '0';
+                  if kb_key_num_i = wait_num then
+                     wait_active <= '0';
+                  end if;
+               elsif kb_key_num_i = m65_help and key_pressed_n(m65_ctrl) = '0' and
+                     key_pressed_n(m65_mega) = '0' then
+                  -- Megamiga: HELP in the CTRL+MEGA+HELP freeze combo: mirror only (no Help
+                  -- for the Amiga), and this MEGA hold counts as used, so its release does
+                  -- not tap Left-Amiga in MEGA65 mode
+                  key_pressed_n(kb_key_num_i) <= '0';
+                  key_valid(kb_key_num_i)     <= '0';
+                  mega_seen_sym               <= '1';
                   if kb_key_num_i = wait_num then
                      wait_active <= '0';
                   end if;

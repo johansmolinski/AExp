@@ -20,6 +20,13 @@
 -- held in reset for the whole load, and released only after kick_hold_i has been low for
 -- C_RESET_HOLD_CYCLES clocks, so the last ROM words are in the SDRAM before the CPU starts.
 --
+-- Megamiga: the freezer cartridge (cart_i: "00" none, "01" HRTmon, "10" Action Replay III,
+-- where the AR3 counts only with its ROM loaded) is part of the topology too. Each cold boot
+-- also (re-)initialises the cartridge memory in the SDRAM: cart_init_o is high for one clock
+-- with cart_type_o = the cartridge that is plugged in from then on (HRTmon: its image is
+-- copied to $A10000; AR3: its RAM is cleared), and the Amiga stays in reset until
+-- cart_busy_i is low again. That value - latched when the init starts - is also the one
+-- that is applied, so a change during the init leads to another cold boot.
 -- The request is level-based (requested /= applied), not a pulse. Consequently a change
 -- cannot be lost, and changes arriving during a cold boot converge to the latest value.
 ---------------------------------------------------------------------------------------------
@@ -40,6 +47,11 @@ entity amiga_cold_boot is
       chip_size_i       : in  std_logic_vector(1 downto 0);  -- Megamiga: chip RAM 512K / 1M / 2M
       drv_map_i         : in  std_logic_vector(7 downto 0);  -- Drive Settings: {count, mode per unit}
       kick_hold_i       : in  std_logic;                     -- Kickstart load in progress
+      cart_i            : in  std_logic_vector(1 downto 0);  -- Megamiga: none / HRTmon / AR3
+      cart_busy_i       : in  std_logic;                     -- Megamiga: cartridge init running
+
+      cart_init_o       : out std_logic;                     -- Megamiga: start the cartridge init
+      cart_type_o       : out std_logic_vector(1 downto 0);  -- Megamiga: for the init and the Amiga
 
       amiga_reset_o     : out std_logic;
       chip_scrub_o      : out std_logic;
@@ -49,7 +61,7 @@ end entity amiga_cold_boot;
 
 architecture synthesis of amiga_cold_boot is
 
-   type t_state is (IDLE, ASSERT_RESET, SCRUB_SYSBASE_HI, SCRUB_SYSBASE_LO, HOLD_RESET);
+   type t_state is (IDLE, ASSERT_RESET, SCRUB_SYSBASE_HI, SCRUB_SYSBASE_LO, CART_INIT, HOLD_RESET);
 
    -- minimig_syscontrol samples its master reset only on clk7_en (one out of four clk28
    -- ticks). Keep the request high for 64 clocks, matching the established keyboard-reset
@@ -70,6 +82,8 @@ architecture synthesis of amiga_cold_boot is
                                        -- OSM default: one drive, df0 Disk Image,
                                        -- df1 and df2 Off (see mega65.vhd C_DRV_*)
    signal reset_hold_count : natural range 0 to C_RESET_HOLD_CYCLES - 1 := 0;
+   signal cart_applied     : std_logic_vector(1 downto 0) := "00"; -- OSM default: no cartridge
+   signal cart_q           : std_logic_vector(1 downto 0) := "00"; -- the one being initialised
 
 begin
 
@@ -78,6 +92,13 @@ begin
    amiga_reset_o <= '0' when state = IDLE else '1';
 
    chip_scrub_o <= '1' when state = SCRUB_SYSBASE_HI or state = SCRUB_SYSBASE_LO else '0';
+
+   -- Megamiga: the cartridge. cart_type_o is what the Amiga sees. During the init clock it
+   -- must already be the new value, so the init works on that cartridge: CART_INIT only
+   -- stores it into cart_applied at its end, hence cart_q there. (cart_applied alone gave
+   -- amiga_sdram the PREVIOUS cartridge at the init - None -> HRTmon copied nothing.)
+   cart_init_o  <= '1' when state = CART_INIT else '0';
+   cart_type_o  <= cart_q when state = CART_INIT else cart_applied;
 
    -- main_ram_addr is a word address: byte addresses $000004 and $000006 are words 2 and 3.
    chip_scrub_addr_o <= std_logic_vector(to_unsigned(2, chip_scrub_addr_o'length))
@@ -93,7 +114,7 @@ begin
                   cpu_020_i /= cpu_020_applied or z3_ram_i /= z3_ram_applied or
                   cpu_040_i /= cpu_040_applied or
                   chipset_i /= chipset_applied or chip_size_i /= chip_size_applied or
-                  drv_map_i /= drv_map_applied or kick_hold_i = '1' then
+                  drv_map_i /= drv_map_applied or kick_hold_i = '1' or cart_i /= cart_applied then
                   reset_hold_count <= C_RESET_HOLD_CYCLES - 1;
                   state            <= ASSERT_RESET;
                end if;
@@ -119,10 +140,17 @@ begin
             when SCRUB_SYSBASE_LO =>
                if reset_hold_count = 0 then
                   reset_hold_count <= C_RESET_HOLD_CYCLES - 1;
-                  state            <= HOLD_RESET;
+                  cart_q           <= cart_i;
+                  state            <= CART_INIT;
                else
                   reset_hold_count <= reset_hold_count - 1;
                end if;
+
+            -- Megamiga: one clock with cart_init_o; amiga_sdram raises cart_busy_i from the
+            -- next clock on and holds it until the init is done (HOLD_RESET waits for it)
+            when CART_INIT =>
+               cart_applied <= cart_q;
+               state        <= HOLD_RESET;
 
             when HOLD_RESET =>
                -- Stay in reset while a Kickstart load runs, and for C_RESET_HOLD_CYCLES
@@ -130,7 +158,7 @@ begin
                -- that originally triggered the reset. If one changes again after this edge,
                -- IDLE detects the mismatch and immediately performs another complete cold
                -- boot; no request can be lost.
-               if kick_hold_i = '1' then
+               if kick_hold_i = '1' or cart_busy_i = '1' then
                   reset_hold_count <= C_RESET_HOLD_CYCLES - 1;
                elsif reset_hold_count /= 0 then
                   reset_hold_count <= reset_hold_count - 1;

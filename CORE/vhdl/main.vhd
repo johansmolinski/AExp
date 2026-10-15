@@ -224,6 +224,17 @@ entity main is
       shr_data_i              : in  std_logic_vector(15 downto 0);
       shr_ready_i             : in  std_logic;
 
+      -- Freezer cartridges (minimig.v: cart.v = HRTmon, ar3.v = Action Replay III). At most
+      -- one is plugged in: cart_hrtmon_i, or cart_ar3_i (selected AND its ROM is loaded). Both
+      -- are static while the Amiga runs - mega65.vhd cold-boots the Amiga when they change.
+      -- With the AR3 the Zorro II Fast RAM board shrinks to 2 MB ($200000-$3FFFFF), because the
+      -- cartridge lives at $400000. cart_freeze_i: the freeze button (level).
+      cart_hrtmon_i           : in  std_logic;
+      cart_ar3_i              : in  std_logic;
+      cart_freeze_i           : in  std_logic;   -- the menu's freeze (stretched by mega65.vhd)
+      -- CTRL+MEGA are held (keyboard.vhd): Help must not open the menu (to m2m_keyb)
+      osm_block_o             : out std_logic;
+
       -- Hardware Floppy (the MEGA65's real internal drive as an Amiga unit).
       -- Drive map from the OSM "Drive Settings" submenu (static in clk_main;
       -- changes trigger the amiga_cold_boot reset in mega65.vhd):
@@ -396,6 +407,10 @@ architecture synthesis of main is
          cts_n          : in  std_logic;
          rts_n          : out std_logic;
          eth_irq        : in  std_logic;   -- Megamiga: the network card (INT2)
+         cart_hrtmon    : in  std_logic;   -- Megamiga: freezer cartridges (see minimig.v)
+         cart_ar3       : in  std_logic;
+         cart_freeze    : in  std_logic;
+         cart_ovl       : out std_logic;
 
          -- physical-drive support (see minimig_m65.v / paula_floppy.v)
          fdd_ctrl          : out std_logic_vector(7 downto 0);
@@ -497,6 +512,8 @@ architecture synthesis of main is
          fastramcfg     : in  std_logic_vector(2 downto 0);
          cachecfg       : in  std_logic_vector(2 downto 0);
          bootrom        : in  std_logic;
+         cart_ar3       : in  std_logic;   -- Megamiga: the Action Replay III window / overlay
+         cart_ovl       : in  std_logic;
 
          chip_addr      : out std_logic_vector(23 downto 1);
          chip_dout      : in  std_logic_vector(15 downto 0);
@@ -614,6 +631,9 @@ architecture synthesis of main is
 
    -- CPU <-> Fast RAM (cpu_wrapper's "ram*" port)
    signal cpu_fastramcfg   : std_logic_vector(2 downto 0);
+   signal cart_ovl         : std_logic;   -- Megamiga: the AR3 chip RAM overlay (minimig -> cpu_wrapper)
+   signal kbd_freeze       : std_logic;   -- Megamiga: CTRL+MEGA+HELP held
+   signal cart_freeze      : std_logic;   -- Megamiga: the freeze button (combo or menu)
    signal cpu_cpucfg       : std_logic_vector(1 downto 0);
    signal cpu_ramaddr      : std_logic_vector(28 downto 1);
    signal cpu_state        : std_logic_vector(1 downto 0);    -- 3 = data write
@@ -851,7 +871,11 @@ begin
 
    -- fastramcfg for the 68000: 1/2/3 = 2/4/8 MB Zorro II board at $200000
    -- (cpu_wrapper.v autoconfig); 0 = no board. Latched at every CPU reset.
-   cpu_fastramcfg <= "011" when fast_ram_i = '1' else "000";
+   -- Megamiga: 2 MB while the Action Replay III is plugged in (it decodes $400000-$47FFFF)
+   --cpu_fastramcfg <= "011" when fast_ram_i = '1' else "000";
+   cpu_fastramcfg <= "000" when fast_ram_i = '0' else
+                     "001" when cart_ar3_i = '1' else
+                     "011";
 
    -- cpu_wrapper's Zorro II mapping puts the 8 MB window $200000-$9FFFFF 1:1 onto
    -- ramaddr[22:1] ($800000-$9FFFFF wraps onto the first 2 MB); bits 28:23 only
@@ -913,6 +937,8 @@ begin
          fastramcfg      => cpu_fastramcfg,      -- 8 MB Zorro II Fast RAM or none
          cachecfg        => "000",               -- no caches
          bootrom         => '0',                 -- normal A500 memory map
+         cart_ar3        => cart_ar3_i,
+         cart_ovl        => cart_ovl,
 
          chip_addr       => cpu_addr,
          chip_dout       => cpu_dout,
@@ -1249,8 +1275,13 @@ begin
          kms_level_o        => kms_level,
          kbd_ack_i          => kbd_ack,
          core_reset_o       => kbd_core_reset,
+         freeze_o           => kbd_freeze,
+         osm_block_o        => osm_block_o,
          mouse_rmb_o        => kbd_mouse_rmb
       ); -- i_keyboard
+
+   -- Megamiga: the cartridge's freeze button = CTRL+MEGA+HELP or the menu's "Freeze cartridge"
+   cart_freeze <= kbd_freeze or cart_freeze_i;
 
    ---------------------------------------------------------------------------
    -- Joysticks and mouse: M2M active-low lines -> minimig active-low format
@@ -1425,6 +1456,10 @@ begin
          cts_n          => uart_cts_n_i,
          rts_n          => uart_rts_n_o,
          eth_irq        => eth_irq_i,
+         cart_hrtmon    => cart_hrtmon_i,
+         cart_ar3       => cart_ar3_i,
+         cart_freeze    => cart_freeze,
+         cart_ovl       => cart_ovl,
 
          -- Hardware Floppy: CIA-B taps out, real drive status in (the
          -- one-hot mask keeps every mux bit-identical when the feature is

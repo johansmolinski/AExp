@@ -48,6 +48,13 @@ WRN_KICK_SIZE   .ASCII_P "\n\nThis is not a Kickstart ROM image:\n"
 WRN_KICK_FAT    .ASCII_P "\n\nThe Kickstart file cannot be read from\n"
                 .ASCII_P "the SD card (FAT32 error). The ROM is\n"
                 .ASCII_W "incomplete: load another one.\n"
+; Megamiga: the Action Replay III ROM (AR3_PREP in m2m-rom.asm)
+WRN_AR3_SIZE    .ASCII_P "\n\nThis is not an Action Replay III ROM:\n"
+                .ASCII_P "the file size must be exactly 256 KB\n"
+                .ASCII_W "(a raw dump of the cartridge ROM).\n"
+WRN_AR3_FAT     .ASCII_P "\n\nThe AR3 ROM cannot be read from the\n"
+                .ASCII_P "SD card (FAT32 error). The ROM is\n"
+                .ASCII_W "incomplete: load another one.\n"
 
 ; Megamiga machine profiles: the Kickstart a profile uses when the user chose
 ; none (PROFILE_APPLY in m2m-rom.asm; the name after "/amiga/" is what the menu
