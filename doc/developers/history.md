@@ -1937,8 +1937,9 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     build i, user 2026-10-15).
   - HRTmon on the 68000 and the 68020 confirmed on build i (user,
     2026-10-15).
-  - Open: rest of the field test of build i (68040 = no cartridge, the 0.6.1
-    features after the merge), the AR3
+  - 68040 profile with "Cart: HRTmon" runs normally (no cartridge plugged
+    in), build i (user, 2026-10-15).
+  - Open: the 0.6.1 features after the merge (field), the AR3
     breakpoint/trainer paths (not simulated).
 
 - **Megamiga 0.6.1-dev, SHARED FOLDER (branch `share` from main, 2026-10-12;
