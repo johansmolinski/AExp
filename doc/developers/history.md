@@ -2296,6 +2296,20 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   a wider/faster host path (e.g. long-word reads of the data port, a Zorro III
   or local-bus window for the 68020/68040, or DMA into Fast RAM).
 
+- **MEGAMIGA 0.6.2 RELEASED (2026-10-15, tag `V0.6.2` = `6cfe46b` on main,
+  GitHub release asset `Megamiga-0.6.2-R6.zip`, R6 only).** Freezer
+  cartridges: HRTmon built in (68000 + 68020), the Action Replay III with the
+  user's ROM (68000), no cartridge with the 68040 (parked:
+  `doc/developers/freezer-68040.md`). All field-confirmed on build i (cart
+  rebased onto 0.6.1): HRTmon 000/020, AR3 with a real ROM, 68040 with HRTmon
+  chosen runs normally, the 0.6.1 features after the merge, HRTmon on VGA
+  while an RTG screen holds HDMI. Release build on the Fedora host (rel062):
+  WNS +0.014 / WHS +0.036, bitstream body byte-identical to build i (only
+  docs changed in between). Submodules: Minimig branch `cart` ec7b7f0 pushed,
+  QNICE unchanged (75873a2). Settings file 229 bytes; a 0.6.1 file must not
+  be renamed (items inserted mid-menu). Package README.txt and notes062.md in
+  `~/aexp-builds/release/`.
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).
