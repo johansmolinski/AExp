@@ -88,7 +88,9 @@
 --   $DAB000          config: bits 15..12, read back
 --   $DE1000          Gayle ID: bit 15 reads 1, 1, 0, 1 (a write restarts the sequence)
 -- INTRQ follows ATA and MiSTer's ide.cpp: a commit with flag bit 2 sets it (unless nIEN,
--- device control bit 1, is set), reading the status register or writing the command
+-- device control bit 1, is set), and so do the sector engine's READ/WRITE SECTORS by the
+-- same rules (Megamiga 0.7 on 0.6.1: every block of a READ, every block after the first
+-- of a WRITE, the end of a WRITE, an error), reading the status register or writing the command
 -- register clears it, and irq_o = INTRQ and the enable bit goes to INT2. In RIPPLE mode
 -- irq_o stays 0 (lide.device polls).
 --
@@ -351,6 +353,7 @@ begin
       variable byte      : std_logic_vector(7 downto 0);
       variable va        : unsigned(C_RING_LOG2 downto 0);   -- e_avail of this clock
       variable e_sect    : boolean;                           -- the CPU finished a sector
+      variable e_irq     : boolean;                           -- Gayle: INTRQ for the engine
 
       procedure buffer_done is
       begin
@@ -375,6 +378,7 @@ begin
          wb_we  <= '0';
          wr_we  <= '0';
          e_sect := false;
+         e_irq  := false;
 
          -- sector engine handshake (single-bit toggles from the QNICE domain)
          m_acc_d    <= q_acc;     m_acc_s    <= m_acc_d;
@@ -662,6 +666,7 @@ begin
                   status <= C_ST_READY;
                end if;
                e_mode <= EM_NONE;
+               e_irq  := true;                    -- WRITE complete
             elsif e_mode = EM_READ and m_finerr_s = '1' then
                e_err_pend <= '1';
             end if;
@@ -681,7 +686,8 @@ begin
                   status <= C_ST_BUSY;            -- until the last sector is on the card
                end if;
             elsif va /= 0 and not (e_mode = EM_READ and e_err_pend = '1') then
-               null;                              -- DRQ stays, ptr wrapped to 0
+               e_irq := true;                     -- DRQ stays, ptr wrapped to 0: the
+                                                  -- next block (read or write)
             else
                status <= C_ST_BUSY;
             end if;
@@ -690,17 +696,29 @@ begin
                status <= C_ST_ERR;
                error  <= x"40";                   -- UNC
                e_mode <= EM_NONE;
+               e_irq  := true;
             elsif va /= 0 then
                status   <= C_ST_DRQ;
                ptr      <= (others => '0');
                phase_wr <= '0';
+               e_irq    := true;                  -- a block for the CPU
             end if;
          elsif e_mode = EM_WRITE and status(C_BSY) = '1' and e_left /= 0 and va /= 0 then
             status   <= C_ST_DRQ;
             ptr      <= (others => '0');
             phase_wr <= '1';
+            e_irq    := true;                     -- room for the next block
          end if;
          e_avail <= va;
+         -- Gayle mode: the engine's commands raise INTRQ like the firmware's commits (the
+         -- rules of ide.cpp): each block for the CPU of a READ, each further block of a WRITE
+         -- (not its first DRQ, set when the engine took the command), the end of a WRITE
+         -- and an error. The end of a READ raises none: its last block ends the command.
+         -- (Assigned after the bus cycle above, so it wins over a status read's clear in
+         -- the same clock: it is a new event.)
+         if e_irq and nien = '0' then
+            intrq <= '1';
+         end if;
 
          if rst_i = '1' then
             bus_state   <= B_IDLE;
