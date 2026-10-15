@@ -1808,17 +1808,17 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   e2e` (tb020 0.6.0 + ghdl-synth share_buf + firmware model: TG68K PASS) and
   `e2e68k` (fx68k Verilator: PASS; `mut.sh` 7 HDL mutants, 6 killed,
   sb_rstcnt equivalent); the e2e TB also PASSES with the AP68040 (run_s1).
-  R6 build share-a (commit 11dcf29): WNS +0.006, WHS +0.012, BRAM 95.5/365,
+  R6 build share-a (commit 90dbd3c): WNS +0.006, WHS +0.012, BRAM 95.5/365,
   LUTs 64%; saved with `patch_firmware.sh save` in
   `~/aexp-builds/Megamiga-share-a`. Hardware test pending. Also on this branch: patch_firmware.* from `gayle`
   with the rodata RAM in block RAM; CORE_VERSION 0.6.1 (settings file
   megamiga-0.6.1.cfg, layout unchanged).
 - **Megamiga 0.6.1-dev, step 2: code banks, FAT32 write layer, SDCard:
   read/write, profile files in the settings file (branch `share`,
-  2026-10-13).** (a) `cbf9e45`: menu toggle "SDCard: inserted"
+  2026-10-13).** (a) `a638be1`: menu toggle "SDCard: inserted"
   (`C_MENU_SHARE` 8, line after the profile radio, default on), card-detect
   debounce (~100 ms), event counters at `$DD4FEC`, MegamigaFS edits the DOS
-  list under LockDosList, `C:ShareInfo`. (b) `9674380` = M2M exception 16
+  list under LockDosList, `C:ShareInfo`. (b) `966c0c1` = M2M exception 16
   `code-banks` (see AGENTS): 8 x 4K banks behind the window `0x9000`, RAM
   from `0xA000`, `FAR_CALL` stubs, `make_banks.py`; ghdl TB `~/aexp-work/banks`
   (3 HDL mutants killed). R6 build share-d: WNS +0.022, WHS +0.036, BRAM
@@ -1830,7 +1830,7 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   sync, set size); errors EE24..EE29. Tests
   `M2M/QNICE/test_programs/fat32_write` (phases A-E, spc 1/8/64; `mutants.py`
   27 mutants: 25 killed in the last full run, the other two had stale
-  patterns after the bank split and were refreshed). (d) `7a0cc54`: SDCard:
+  patterns after the bank split and were refreshed). (d) `a2e829e`: SDCard:
   read/write, protocol 2 (FINDOUTPUT/FINDUPDATE, WRITE, SETSIZE, DELETE,
   RENAME, CREATEDIR, SETPROTECT, SETCOMMENT (accepted, ignored), SETDATE;
   time from the handler's DateStamp at `$DD4FE0`; HARDWARE-CONFIRMED by the
@@ -1869,7 +1869,7 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   16-bit overflow of the MB count). Build share-e (`~/aexp-builds/Megamiga-share-e`): R6 WNS +0.008, WHS +0.046, fully routed; NOT hardware-tested.
 
 - **Megamiga 0.6.1-dev, FAST HARD DISKS (branch `fastdisk` from `share`,
-  2026-10-14; `c4b5229`).** The user: HDFs run at 100-250 KB/s, a real Amiga
+  2026-10-14; `1724499`).** The user: HDFs run at 100-250 KB/s, a real Amiga
   hard disk does 1-10 MB/s; do all three steps (sector engine in hardware, SPI
   at 25 MHz, 4-bit SD bus). Cause of the old speed: every sector went through
   the firmware ATA server (one time slice per QNICE main-loop pass, two passes
@@ -1936,18 +1936,18 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   were strengthened). Found in review after the first build: the inputs went
   through two registers, which put the sample point on the RISING SD clock
   edge (20 ns after the card's launch at 25 MHz, minus its up to 14 ns output
-  delay); now one register samples just before the next falling edge (`90deacd`;
+  delay); now one register samples just before the next falling edge (`2098dcf`;
   the card model's output delay is 14 ns now). Register 6 bit 0 = SPI only.
   Firmware switches (`#define` at START_FIRMWARE, for patch_firmware.sh
-  variants): `SD_SPI_ONLY` (0) and `IDE_ENGINE` (1). Builds: fastdisk-a (`c4b5229`, before the
+  variants): `SD_SPI_ONLY` (0) and `IDE_ENGINE` (1). Builds: fastdisk-a (`1724499`, before the
   sampling fix) R6 WNS +0.021 / WHS +0.036, fully routed, LUTs 87.6k (65.5%),
-  BRAM 115.5 tiles; NOT for hardware (the sampling bug). fastdisk-b (`90deacd`)
+  BRAM 115.5 tiles; NOT for hardware (the sampling bug). fastdisk-b (`2098dcf`)
   missed hold by 0.054 ns on the known framework HyperRAM input
   (`hr_d_io[4]` -> IDDR, clock hr_rwds); re-roll 2/15 (place ExtraTimingOpt,
   route Explore) WNS +0.005 / WHS +0.036, LUTs 87.8k. Saved to
   `~/aexp-builds/Megamiga-fastdisk-b` with the RE-ROLLED checkpoint copied over
   `routed.dcp` by hand (`patch_firmware.sh save` takes the postroute one).
-  Patched variants of b: `mega65_r6_fastdisk_b_fw.bit` (`d5bbe35` firmware,
+  Patched variants of b: `mega65_r6_fastdisk_b_fw.bit` (`ab77986` firmware,
   default), `_spionly.bit` (SD_SPI_ONLY 1), `_noengine.bit` (IDE_ENGINE 0).
   Awaiting hardware tests.
   SD STATUS LINE (user, the next morning: no menu choice of the SD mode - the
@@ -1969,13 +1969,13 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   `~/aexp-work/cfgold` (the real loader block, 9 file layouts incl. bank
   seams, 0xFF default, invalid byte, empty file): PASS; the HEAD loader fails
   5 of them (FATAL 0E03 / no settings). Firmware 30347/32768 words.
-  Build fastdisk-c (`9b0082d`): R6 WNS +0.061 / WHS +0.013 first pass, fully
+  Build fastdisk-c (`ca48dcd`): R6 WNS +0.061 / WHS +0.013 first pass, fully
   routed, LUTs 87.7k, BRAM 115.5; saved to `~/aexp-builds/Megamiga-fastdisk-c`
   (`mega65_r6_fastdisk_c.bit`). Awaiting hardware tests.
   HARDWARE (fastdisk-c, 2026-10-14): 4-bit only after re-inserting the card
   (the MEGA65 boot firmware leaves the card it read in SPI mode); with cards in
   both slots, F1 (the tray card) gave 4-bit at once - the boot firmware reads
-  only the back card. A firmware rule "both slots -> the tray card" (`c511bcf`)
+  only the back card. A firmware rule "both slots -> the tray card" (`068ea69`)
   was then replaced by the user's request to use BOTH CARDS AT ONCE:
   BOTH SD SLOTS (M2M exception 18 extended; user decisions: paths carry the
   card, `SD0:` = tray / `SD1:` = back, a path without it is invalid; no F1/F3,
@@ -2026,7 +2026,7 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   teardown; 7/9 - the two SDC$SELDEV removals are redundant with this FAT32
   library, kept as a guard). The cfgstr update found that `_PR_PUTCARD`'s
   terminator emptied a path of exactly the maximum length (fixed).
-  Build fastdisk-d (`15c1bbc`): first pass WNS -0.376 (the 68040 island's
+  Build fastdisk-d (`3729c9a`): first pass WNS -0.376 (the 68040 island's
   eaf -> bcu mem_addr path, 46 logic levels, 74 % route; nothing of the SD
   change is on it), too much for the automatic re-roll; re-rolled by hand: the
   routing-only attempts stayed at -0.38..-0.55, so the re-roll was restarted
@@ -2036,7 +2036,7 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   `~/aexp-builds/Megamiga-fastdisk-d` with the re-rolled checkpoint as
   `routed.dcp`; `mega65_r6_fastdisk_d.bit`. Hardware (2026-10-15, build d
   by JTAG): both cards show up, the card list lists the partitions.
-  Menu tweaks (`94f1114`, build fastdisk-e): " Mount SDCard" (was "SDCard:
+  Menu tweaks (`5cc4e5a`, build fastdisk-e): " Mount SDCard" (was "SDCard:
   inserted"), default off and off at every start - PREP_START clears the
   setting whatever the settings file says, and SHARE_STEP ignores it until
   then (`SHR_INSW` = `SHR_INSW_BOOT`; share/fw checks that nothing mounts
@@ -2066,13 +2066,13 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   (`SD0:partition:2` loads, a file path on that card does not; 1/2 - the
   survivor drops the FAT32 check before a file open, which fails on the
   unmounted handle anyway), all other firmware TBs PASS unchanged.
-  Build fastdisk-e (`94f1114`): first pass WNS +0.038 / WHS +0.036 (the
+  Build fastdisk-e (`5cc4e5a`): first pass WNS +0.038 / WHS +0.036 (the
   router reported congestion but closed), no re-roll. LUTs 89.3k (66.7 %),
   BRAM 115.5. Saved to `~/aexp-builds/Megamiga-fastdisk-e`. The firmware of
-  `e695d89` was patched in (`patch_firmware.sh`, 16 + 16 block RAMs verified
+  `29db7a2` was patched in (`patch_firmware.sh`, 16 + 16 block RAMs verified
   and patched): `mega65_r6_fastdisk_e2.bit`. The tree's images were already
   newer than the synthesis when `save` ran, so the reference images in the
-  saved folder were rebuilt from `94f1114`'s sources (the patch verifies them
+  saved folder were rebuilt from `5cc4e5a`'s sources (the patch verifies them
   against the checkpoint). Awaiting hardware tests.
   Hardware (2026-10-15, fastdisk-e2): the user installed AmigaOS 3.2 from
   ADF images on SDCard: onto a hard disk with the 68040 + AGA + Z3 RAM: "It
