@@ -2372,6 +2372,12 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   Build `rtgnative-b`: incremental from `rtgnative-a`'s re-roll checkpoint,
   met timing on the first pass (WNS +0.007, WHS +0.025, no re-roll); pushed to
   the MEGA65 for the 1080p30 field test.
+  Field (2026-10-15): the 1080p30 jitter is gone, blitting feels fine. Seen
+  once after much screen-mode switching: two faint one-pixel dotted rows near
+  the bottom of the 1080p Workbench backdrop (a window hides them, they are
+  back after it moves away). Not chased (user: probably the mode switching);
+  if they come back: A/B against `rtgnative-a`, or a screenshot from the Amiga
+  (in it = memory/picture, not the scaler).
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
