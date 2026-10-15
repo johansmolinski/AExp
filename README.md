@@ -866,16 +866,19 @@ The handler `MegamigaFS` is on the `Megamiga_Share.adf` disk of the release
 
 1. Copy `L/MegamigaFS` to `L:`, `Devs/dummy.device` to `DEVS:` and
    `Devs/DOSDrivers/SD` to `DEVS:DOSDrivers/`.
-2. Run `Mount SD:` in a Shell - or just reboot: from then on, the volume is
-   there at every start.
+2. Run `Mount SD:` in a Shell - or just reboot: from then on, the handler is
+   mounted at every start.
 
 With Kickstart 1.3, add the entry from `Devs/MountList` to `DEVS:MountList`
 instead and run `Mount SD:` (in `S:Startup-Sequence` for every start).
 
 `SDCard:` shows the `/amiga` folder of the external SD card, the one in the
 back slot: the card you can take out to copy files on a computer (see
-[Two SD cards](#two-sd-cards)). Without a card in the back slot there is no
-volume. It behaves like a disk in a drive: pull the card and the volume goes
+[Two SD cards](#two-sd-cards)). The volume is there only while **Mount
+SDCard** in the main menu (below the floppy drives) is on. It is off at every
+start of the core and the setting is not saved, so switch it on when you want
+to use the volume. Without a card in the back slot there is no volume either.
+It behaves like a disk in a drive: pull the card and the volume goes
 away; insert one and it comes back about a second later, and Workbench shows
 its icon again. Long file names work (up to 106 characters, the limit of
 AmigaOS); hidden files and anything outside `/amiga` are not shown.
@@ -887,8 +890,8 @@ dates have a resolution of two seconds, and names cannot contain
 settings file) cannot be written, deleted or renamed through `SDCard:`. Pull
 the card only while nothing is being written to it.
 
-To eject the volume without touching the card, switch off **SDCard: inserted**
-in the main menu, below the floppy drives; switch it on again to insert it.
+To eject the volume without touching the card, switch **Mount SDCard** off
+again.
 `C:ShareInfo` on the disk shows the state of the volume and counts the card
 changes since the core started.
 

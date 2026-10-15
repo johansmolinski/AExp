@@ -629,7 +629,7 @@ constant OPTM_ITEMS        : string :=
    " df1:Hardware Floppy   \n" &    --   5: Text: df1 is the hardware drive
    " df2:%s\n"              &    --   6: mount ADF into df2
    " df2:Hardware Floppy   \n" &    --   7: Text: df2 is the hardware drive
-   " SDCard: inserted\n"    &    --   8: Shared folder SDCard: inserted (toggle)
+   " Mount SDCard\n"        &    --   8: Shared folder SDCard: mounted (toggle, default OFF, never saved)
    "\n"                     &    --   9: Line
    " A500 (OCS)\n"          &    --  10: Profile radio: A500 OCS (default)
    " A600 (ECS)\n"          &    --  11: Profile radio: A600 ECS
@@ -834,7 +834,7 @@ constant OPTM_ITEMS        : string :=
    " About & Help\n"        &    -- 210: About & Help (WHS(1))
    " Close Menu\n"          &    -- 211: Close Menu (was 212; the Line moved below it)
    "\n"                     &    -- 212: Line
-   " SD0:-      SD1:-      \n" ;  -- 213: Text: live status of both SD cards (exactly OPTM_DX characters, see SD_STATUS_STEP in m2m-rom.asm)
+   " \n" ;                        -- 213: Text: empty; SD_STATUS_STEP (m2m-rom.asm) paints the live status of both SD cards on the bottom row of the main menu
 -- also make sure that your group numbers are monotonic increasing (e.g. 1, 2, 3, 4, ...)
 -- single-select items and therefore also drive mount items need to have unique identifiers
 constant OPTM_G_ADF0       : integer := 1;   -- mount ADF for df0 (manual CRT/ROM load 0)
@@ -889,7 +889,7 @@ constant OPTM_G_P3FAST     : integer := 47;  -- A1200 profile: Zorro II Fast RAM
 constant OPTM_G_P3Z3       : integer := 48;  -- A1200 profile: Zorro III RAM toggle
 constant OPTM_G_HDF1       : integer := 49;  -- HDF slave (unit 1) into the IDE board (manual CRT/ROM load 4)
 constant OPTM_G_SERIAL     : integer := 50;  -- Serial port on PMOD toggle; read in HDL (mega65.vhd drives the PMOD1 pins)
-constant OPTM_G_SHARE      : integer := 51;  -- Shared folder SDCard: inserted/ejected toggle; read by the firmware (SHARE_STEP)
+constant OPTM_G_SHARE      : integer := 51;  -- Shared folder "Mount SDCard" toggle; read by the firmware (SHARE_STEP), forced off at start (PREP_START)
 
 -- Smart dependencies (M2M-UPSTREAM osm-deps): tag a line so that it is only visible
 -- while one of the items of a "mother" group is selected. This is a pure VISIBILITY
@@ -943,7 +943,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_TEXT + OPTM_DEP(OPTM_G_DF1MODE, 1),                --   5: Text: df1 is the hardware drive
                                               OPTM_G_ADF2 + OPTM_G_LOAD_ROM + OPTM_DEP(OPTM_G_DF2MODE, 0),--   6: mount ADF into df2
                                               OPTM_G_TEXT + OPTM_DEP(OPTM_G_DF2MODE, 1),                --   7: Text: df2 is the hardware drive
-                                              OPTM_G_SHARE + OPTM_G_SINGLESEL + OPTM_G_STDSEL,         --   8: Shared folder SDCard: inserted (toggle)
+                                              OPTM_G_SHARE + OPTM_G_SINGLESEL,                         --   8: Shared folder SDCard: mounted (toggle, default OFF)
                                               OPTM_G_LINE,                                              --   9: Line
                                               OPTM_G_PROFILE + OPTM_G_STDSEL,                           --  10: Profile radio: A500 OCS (default)
                                               OPTM_G_PROFILE,                                           --  11: Profile radio: A600 ECS
@@ -1148,7 +1148,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_About + OPTM_G_HELP,                               -- 210: About & Help (WHS(1))
                                               OPTM_G_CLOSE,                                             -- 211: Close Menu
                                               OPTM_G_LINE,                                              -- 212: Line
-                                              OPTM_G_TEXT                                               -- 213: Text: live SD card status
+                                              OPTM_G_TEXT                                               -- 213: Text: empty (the SD card status is painted on the bottom row)
                                            );
 
 --------------------------------------------------------------------------------------------------------------------

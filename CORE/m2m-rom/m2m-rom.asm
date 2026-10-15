@@ -964,6 +964,14 @@ PREP_START      INCRB
                 XOR     R9, R9                  ; 0 = boot
                 RSUB    PROFILE_APPLY, 1
 
+                ; the shared folder starts unmounted, whatever the settings
+                ; file says ("Mount SDCard" is not a saved setting)
+                MOVE    AEXP_OSM_SHARE, R8
+                XOR     R9, R9
+                RSUB    M2M$SET_SETTING, 1
+                MOVE    SHR_INSW, R0
+                MOVE    0, @R0
+
                 XOR     R8, R8
                 XOR     R9, R9
                 DECRB
@@ -2471,20 +2479,25 @@ _HWF_RET        DECRB
 ; ----------------------------------------------------------------------------
 ; Live SD card status line at the bottom of the main menu
 ;
-; The last main-menu item (AEXP_OSM_SD_STATUS) is a TEXT line of exactly
-; OPTM_DX characters; group 0, so the cursor skips it. While the main menu is
-; on screen it shows the mode of both SD host controllers (sdhost.vhd, one per
-; slot, M2M-UPSTREAM sd-host): "SD0:4-bit  SD1:SPI 25 ", read from register 6
-; of each (bit 0 native 4-bit, bit 1 slow = SPI 12.5 MHz, bit 2 ready).
-; sdhost falls back on its own (native -> SPI 25 MHz -> SPI 12.5 MHz after a
-; failed transfer; a card used in SPI mode since power-up stays in SPI mode),
-; and this line is where the user sees it. Same gates, throttle and label
-; buffer as HWF_STATUS_STEP (the two never interleave).
+; While the main menu is on screen, the bottom row inside its frame shows the
+; mode of both SD host controllers (sdhost.vhd, one per slot, M2M-UPSTREAM
+; sd-host): "SD0:4-bit  SD1:SPI 25 ", read from register 6 of each (bit 0
+; native 4-bit, bit 1 slow = SPI 12.5 MHz, bit 2 ready). sdhost falls back on
+; its own (native -> SPI 25 MHz -> SPI 12.5 MHz after a failed transfer; a
+; card used in SPI mode since power-up stays in SPI mode), and this line is
+; where the user sees it. Same gates, throttle and label buffer as
+; HWF_STATUS_STEP (the two never interleave).
 ;
-; The line is dimmed with M2M$SA_DARK. The OSM renderer halves foreground AND
-; background with it, so the line reads as a darker status bar. The attributes
-; are rewritten on every poll, because a full menu redraw (OPTM_SHOW) paints
-; the line in the standard colours again.
+; The row is painted straight into the VRAM, not through a menu item: the main
+; menu is shorter than its frame unless all three drives are shown, and a
+; status line as the last item would float under "Close Menu". The last item
+; (AEXP_OSM_SD_STATUS) is an empty text line, so when the menu does fill the
+; frame, the row under the separator is free for it. A full menu redraw
+; (OPTM_SHOW) clears the row, so every poll paints the characters and the
+; attributes again (about 95 times a second, 46 VRAM words).
+;
+; The row is dimmed with M2M$SA_DARK. The OSM renderer halves foreground AND
+; background with it, so the line reads as a darker status bar.
 ; ----------------------------------------------------------------------------
 
 SD_OSM_INIT     INCRB
@@ -2538,9 +2551,7 @@ _SDS_CLS0       MOVE    1, R8                   ; classify both: R6 = the
                 RSUB    _SDS_MODE, 1
                 ADD     R9, R6
 
-_SDS_CLS        MOVE    SD_OSM_LAST, R0         ; changed: new text
-                CMP     @R0, R6
-                RBRA    _SDS_DIM, Z
+_SDS_CLS        MOVE    SD_OSM_LAST, R0         ; remember: no longer invalid
                 MOVE    R6, @R0
                 MOVE    HWF_LABEL, R9           ; "SD0:" + state + "SD1:" +
                 XOR     R8, R8                  ; state
@@ -2552,39 +2563,16 @@ _SDS_CLS        MOVE    SD_OSM_LAST, R0         ; changed: new text
                 AND     0xFFFB, SR
                 SHR     2, R5
                 RSUB    _SDS_PUT, 1
-                MOVE    AEXP_OSM_SD_STATUS, R8
-                MOVE    1, R9                   ; skip the selection marker
-                MOVE    HWF_LABEL, R10
-                MOVE    HWF_LABEL_LEN, R11
-                RSUB    OPTM_LIVE_TEXT, 1
 
-                ; the screen row of the line: its position among the items
-                ; shown at this level (as OPTM_LIVE_TEXT finds it)
-_SDS_DIM        MOVE    OPTM_STRUCT, R0
-                MOVE    @R0, R0
-                ADD     2, R0
-                MOVE    @R0++, R1               ; R1: number of items
-                XOR     R2, R2                  ; R2: visible position
-                XOR     R3, R3                  ; R3: flat position
-_SDS_MAP        CMP     R3, R1
-                RBRA    _SDS_RET, Z             ; not in the structure
-                CMP     AEXP_OSM_SD_STATUS, R3
-                RBRA    _SDS_ROW, Z
-                MOVE    @R0++, R4
-                SHL     1, R4                   ; bit 15: shown
-                RBRA    _SDS_MAPN, !C
-                ADD     1, R2
-_SDS_MAPN       ADD     1, R3
-                RBRA    _SDS_MAP, 1
-_SDS_ROW        MOVE    @R0, R4
-                SHL     1, R4
-                RBRA    _SDS_RET, !C            ; hidden
-
-                MOVE    OPTM_Y, R9              ; y = frame + 1 + position
+                ; the bottom row inside the frame: y = OPTM_Y + OPTM_DY - 2
+                ; (OPTM_DY counts the frame), x from OPTM_X + 1 (the marker
+                ; column, a blank) over the inner width OPTM_DX - 2
+                MOVE    OPTM_Y, R9
                 MOVE    @R9, R9
-                ADD     1, R9
-                ADD     R2, R9
-                MOVE    SCR$SYS_DX, R8          ; attribute address
+                MOVE    OPTM_DY, R0
+                ADD     @R0, R9
+                SUB     2, R9
+                MOVE    SCR$SYS_DX, R8
                 MOVE    @R8, R8
                 SYSCALL(mulu, 1)                ; R10: y * screen width
                 MOVE    OPTM_X, R0
@@ -2594,10 +2582,27 @@ _SDS_ROW        MOVE    @R0, R4
                 MOVE    OPTM_DX, R1             ; R1: inner width
                 MOVE    @R1, R1
                 SUB     2, R1
-                MOVE    M2M$RAMROM_DEV, R0
-                MOVE    M2M$VRAM_ATTR, @R0
                 MOVE    M2M$RAMROM_4KWIN, R0
                 MOVE    0, @R0
+                MOVE    M2M$RAMROM_DEV, R0      ; the characters: a blank,
+                MOVE    M2M$VRAM_DATA, @R0      ; the label, blanks
+                MOVE    R10, R2
+                MOVE    R1, R3
+                MOVE    HWF_LABEL, R4
+                MOVE    HWF_LABEL_LEN, R5
+                MOVE    0x0020, @R2++
+                SUB     1, R3
+_SDS_CHR        CMP     0, R3
+                RBRA    _SDS_ATT0, Z
+                MOVE    0x0020, R7
+                CMP     0, R5
+                RBRA    _SDS_CHR1, Z
+                MOVE    @R4++, R7
+                SUB     1, R5
+_SDS_CHR1       MOVE    R7, @R2++
+                SUB     1, R3
+                RBRA    _SDS_CHR, 1
+_SDS_ATT0       MOVE    M2M$VRAM_ATTR, @R0      ; dimmed: a status bar
 _SDS_ATTR       MOVE    SD_OSM_ATTR, @R10++
                 SUB     1, R1
                 RBRA    _SDS_ATTR, !Z
@@ -5368,9 +5373,11 @@ BANK_F32F       .EQU    2                       ; FAT32 write layer: files
 ; external card (sdcards.asm: a card-detect level that held for ~100 ms, so a
 ; glitch of the signal does not look like a disk change to the Amiga) takes
 ; the volume down first.
-; The main menu item " SDCard: inserted" (AEXP_OSM_SHARE) ejects the volume
-; while it is off, without touching the card; switching it on again inserts it
-; (after the same ~1 s as a card change).
+; The main menu item " Mount SDCard" (AEXP_OSM_SHARE) ejects the volume
+; while it is off, without touching the card; switching it on inserts it
+; (after the same ~1 s as a card change). It is off at every start: the
+; settings file may hold it on, so PREP_START clears it, and until then
+; (SHR_INSW = SHR_INSW_BOOT) SHARE_STEP does not look at it.
 ;
 ; Locks and files: a lock is an object - the root (/amiga), a directory (its
 ; first cluster) or a file (the first cluster of its directory and its index
@@ -5411,6 +5418,7 @@ SHR_EV_IN       .EQU    2                       ; card inserted
 SHR_EV_SDCH     .EQU    3                       ; new card generations
 SHR_EV_SLOT     .EQU    4                       ; (unused: 0)
 SHR_EV_MOUNT    .EQU    5                       ; mount attempts
+SHR_INSW_BOOT   .EQU    0xFFFF                  ; SHR_INSW before PREP_START
 SHR_PROTO       .EQU    2                       ; protocol version (2: writes)
 SHR_W_TIME      .EQU    0x87F0                  ; the Amiga time of a request
 SHR_MAXNAME     .EQU    106                     ; fib_FileName: 108 bytes
@@ -5526,8 +5534,8 @@ _SHI_EV         MOVE    0, @R0++
                 RBRA    _SHI_EV, !Z
                 MOVE    SHR_MNT_PEND, R0
                 MOVE    0, @R0
-                MOVE    SHR_INSW, R0            ; the menu: inserted (seen as
-                MOVE    1, @R0                  ; an edge if it is off)
+                MOVE    SHR_INSW, R0            ; the menu toggle: not read
+                MOVE    SHR_INSW_BOOT, @R0      ; before PREP_START cleared it
                 RSUB    SHR_STATUS, 1
                 DECRB
                 RET
@@ -5621,7 +5629,11 @@ _SHM_INS        MOVE    SHR_EVC, R3             ; inserted
                 ADD     SHR_EV_IN, R3
                 ADD     1, @R3
                 RSUB    SHR_PEND, 1
-_SHM_PND        MOVE    AEXP_OSM_SHARE, R8      ; the menu: inserted?
+_SHM_PND        MOVE    SHR_INSW, R0            ; still booting: off
+                XOR     R9, R9
+                CMP     SHR_INSW_BOOT, @R0
+                RBRA    _SHM_EJ, Z
+                MOVE    AEXP_OSM_SHARE, R8      ; the menu: mounted?
                 RSUB    M2M$GET_SETTING, 1
                 MOVE    SHR_INSW, R0
                 CMP     @R0, R9

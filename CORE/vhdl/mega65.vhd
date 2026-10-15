@@ -910,7 +910,7 @@ constant C_MENU_DF2_MOUNT_LN  : natural := 6;
 constant C_MENU_DF2_HW_LN     : natural := 7;
 constant C_MENU_HDF_MOUNT_LN  : natural := 17;   -- HDF master mount line (Profile Settings), firmware-only
 constant C_MENU_HDF1_MOUNT_LN : natural := 18;   -- HDF slave mount line (Profile Settings), firmware-only
-constant C_MENU_SHARE          : natural := 8;    -- Shared folder "SDCard: inserted" toggle (main menu), firmware-only
+constant C_MENU_SHARE          : natural := 8;    -- Shared folder "Mount SDCard" toggle (main menu), firmware-only
 
 -- per-unit drive mode, two bits each in main_drv_mode (unit u at 2u+1 downto 2u)
 constant C_DRV_IMAGE          : std_logic_vector(1 downto 0) := "00";  -- simulated ADF drive
@@ -991,7 +991,7 @@ constant C_MENU_OSMKEY_COMBO  : natural := 200;
 
 constant C_MENU_DRV_SPINUP    : natural := 91;   -- Drive Settings: spin-up delay of the simulated drives
 constant C_MENU_SERIAL        : natural := 206;  -- Settings: Amiga serial port on PMOD1 (default OFF)
-constant C_MENU_SD_STATUS     : natural := 213;  -- main menu: live SD card status TEXT line (firmware only: AEXP_OSM_SD_STATUS)
+constant C_MENU_SD_STATUS     : natural := 213;  -- main menu: empty TEXT line at the end (the SD status is painted on the bottom row; unused by the firmware)
 
 -- Megamiga 0.3 machine profiles. The main page carries the profile radio (A500 / A600 /
 -- A1200); Profile Settings holds one block of radios and toggles per profile, and only
