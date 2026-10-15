@@ -2112,6 +2112,15 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   register stage for the 68040 -> sdram_ctrl address path, which every build
   closes only by a few tens of ps.
 
+- **Hard disk speed, 0.6.1 (user, 2026-10-15, SysInfo):** ~4.8 MB/s with the
+  card on the native 4-bit bus, ~2.8 MB/s with SPI at 25 MHz (was 0.1-0.25
+  MB/s through the firmware ATA server). SPI 25 MHz carries 3.125 MB/s raw, so
+  2.8 is ~90 % of the wire; 4-bit carries 12.5 MB/s raw, so at 4.8 the limit
+  is no longer the card but the Amiga side: lide.device moves every word by
+  CPU through the Zorro II IDE data port (Amiga bus cycles). More would need
+  a wider/faster host path (e.g. long-word reads of the data port, a Zorro III
+  or local-bus window for the 68020/68040, or DMA into Fast RAM).
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).

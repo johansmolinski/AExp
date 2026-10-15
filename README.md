@@ -449,7 +449,9 @@ between the IDE board and the SD card, on the card's native 4-bit bus at
 [Two SD cards](#two-sd-cards)). An `.hdf` file in up to 511 pieces on the
 card - nearly every file - and every partition are served this way; a very
 fragmented file still works, through the menu's control CPU, but much more
-slowly (copy it once to defragment it). A disk stays
+slowly (copy it once to defragment it). Measured with SysInfo: about
+4.8 MB/s on the 4-bit bus and 2.8 MB/s with SPI at 25 MHz (before 0.6.1, with
+every sector copied by the control CPU: 0.1-0.25 MB/s). A disk stays
 mounted until you eject it, mount another image on its line, select a machine
 profile or swap the SD card; mounting an
 image always restarts the Amiga, because Kickstart only looks for hard disks
