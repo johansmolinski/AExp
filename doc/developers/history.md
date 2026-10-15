@@ -1932,7 +1932,8 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     2026-10-15. Field: with an RTG screen up, a freeze looks like a hang on
     HDMI (ascal keeps showing the framebuffer while the driver has RTG on;
     HRTmon only programs the chipset), but HRTmon runs - `x` + Return
-    resumes. Accepted as authentic (user): README note, no auto-switch.
+    resumes; the VGA output shows HRTmon meanwhile (user-confirmed).
+    Accepted as authentic (user): README note, no auto-switch.
   - AR3 confirmed on the board with a real AR3 ROM (A500 profile, 68000,
     build i, user 2026-10-15).
   - HRTmon on the 68000 and the 68020 confirmed on build i (user,
