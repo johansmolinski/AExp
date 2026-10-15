@@ -123,11 +123,15 @@ Megamiga fork (johansmolinski):
   (READ/WRITE SECTORS in hardware, extent map from the firmware); both SD
   slots at once (`sdslots.vhd`, `sdcards.asm`, card list in the browser,
   `SDx:` paths). Next: `.uaem`.
-- RTG native resolution (branch `rtg-native`, 2026-10-15, M2M exception 19):
-  HDMI follows the RTG screenmode - 640x480 / 800x600 / 1024x768 @ 60 Hz,
-  1280x720 @ 60 Hz, 1920x1080 @ 30 Hz (and their exact halves) shown 1:1;
-  other sizes stay scaled. Menu `Settings > HDMI > RTG native resolution`
-  (item 107, was a Line, default ON).
+- 0.6.3 = RTG native resolution (branch `rtg-native`, rebased onto 0.6.2,
+  M2M exception 19): HDMI follows the RTG screenmode - 640x480 / 800x600 /
+  1024x768 @ 60 Hz, 1280x720 @ 60 Hz, 1920x1080 @ 30 Hz (and their exact
+  halves) shown 1:1; other sizes stay scaled. Menu `Settings > HDMI > RTG
+  native resolution` (item 120, was a Line, default ON; a 0.6.2 settings file
+  loads with it OFF). ascal first at the HyperRAM. HyperRAM bandwidth
+  (~160 MB/s) caps 24 bit at 1024x768 and 32 bit at 800x600; ascal's 5-bit
+  burst counter (31 x 128 bytes per line) is left as is because no wider line
+  that needs it fits the bandwidth anyway (user decision for 0.6.3).
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and

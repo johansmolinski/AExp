@@ -13,7 +13,8 @@ and three machine profiles - A500, A600 and A1200 - on the main page of the
 menu; version 0.6 adds a 68040 with MMU, FPU and caches at 42 MHz, and
 0.6.1 a shared folder (`SDCard:`), both SD card slots at once and hard disks
 served by the FPGA itself; 0.6.2 adds freezer cartridges (HRTmon built in, the
-Action Replay III with your own ROM). Megamiga needs a MEGA65 R4 or newer; the R3 has no
+Action Replay III with your own ROM), and 0.6.3 shows Picasso96 screens on
+HDMI in their own resolution. Megamiga needs a MEGA65 R4 or newer; the R3 has no
 SDRAM. Everything
 else - and most of this README - is AExp; where the text says "AExp", it
 describes the core Megamiga is built on.
@@ -80,7 +81,8 @@ Features
   drives to the MEGA65's own internal 3.5" drive to read and write genuine
   Amiga disks, copy-protected originals included
 * A Picasso96 graphics card (RTG) for the 68020 and 68040, on HDMI: 8/16/24/32-bit
-  screens in 4 MB of board memory
+  screens in 4 MB of board memory; HDMI switches to the screen's own
+  resolution (640x480 up to 1920x1080)
 * Two IDE hard disks (master and slave): `*.hdf` images or whole Amiga
   partitions of an SD card, read and write, that Kickstart boots from (needs
   the free lide.device boot ROM); the FPGA reads and writes their sectors
@@ -514,6 +516,29 @@ a small read-ahead buffer.
 While an RTG screen is shown, the HDMI picture comes from the graphics card
 and the analog VGA output keeps showing the normal Amiga picture. A reset
 switches back to the Amiga picture. RTG needs the HDMI output.
+
+**RTG native resolution** (Settings > HDMI, on by default): when the screen
+mode is one that HDMI can show pixel for pixel, the HDMI output switches to that
+resolution instead of scaling the picture into the HDMI mode chosen in the
+menu. These are 640x480, 800x600 and 1024x768 at 60 Hz, 1280x720 at 60 Hz and
+1920x1080 at 30 Hz, and also their exact halves (320x240, 400x300, 512x384,
+640x360, 960x540), which are doubled. Other sizes are scaled as before. The
+display needs a moment to resync at every switch between the Amiga picture and
+an RTG screen. Switch the option off if your display does not take one of these
+modes.
+
+The graphics memory delivers about 160 MB/s to the HDMI picture. Depending on
+the colour depth, that limits how large a screen can be shown with RTG native
+resolution on (with it off, the screen is read at the menu's HDMI refresh rate,
+which needs even more for the large modes):
+
+| Colour depth | Largest screen |
+|--------------|----------------|
+| 8 and 16 bit | 1920x1080 (at 30 Hz) |
+| 24 bit       | 1024x768 |
+| 32 bit       | 800x600 |
+
+Larger modes at 24 or 32 bit give a broken picture; use 16 bit for them.
 
 ### Mouse and joystick
 
