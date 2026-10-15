@@ -1916,10 +1916,20 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     RTL and parked as `doc/developers/freezer-68040.patch`, the analysis,
     TB table and resume plan in `doc/developers/freezer-68040.md`;
     `main_cart_req` plugs in no cartridge with a 68040 profile (HRTmon now
-    like the AR3), README says 68000/68020. Build h = that state (Fedora).
-  - Open: field test of build h, a real AR3 run on the board, the AR3
-    breakpoint/trainer paths (not simulated), merge with `share` (code banks,
-    device IDs).
+    like the AR3), README says 68000/68020. Build h = that state (Fedora),
+    WNS +0.020 / WHS +0.036.
+  - Rebased onto main = 0.6.1 (2026-10-15), to become 0.6.2: the Minimig
+    `cart` commit sits on 39b2d9c (ext_shr); the menu was merged entry by
+    entry (main's "Mount SDCard" + line + status line, the cart's AR3 ROM
+    line, cart radios and Freeze: 229 items), the cart's OPTM groups moved to
+    52..56 (main took 51 for OPTM_G_SHARE), every C_MENU_* recomputed from the
+    merged menu (profile block stride 18, base 22), MENU_HEAP_SIZE 3872
+    (demand 3867), release HEAP_SIZE 14656 (combined total 18528 unchanged);
+    AR3 stays QNICE device 0x010C next to the shared folder's 0x010B.
+    Firmware: Shell ROM 31331/32768 words, code banks 3/8. CORE_VERSION
+    0.6.2 (the menu grew in the middle: own settings file). Build i (Fedora).
+  - Open: field test of build i, a real AR3 run on the board, the AR3
+    breakpoint/trainer paths (not simulated).
 
 - **Megamiga 0.6.1-dev, SHARED FOLDER (branch `share` from main, 2026-10-12;
   Minimig `share` 39b2d9c).** The user: mount `/amiga` as a removable AmigaOS
