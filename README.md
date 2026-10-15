@@ -384,13 +384,17 @@ sectors), or switch on the Fast RAM.
 #### Hard disks on an SD card partition (beyond 4 GB)
 
 A hard disk can also be a partition of the SD card itself instead of a file,
-which lifts FAT32's 4 GB limit (up to 128 GB per disk). The card keeps its
-FAT32 partition first (the core's files stay there) and gets up to three
-more partitions of type `7F` (hex) for Amiga disks. Megamiga only ever
-uses partitions of exactly that type: the FAT32 partition, an empty entry or
-any other type is refused.
+which lifts FAT32's 4 GB limit (up to 128 GB per disk). Partitions of type
+`7F` (hex) are Amiga disks; Megamiga only ever uses partitions of exactly
+that type: the FAT32 partition, an empty entry or any other type is refused.
+The card with the core's files keeps its FAT32 partition first and has room
+for up to three more. A card that only holds Amiga disks, for example the
+internal one next to an external card with the core's files, needs no FAT32
+partition at all: all four entries can be `7F` partitions. Such a card shows
+its partitions in the list of the cards; it has no folders to browse.
 
-1. Make room on a PC: back up the card, shrink its FAT32 partition and add a
+1. Make room on a PC: back up the card, shrink its FAT32 partition (or, on a
+   card for Amiga disks only, delete it) and add a
    primary partition of type `7F` after it, for example with Linux `fdisk`
    (`t` sets the type) or GParted. Partition numbers are the MBR entries,
    1 to 4. Then fill the new partition with zeros, for example

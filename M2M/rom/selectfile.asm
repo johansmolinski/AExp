@@ -630,7 +630,8 @@ FB_RE_INIT      INCRB
 
 ; FB_PREPARE: before the browser runs. A slot without a card gives way to the
 ; other one; the card is mounted; after a card change the browser starts over
-; (on the card list it reads the list again).
+; (on the card list it reads the list again). A card that does not mount (no
+; FAT32 on it) shows the list of the cards, where its Amiga partitions are.
 ; Output: R9 = 0 = OK, else the mount error code. All other registers
 ; preserved.
 FB_PREPARE      INCRB
@@ -651,7 +652,11 @@ _FBP_SW         MOVE    R8, @R1
 _FBP_M          MOVE    R8, R2                  ; R2: slot
                 RSUB    SDC$MOUNT, 1            ; R9: 0 or the error
                 CMP     0, R9
-                RBRA    _FBP_RET, !Z
+                RBRA    _FBP_MOK, Z
+                CMP     SD$ERR_NO_CARD, R9      ; a card without FAT32 (all
+                RBRA    _FBP_RET, Z             ; Amiga partitions, say): the
+                RBRA    _FBP_CLN, 1             ; list of the cards instead
+_FBP_MOK
                 MOVE    R2, R8                  ; a new card since the list?
                 RSUB    SDC$GEN, 1
                 MOVE    FB_GEN, R3

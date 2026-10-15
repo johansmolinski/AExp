@@ -2034,7 +2034,38 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   ExtraNetDelay_high + route Explore PASS WNS +0.003 / WHS +0.011. LUTs 89.4k
   (66.8 %, +1.7k for the second SD controller), BRAM 115.5. Saved to
   `~/aexp-builds/Megamiga-fastdisk-d` with the re-rolled checkpoint as
-  `routed.dcp`; `mega65_r6_fastdisk_d.bit`. Awaiting hardware tests.
+  `routed.dcp`; `mega65_r6_fastdisk_d.bit`. Hardware (2026-10-15, build d
+  by JTAG): both cards show up, the card list lists the partitions.
+  Menu tweaks (`94f1114`, build fastdisk-e): " Mount SDCard" (was "SDCard:
+  inserted"), default off and off at every start - PREP_START clears the
+  setting whatever the settings file says, and SHARE_STEP ignores it until
+  then (`SHR_INSW` = `SHR_INSW_BOOT`; share/fw checks that nothing mounts
+  before PREP_START, the mutant without the guard fails). Turning it on still
+  makes the menu save the file (ROSM_CHANGES); the next start clears it again.
+  The SD status line is painted straight into the bottom row of the main menu
+  frame by SD_STATUS_STEP (every poll, ~95 Hz) instead of being the last menu
+  item, which floated under "Close Menu" whenever the main menu was shorter
+  than its frame; item 213 is an empty text line now (OPTM_SIZE unchanged).
+  Cards without FAT32: a card whose four MBR entries are all 0x7F partitions
+  (the internal card next to an external card with the core's files). Before,
+  the partitions of a card were only listed and opened after FAT32 mounted
+  on its partition 1. Now SDC$MOUNT tries once per card generation and keeps
+  the result (`SDC_MERR`): FAT32$MOUNT resets the card (DEV_RESET), so
+  retrying it while a partition of the card is the Amiga's hard disk would
+  reset the card under the engine. A failed mount leaves word 0 = 0 (not
+  mounted, as before), the block functions in place and no buffer owner;
+  `SDC$BLKDEV` returns such a handle for block access (only "no card" is an
+  error). BROWSE_EXTRA, HDF_PREP (HDF_VPART) and B2_PROF_SAVED (partition
+  paths; file paths still need SDC$MOUNT) use it; FB_PREPARE shows the list
+  of the cards for a card that does not mount instead of the mount-error
+  retry loop. Trade-off: a card whose mount failed for a transient reason is
+  tried again only after it is re-inserted. TBs: sdcards `RAW=1` (tray image
+  `genraw.py`: four 0x7F partitions, no FAT32: mount error cached, block
+  reads of the MBR and of partition 2, card list, FB_PREPARE/FB_ENTER, new
+  generation remounts, no card; 5/5 mutants killed), fw-prof2 `RAW=1`
+  (`SD0:partition:2` loads, a file path on that card does not; 1/2 - the
+  survivor drops the FAT32 check before a file open, which fails on the
+  unmounted handle anyway), all other firmware TBs PASS unchanged.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the

@@ -16,7 +16,9 @@
 ;     library tracks the owner of the controller's sector buffer correctly.
 ;   * A card generation per slot (SDC_GEN), counted up on every debounced
 ;     card-detect change. A handle mounted at an older generation is mounted
-;     again by SDC$MOUNT. Whoever keeps a file open remembers the generation it
+;     again by SDC$MOUNT (and only then: one attempt per generation, its
+;     result is kept). A card on which FAT32 does not mount still has a
+;     handle for its blocks (SDC$BLKDEV): the Amiga partitions need no FAT32. Whoever keeps a file open remembers the generation it
 ;     was opened at and stops using it when the generation changed (that
 ;     replaces the old SD_CHANGED / active-slot checks).
 ;   * Code that reads or writes the controller's buffer directly (IO$SD_DATA)
@@ -42,6 +44,9 @@ SDC$INIT        INCRB
                 MOVE    1, @R0++
                 MOVE    1, @R0
                 MOVE    SDC_MGEN, R0
+                MOVE    0, @R0++
+                MOVE    0, @R0
+                MOVE    SDC_MERR, R0
                 MOVE    0, @R0++
                 MOVE    0, @R0
                 MOVE    SDC_HOME, R0            ; no settings file (yet)
@@ -182,7 +187,13 @@ _SDCPR_0        MOVE    @SP++, R8
 
 ; ----------------------------------------------------------------------------
 ; SDC$MOUNT: mount the card in slot R8 (partition 1) on its device handle,
-; unless it is mounted already at the current card generation.
+; once per card generation: the result (SDC_MERR) counts until the card
+; changes. FAT32$MOUNT resets the card, so it must not run again while the
+; card is in use - and a card without a FAT32 file system can be in use: its
+; Amiga partitions (MBR type 0x7F) only need blocks (SDC$BLKDEV). After a
+; failed mount the handle keeps its block functions (it still reads and writes
+; blocks; word 0, the reset function, is 0 = not mounted, as before), and
+; nobody owns the sector buffer.
 ; Output: R8 = the device handle, R9 = 0 if mounted, else an error code
 ; (SD$ERR_NO_CARD without a card). Other registers preserved.
 ; ----------------------------------------------------------------------------
@@ -195,14 +206,16 @@ SDC$MOUNT       INCRB
                 ADD     R0, R2
                 MOVE    SDC_MGEN, R3
                 ADD     R0, R3
+                MOVE    SDC_MERR, R6
+                ADD     R0, R6
                 MOVE    SDC_PRES, R4
                 ADD     R0, R4
                 CMP     0, @R4
                 RBRA    _SDCM_NOC, Z
-                CMP     0, @R1                  ; mounted at this generation?
-                RBRA    _SDCM_DO, Z
-                CMP     @R2, @R3
-                RBRA    _SDCM_OK, Z
+                CMP     @R2, @R3                ; tried at this generation?
+                RBRA    _SDCM_DO, !Z
+                MOVE    @R6, R9                 ; yes: that result
+                RBRA    _SDCM_RET, 1
 _SDCM_DO        MOVE    _SDC_FN, R4             ; the functions of this slot
                 CMP     0, R0
                 RBRA    _SDCM_F, Z
@@ -216,17 +229,35 @@ _SDCM_F         MOVE    R1, R5
                 MOVE    1, @R5                  ; DEV_PARTITION: partition 1
                 MOVE    R1, R8
                 RSUB    FAT32$MOUNT, 1          ; R9: 0 or the error
+                MOVE    @R2, @R3                ; tried at this generation
+                MOVE    R9, @R6
                 CMP     0, R9
-                RBRA    _SDCM_ERR, !Z
-                MOVE    @R2, @R3                ; mounted at this generation
+                RBRA    _SDCM_RET, Z
+                MOVE    0, @R1                  ; failed: not mounted (word 0),
+                MOVE    R1, R4                  ; blocks only, and the buffer
+                ADD     FAT32$DEV_BUFFERED_FDH, R4 ; is owned by nobody
+                MOVE    0, @R4
                 RBRA    _SDCM_RET, 1
 _SDCM_NOC       MOVE    SD$ERR_NO_CARD, R9
-_SDCM_ERR       MOVE    0, @R1                  ; not mounted
-                RBRA    _SDCM_RET, 1
-_SDCM_OK        XOR     R9, R9
+                MOVE    0, @R1                  ; not mounted
 _SDCM_RET       MOVE    R1, R8
                 DECRB
                 RET
+
+; ----------------------------------------------------------------------------
+; SDC$BLKDEV: the device handle of the card in slot R8 for block access only:
+; like SDC$MOUNT, but a card without a FAT32 file system (all four MBR entries
+; Amiga partitions, for example) is fine too. Whether a block can be read
+; tells the caller (HDF_PART_GET checks the MBR).
+; Output: R8 = the device handle, R9 = 0 if OK, else SD$ERR_NO_CARD. Other
+; registers preserved.
+; ----------------------------------------------------------------------------
+
+SDC$BLKDEV      RSUB    SDC$MOUNT, 1
+                CMP     SD$ERR_NO_CARD, R9
+                RBRA    _SDCB_RET, Z
+                XOR     R9, R9
+_SDCB_RET       RET
 
 ; ----------------------------------------------------------------------------
 ; SDC$HOMEDEV: the device handle of the card the settings file came from (or

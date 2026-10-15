@@ -1179,8 +1179,8 @@ BROWSE_EXTRA    INCRB
 _BRX_GO         CMP     0xFFFF, R1              ; a directory: none
                 RBRA    _BRX_NO, Z
                 MOVE    R8, R3                  ; R3: usable ones to skip
-                MOVE    R1, R8                  ; the card, mounted
-                RSUB    SDC$MOUNT, 1
+                MOVE    R1, R8                  ; the card (FAT32 or not)
+                RSUB    SDC$BLKDEV, 1
                 CMP     0, R9
                 RBRA    _BRX_NO, !Z
                 MOVE    BRX_DEVREF, R9          ; a "file handle" for
@@ -3184,8 +3184,8 @@ HDF_PREP        INCRB
                 RBRA    _HDFP_NVP, Z            ; profile chose it): slot <<
                 MOVE    @R1, R8                 ; 8 | number. The handle is
                 SWAP    R8, R8                  ; an empty one: its device
-                AND     0x00FF, R8              ; is that card's
-                RSUB    SDC$MOUNT, 1            ; (M2M-UPSTREAM sd-host)
+                AND     0x00FF, R8              ; is that card's (FAT32
+                RSUB    SDC$BLKDEV, 1           ; or not; M2M-UPSTREAM sd-host)
                 CMP     0, R9
                 RBRA    _HDFP_BADPT, !Z
                 MOVE    R8, @R0                 ; (FAT32$FDH_DEVICE = 0)
@@ -8199,8 +8199,9 @@ B2_PROF_SAVED   INCRB
                 RBRA    _PRS_NO, Z
                 RSUB    _PR_CARD, 1             ; "SDx:" -> R8: slot, R10: the
                 RBRA    _PRS_NF, !C             ; rest (none: not there)
-                RSUB    SDC$MOUNT, 1            ; R8: the card's device
-                CMP     0, R9
+                MOVE    R8, R7                  ; R7: the slot
+                RSUB    SDC$BLKDEV, 1           ; R8: the card's device
+                CMP     0, R9                   ; (a partition needs no FAT32)
                 RBRA    _PRS_NF, !Z
                 MOVE    R8, R6                  ; R6: the device handle
                 MOVE    R10, R4                 ; "partition:N"?
@@ -8209,6 +8210,10 @@ _PRS_PP         CMP     0, @R5
                 RBRA    _PRS_PART, Z
                 CMP     @R4++, @R5++
                 RBRA    _PRS_PP, Z
+                MOVE    R7, R8                  ; a file: FAT32 mounted?
+                RSUB    SDC$MOUNT, 1
+                CMP     0, R9
+                RBRA    _PRS_NF, !Z
                 MOVE    R6, R8
                 MOVE    PROF_FDH, R9
                 XOR     R11, R11                ; "/" separator

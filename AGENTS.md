@@ -321,7 +321,10 @@ the dated facts.
   R11 = slot, 0xFFFF in a directory). The settings file: back card first, then
   the tray (`SDC_HOME`, `ROSM_INTEGRITY` by its generation); auto-load ROMs
   from that card. Megamiga paths carry the card (`SD0:`/`SD1:`, none =
-  invalid), partitions `SDx:partition:N` (`HDF_VPART` = slot << 8 | n), the
+  invalid), partitions `SDx:partition:N` (`HDF_VPART` = slot << 8 | n; a card without
+  FAT32 - four 0x7F partitions - works too: `SDC$MOUNT` tries once per card
+  generation, because FAT32$MOUNT resets the card, and `SDC$BLKDEV` gives such
+  a card's handle for blocks; the browser shows the card list for it), the
   shared folder is the back card only, the engine mode registers get bit 2 =
   slot. TBs `~/aexp-work/sdslots` (HDL), `~/aexp-work/sdcards` (+ `mut.py`).
   TBs `~/aexp-work/sdhost`, `~/aexp-work/ideng`. Added in the JS fork

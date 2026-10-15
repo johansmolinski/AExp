@@ -60,6 +60,7 @@ SDC_DEV0        .BLOCK  FAT32$DEV_STRUCT_SIZE   ; slot 0: internal (bottom tray)
 SDC_DEV1        .BLOCK  FAT32$DEV_STRUCT_SIZE   ; slot 1: external (back slot)
 SDC_GEN         .BLOCK  2                       ; card generation per slot
 SDC_MGEN        .BLOCK  2                       ; generation the handle has
+SDC_MERR        .BLOCK  2                       ; its result (0 = FAT32 mounted)
 SDC_PRES        .BLOCK  2                       ; card present (debounced)
 SDC_RAW         .BLOCK  2                       ; card-detect seen last
 SDC_RAWT        .BLOCK  2                       ; IO$CYC_MID when it changed
