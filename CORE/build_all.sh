@@ -26,6 +26,13 @@
 #   JOBS=<n>              parallel Vivado jobs per run (default 4)
 #   REROLL_MAX_MISS=<ns>  largest setup or hold miss that gets re-rolled
 #                         (default 0.3); a bigger miss is a real timing problem
+#   IMPL_MARGIN=<clock:ns ...>  extra setup uncertainty during placement only
+#                         (default "cpu_clk:0.4 native_clk4x_mmcm:0.2", 0 = off;
+#                         see impl_margin.tcl)
+#   REF_DIR=<CORE dir of an earlier build>  incremental implementation: each
+#                         board starts from that build's routed checkpoint (the
+#                         re-roll winner if there is one) - use a build that
+#                         met timing with mostly the same sources
 
 set -u
 cd "$(dirname "$0")"
@@ -85,10 +92,22 @@ for board in "${boards[@]}"; do
     # Re-roll files from an earlier run describe an older bitstream.
     rm -f "CORE-${board}.runs/impl_1/mega65_$(lower "${board}")_reroll"*
     echo "=== ${board}: build started $(date) ==="
+    unset REF_DCP
+    if [ -n "${REF_DIR:-}" ]; then
+        r="${REF_DIR}/CORE-${board}.runs/impl_1/mega65_$(lower "${board}")"
+        for f in "${r}_reroll.dcp" "${r}_postroute_physopt.dcp" "${r}_routed.dcp"; do
+            [ -f "${f}" ] && { export REF_DCP=$(cd "$(dirname "${f}")" && pwd)/$(basename "${f}"); break; }
+        done
+        [ -n "${REF_DCP:-}" ] || { echo "ERROR: REF_DIR has no routed checkpoint for ${board} (${r}_*.dcp)." >&2; exit 1; }
+        echo "=== ${board}: reference ${REF_DCP} ==="
+    fi
     vivado -mode batch -notrace -source build_bitstream.tcl \
            -log "build_${board}.log" -journal "build_${board}.jou" \
            -tclargs "${board}" "${jobs}"
 done
+
+# The re-roll places anew without a reference (and with the margin).
+unset REF_DCP
 
 # Second pass: re-roll the boards that only missed timing.
 note=()

@@ -26,6 +26,11 @@ set whs0  [lindex $argv 3]
 
 set_param general.maxThreads $jobs
 
+# Placement margin (IMPL_MARGIN, see impl_margin.tcl): on for a new placement,
+# off before every route. The phys checkpoint of the first pass still carries
+# the margin of its place hook, so "phys" attempts switch it off too.
+source [file join [file dirname [file normalize [info script]]] impl_margin.tcl]
+
 set b   [string tolower $board]
 set run CORE-${board}.runs/impl_1
 set ckpt(opt)    $run/mega65_${b}_opt.dcp
@@ -134,16 +139,20 @@ foreach a $attempts {
         open_checkpoint $ckpt($start)
         switch $start {
             opt {
+                impl_margin on
                 place_design    -directive $place
                 phys_opt_design -directive Explore
+                impl_margin off
                 route_design    -directive $route
                 phys_opt_design -directive Explore
             }
             phys {
+                impl_margin off
                 route_design    -directive $route
                 phys_opt_design -directive Explore
             }
             routed {
+                impl_margin off
                 phys_opt_design -directive AggressiveExplore
             }
         }

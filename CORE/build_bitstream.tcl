@@ -21,8 +21,21 @@ if {[get_property PROGRESS [get_runs synth_1]] ne "100%"} {
     exit 1
 }
 
+# Placement margin + optional reference checkpoint (impl_margin.tcl), as step
+# hooks of this run only: cleared again afterwards, so the .xpr is unchanged.
+set here [file normalize [file dirname [info script]]]
+set hooks [list STEPS.PLACE_DESIGN.TCL.PRE [file join $here impl_pre_place.tcl] \
+                STEPS.ROUTE_DESIGN.TCL.PRE [file join $here impl_pre_route.tcl]]
+# the hooks run in the impl_1 child process, which inherits the environment
+set ::env(IMPL_TCL_DIR) $here
+foreach {prop file} $hooks { set_property $prop $file [get_runs impl_1] }
 launch_runs impl_1 -to_step write_bitstream -jobs $jobs
 wait_on_run impl_1
+foreach {prop file} $hooks {
+    set_property $prop "" [get_runs impl_1]
+    # Vivado also lists a hook script in the utils_1 fileset.
+    catch {remove_files -quiet -fileset utils_1 [get_files -quiet -of_objects [get_filesets utils_1] $file]}
+}
 if {[get_property STATUS [get_runs impl_1]] ne "write_bitstream Complete!"} {
     puts "RESULT $board FAILED impl_1: [get_property STATUS [get_runs impl_1]]"
     exit 1
