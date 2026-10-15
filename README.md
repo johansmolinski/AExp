@@ -970,6 +970,12 @@ Changing the cartridge restarts the Amiga (a cold boot). To freeze, press
 close the menu. HELP alone still opens the menu, and the Amiga never sees the
 HELP of the key combination.
 
+While a Picasso96 (RTG) screen is shown, HDMI keeps showing it when you
+freeze: the cartridge draws its screen with the Amiga's own chips, just like a
+freezer next to a real graphics card. The cartridge is running all the same -
+its screen is on the analog (VGA) output, and in HRTmon `x` and Return
+continue the frozen program.
+
 ### Real-time clock
 
 AExp can feed the Amiga the MEGA65's own battery-backed clock, so Workbench

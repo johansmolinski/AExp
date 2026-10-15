@@ -1928,7 +1928,12 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     AR3 stays QNICE device 0x010C next to the shared folder's 0x010B.
     Firmware: Shell ROM 31331/32768 words, code banks 3/8. CORE_VERSION
     0.6.2 (the menu grew in the middle: own settings file). Build i (Fedora).
-  - Open: field test of build i, a real AR3 run on the board, the AR3
+  - Build i (Fedora, WNS +0.014 / WHS +0.036, BRAM 116/365) loaded
+    2026-10-15. Field: with an RTG screen up, a freeze looks like a hang on
+    HDMI (ascal keeps showing the framebuffer while the driver has RTG on;
+    HRTmon only programs the chipset), but HRTmon runs - `x` + Return
+    resumes. Accepted as authentic (user): README note, no auto-switch.
+  - Open: rest of the field test of build i, a real AR3 run on the board, the AR3
     breakpoint/trainer paths (not simulated).
 
 - **Megamiga 0.6.1-dev, SHARED FOLDER (branch `share` from main, 2026-10-12;
