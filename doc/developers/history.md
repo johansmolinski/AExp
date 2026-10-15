@@ -2379,6 +2379,39 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   if they come back: A/B against `rtgnative-a`, or a screenshot from the Amiga
   (in it = memory/picture, not the scaler).
 
+- **32bpp wide lines (2026-10-15):** the user confirmed 1024x768x32 broken,
+  24 bit fine. Cause 1: ascal's `o_hburst`/`o_hbcpt` are `0 TO 31` (1024 x 4
+  bytes = 32 bursts of 128 does not fit). Cause 2, the real limit: the
+  HyperRAM controller (16 bit DDR at 100 MHz, latency 4, ~13 clocks overhead
+  per 64-word burst) gives ascal ~160 MB/s; 1024x768x32@60 needs ~198 MB/s
+  (4096 B x 48.4 kHz), 1280x720x24 ~173, 1080p30x24 ~194, while 1024x768x24
+  needs ~149 (works) and 1080p30x16 ~130 (works). So a wider counter would
+  enable no mode that the bandwidth can feed. User decision: not fixed for
+  0.6.3, documented (README table: 24 bit up to 1024x768, 32 bit up to
+  800x600). Possible later: Megamiga.card MaxHor/VerResolution per RGB class,
+  so P96 does not offer those modes.
+
+- **Rebased onto main = 0.6.2 (2026-10-15)** for 0.6.3: config.vhd conflict
+  (the cartridges renumbered the menu): the RTG toggle is now line 120 (the
+  Line before "Back to Settings" in the HDMI submenu), `OPTM_G_RTGNATIVE` 57
+  (the cart took 52..56), `C_MENU_RTG_NATIVE` 120. Menu heap: the cart left
+  headroom 5, the toggle text needs +22: demand 3889, MENU_HEAP_SIZE 3904,
+  release HEAP_SIZE 14624 (combined total 18528 unchanged). CORE_VERSION
+  0.6.3, help page 5 got two lines about RTG native resolution (in place of
+  the footer padding). Old tip kept as local branch `rtg-native-prerebase`.
+
+- **MEGAMIGA 0.6.3 RELEASED (2026-10-16, tag `V0.6.3` on main, GitHub
+  release asset `Megamiga-0.6.3-R6.zip`, R6 only).** RTG native resolution
+  (M2M exception 19) with the 1080p30 fix (ascal first at the HyperRAM, line
+  sync catch-up). Release build on the Fedora host (rel063), incremental from
+  rel062 (`REF=rel062`): first pass WNS +0.011 / WHS +0.007, no re-roll,
+  Shell ROM 31331/32768. The user on the release build: "It all works"
+  (freezer cartridges, RTG native modes incl. 1080p30, the menu switch, help
+  page). Settings file 229 bytes, same layout as 0.6.2: a 0.6.2 file may be
+  renamed (RTG native then OFF: line 120 was a Line). Submodules unchanged
+  (Minimig `cart` ec7b7f0, QNICE 75873a2). Package README.txt and notes063.md
+  in `~/aexp-builds/release/`.
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).

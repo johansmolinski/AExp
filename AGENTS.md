@@ -32,7 +32,8 @@ the history file.
   (network card), 0.5.1 (AmigaVision fix), 0.5.2 (32K ROM, hard disks
   on SD card partitions), 0.6.0 (68040, Megamiga.card), 0.6.1 (fast hard
   disks, both SD cards, SDCard:, explicit profiles), 0.6.2 (freezer
-  cartridges HRTmon + Action Replay III). All hardware-confirmed
+  cartridges HRTmon + Action Replay III), 0.6.3 (RTG native resolution).
+  All hardware-confirmed
   by the user, the PMOD serial port by an outside tester.
 
 ### Increment index (details: `doc/developers/history.md`)
@@ -123,7 +124,8 @@ Megamiga fork (johansmolinski):
   (READ/WRITE SECTORS in hardware, extent map from the firmware); both SD
   slots at once (`sdslots.vhd`, `sdcards.asm`, card list in the browser,
   `SDx:` paths). Next: `.uaem`.
-- 0.6.3 = RTG native resolution (branch `rtg-native`, rebased onto 0.6.2,
+- 0.6.3 = RTG native resolution (released 2026-10-16, tag `V0.6.3`; branch
+  `rtg-native`, rebased onto 0.6.2,
   M2M exception 19): HDMI follows the RTG screenmode - 640x480 / 800x600 /
   1024x768 @ 60 Hz, 1280x720 @ 60 Hz, 1920x1080 @ 30 Hz (and their exact
   halves) shown 1:1; other sizes stay scaled. Menu `Settings > HDMI > RTG
