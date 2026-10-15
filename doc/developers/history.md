@@ -1935,8 +1935,10 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     resumes. Accepted as authentic (user): README note, no auto-switch.
   - AR3 confirmed on the board with a real AR3 ROM (A500 profile, 68000,
     build i, user 2026-10-15).
-  - Open: rest of the field test of build i (68000/68020 HRTmon on 0.6.1,
-    68040 = no cartridge, the 0.6.1 features after the merge), the AR3
+  - HRTmon on the 68000 and the 68020 confirmed on build i (user,
+    2026-10-15).
+  - Open: rest of the field test of build i (68040 = no cartridge, the 0.6.1
+    features after the merge), the AR3
     breakpoint/trainer paths (not simulated).
 
 - **Megamiga 0.6.1-dev, SHARED FOLDER (branch `share` from main, 2026-10-12;
