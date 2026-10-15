@@ -2026,6 +2026,15 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   teardown; 7/9 - the two SDC$SELDEV removals are redundant with this FAT32
   library, kept as a guard). The cfgstr update found that `_PR_PUTCARD`'s
   terminator emptied a path of exactly the maximum length (fixed).
+  Build fastdisk-d (`15c1bbc`): first pass WNS -0.376 (the 68040 island's
+  eaf -> bcu mem_addr path, 46 logic levels, 74 % route; nothing of the SD
+  change is on it), too much for the automatic re-roll; re-rolled by hand: the
+  routing-only attempts stayed at -0.38..-0.55, so the re-roll was restarted
+  placements first (WHS argument -0.001 selects that order): 3/15
+  ExtraNetDelay_high + route Explore PASS WNS +0.003 / WHS +0.011. LUTs 89.4k
+  (66.8 %, +1.7k for the second SD controller), BRAM 115.5. Saved to
+  `~/aexp-builds/Megamiga-fastdisk-d` with the re-rolled checkpoint as
+  `routed.dcp`; `mega65_r6_fastdisk_d.bit`. Awaiting hardware tests.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
