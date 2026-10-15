@@ -2344,7 +2344,8 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   (`cpu_clk`, eaf_o -> fpc, 43 logic levels, 76 % route); HDMI domain met.
   Re-roll 8/16 (place ExtraTimingOpt, route Explore, phys_opt
   AggressiveExplore) passed: WNS +0.007, WHS +0.025, bitstream md5
-  `fa790b74`, in `~/aexp-builds/Megamiga-rtgnative-a/`. Hardware test pending.
+  `fa790b74`, in `~/aexp-builds/Megamiga-rtgnative-a/`. Hardware (2026-10-15,
+  the user): the RTG modes come out natively on the monitor, 1024x768 included.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
