@@ -2066,6 +2066,14 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   (`SD0:partition:2` loads, a file path on that card does not; 1/2 - the
   survivor drops the FAT32 check before a file open, which fails on the
   unmounted handle anyway), all other firmware TBs PASS unchanged.
+  Build fastdisk-e (`94f1114`): first pass WNS +0.038 / WHS +0.036 (the
+  router reported congestion but closed), no re-roll. LUTs 89.3k (66.7 %),
+  BRAM 115.5. Saved to `~/aexp-builds/Megamiga-fastdisk-e`. The firmware of
+  `e695d89` was patched in (`patch_firmware.sh`, 16 + 16 block RAMs verified
+  and patched): `mega65_r6_fastdisk_e2.bit`. The tree's images were already
+  newer than the synthesis when `save` ran, so the reference images in the
+  saved folder were rebuilt from `94f1114`'s sources (the patch verifies them
+  against the checkpoint). Awaiting hardware tests.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
