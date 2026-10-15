@@ -93,7 +93,8 @@ Megamiga fork (johansmolinski):
 - cart (worktree `cart-ar3-hrtmon`, from 0.6.0): freezer cartridges per
   profile - HRTmon built in (`CORE/hrtmon`, image copied to `$A10000` at cold
   boot; 68000 + 68020, HW-confirmed) and the Action Replay III (bring your own
-  ROM, `rtl/ar3.v`, QNICE device 0x010C, 68000 only, Zorro II board 2 MB);
+  ROM, `rtl/ar3.v`, QNICE device 0x010C, 68000 only, Zorro II board 2 MB;
+  HW-confirmed);
   freeze = CTRL+MEGA+HELP or the "Freeze cartridge" menu line. No cartridge
   with the 68040: the fix for its post-Workbench hang failed timing, parked in
   `doc/developers/freezer-68040.md` (+ `.patch`).
