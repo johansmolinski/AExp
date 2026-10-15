@@ -747,6 +747,10 @@ begin
    i_avm_arbit_general : entity work.avm_arbit_general
       generic map (
          G_NUM_SLAVES   => 3,
+         -- M2M-UPSTREAM rtg-native-modes: the scaler (slave 2, hr_dig) first. A
+         -- 1:1 framebuffer at 1080p30 needs ~130 MB/s of HyperRAM in every line
+         -- time; round-robin with short core bursts made line fetches late.
+         G_PRIORITY_HIGH => true,
          G_FREQ_HZ      => BOARD_CLK_SPEED,
          G_ADDRESS_SIZE => 32,
          G_DATA_SIZE    => 16

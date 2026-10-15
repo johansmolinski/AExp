@@ -8,6 +8,10 @@ use ieee.numeric_std_unsigned.all;
 entity avm_arbit_general is
    generic (
       G_NUM_SLAVES    : integer;
+      -- M2M-UPSTREAM rtg-native-modes: true = slave 2 (with 4 slaves: slaves 2
+      -- and 3, round-robin between them) wins over slaves 0 and 1 whenever it
+      -- requests; false = fair as before.
+      G_PRIORITY_HIGH : boolean := false;
       G_FREQ_HZ       : integer := 100_000_000;  -- 100 MHz
       G_ADDRESS_SIZE  : integer;
       G_DATA_SIZE     : integer
@@ -158,6 +162,7 @@ begin
    i_avm_arbit : entity work.avm_arbit
       generic map (
          G_PREFER_SWAP  => true,
+         G_PRIORITY_S1  => G_PRIORITY_HIGH,  -- M2M-UPSTREAM rtg-native-modes
          G_FREQ_HZ      => G_FREQ_HZ,
          G_ADDRESS_SIZE => G_ADDRESS_SIZE,
          G_DATA_SIZE    => G_DATA_SIZE

@@ -14,6 +14,9 @@ library ieee;
 entity avm_arbit is
    generic (
       G_PREFER_SWAP  : boolean;
+      -- M2M-UPSTREAM rtg-native-modes: true = Slave 1 wins every arbitration
+      -- it requests in (Slave 0 gets the gaps); false = round-robin as before.
+      G_PRIORITY_S1  : boolean := false;
       G_FREQ_HZ      : integer := 100_000_000;  -- 100 MHz
       G_ADDRESS_SIZE : integer;
       G_DATA_SIZE    : integer
@@ -225,6 +228,12 @@ begin
                   s1_active_grant <= '1';
                   last_grant      <= '1';
                end if;
+               -- M2M-UPSTREAM rtg-native-modes
+               if G_PRIORITY_S1 and s1_active_req = '1' then
+                  s0_active_grant <= '0';
+                  s1_active_grant <= '1';
+                  last_grant      <= '1';
+               end if;
 
             when "01" =>
                if s0_last = '1' then
@@ -254,6 +263,12 @@ begin
                         s0_active_grant <= '1';
                         last_grant      <= '0';
                      end if;
+                  end if;
+                  -- M2M-UPSTREAM rtg-native-modes
+                  if G_PRIORITY_S1 and s1_active_req = '1' then
+                     s0_active_grant <= '0';
+                     s1_active_grant <= '1';
+                     last_grant      <= '1';
                   end if;
                end if;
 
@@ -285,6 +300,12 @@ begin
                         s1_active_grant <= '1';
                         last_grant      <= '1';
                      end if;
+                  end if;
+                  -- M2M-UPSTREAM rtg-native-modes
+                  if G_PRIORITY_S1 and s1_active_req = '1' then
+                     s0_active_grant <= '0';
+                     s1_active_grant <= '1';
+                     last_grant      <= '1';
                   end if;
                end if;
 

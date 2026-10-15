@@ -2345,7 +2345,31 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   Re-roll 8/16 (place ExtraTimingOpt, route Explore, phys_opt
   AggressiveExplore) passed: WNS +0.007, WHS +0.025, bitstream md5
   `fa790b74`, in `~/aexp-builds/Megamiga-rtgnative-a/`. Hardware (2026-10-15,
-  the user): the RTG modes come out natively on the monitor, 1024x768 included.
+  the user): the RTG modes come out natively on the monitor, 1024x768 included;
+  the OSM keeps its size in every mode (hardware-scaled overlay).
+  1080p30 field report: now and then the picture is pushed down a bit, then
+  restored. Cause: a 1:1 line at 1080p30 is 3840 bytes = 30 ascal bursts of 128
+  bytes per 29.6 us line (~130 MB/s, ~85 % of the HyperRAM with its latency per
+  burst); the framework arbiter alternated fairly between ascal and the core
+  (RTG write combiner/blitter, 1..16-word bursts each paying the full latency),
+  so under RTG traffic a fetch ran past the next line sync; ascal's `o_hsp` is a
+  flag, the second sync was lost, `o_vacpt` fell one line behind and the rest of
+  the frame showed row y-1 until the next frame re-initialised it. Fix (the user
+  chose priority + catch-up, exception 19 extended): `avm_arbit` `G_PRIORITY_S1`
+  / `avm_arbit_general` `G_PRIORITY_HIGH` (ascal first; only the RTG masters and
+  QNICE share `hr_core`, both just wait) and ascal's `o_hspn` (up to 3 pending
+  syncs, worked off in `sDISP`). TB `~/aexp-work/arbprio` (3 random masters +
+  a pipelined scaler like ascal's `o_readlev<2`, shadow-checked data, ghdl): no
+  data errors either way; worst scaler line 2420 -> 2100 cycles with priority
+  (= the bus held for the whole line). TB `~/aexp-work/ascalcatch` (ascal
+  framebuffer 256x64 16bpp 1:1, memory stall of ~2 lines in frame 3): original
+  ascal 43 wrong lines (21..63 show the row above = the field symptom), patched
+  4, other frames 0; stall sweep (avalon cycles, orig/new wrong lines): 0: 0/0,
+  300: 0/0, 2500: 43/11, 5000 (~9 lines, more than the 3 pending syncs): 43/43.
+  Noticed on the way: ascal's `o_hburst`/`o_hbcpt` are
+  `0 TO 31`, i.e. at most 31 x 128 bytes per line - a 32bpp line wider than 992
+  pixels does not fit (pre-existing, not touched).
+  Build `rtgnative-b`: incremental from `rtgnative-a`'s re-roll checkpoint.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the

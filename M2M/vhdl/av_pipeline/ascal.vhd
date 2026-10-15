@@ -481,6 +481,10 @@ ARCHITECTURE rtl OF ascal IS
   SIGNAL o_hacc,o_hacc_ini,o_hacc_next,o_vacc,o_vacc_next,o_vacc_ini : natural RANGE 0 TO 4*OHRES-1;
   SIGNAL o_hsv,o_vsv,o_dev,o_pev,o_end : unsigned(0 TO 9);
   SIGNAL o_hsp,o_vss : std_logic;
+  -- M2M-UPSTREAM rtg-native-modes: line syncs that arrived while o_hsp was
+  -- still pending (the line fetch was late). Without them the vertical
+  -- accounting lost a line and the rest of the frame was shown shifted down.
+  SIGNAL o_hspn : natural RANGE 0 TO 3;
   SIGNAL o_vcarrym,o_prim : boolean;
   SIGNAL o_read,o_read_pre : std_logic;
   SIGNAL o_readlev,o_copylev : natural RANGE 0 TO 2;
@@ -1879,6 +1883,7 @@ BEGIN
       o_readlev<=0;
       o_copylev<=0;
       o_hsp<='0';
+      o_hspn<=0;
       o_readack_sync<='0';
       o_readack_sync2<='0';
       o_readack<='0';
@@ -2032,6 +2037,10 @@ BEGIN
           o_bibu<='0';
         END IF;
         o_hsp<='1';
+        -- M2M-UPSTREAM rtg-native-modes: count a sync that would be lost
+        IF o_hsp='1' AND o_hspn<3 THEN
+          o_hspn<=o_hspn+1;
+        END IF;
       END IF;
       
       o_vpe<=to_std_logic(o_vcpt_pre<o_vmax AND o_vcpt_pre>=o_vmin);
@@ -2052,6 +2061,10 @@ BEGIN
           IF o_hsp='1' THEN
             o_state<=sHSYNC;
             o_hsp<='0';
+          -- M2M-UPSTREAM rtg-native-modes: catch up on late line syncs
+          ELSIF o_hspn>0 THEN
+            o_state<=sHSYNC;
+            o_hspn<=o_hspn-1;
           END IF;
           o_prim<=true;
           o_vcarrym<=false;

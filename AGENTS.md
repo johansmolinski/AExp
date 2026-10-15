@@ -359,8 +359,15 @@ the dated facts.
   DRP readback, xsim: 74.25 -> 65.00 -> 40 -> 25.2 MHz all lock). 1080p50/60
   stays impossible (1485 Mbit/s per TMDS lane > the -2 OSERDES, HDMI domain
   only closes at 74.25 MHz, HyperRAM ~200 MB/s). Megamiga: `mega65.vhd` picks
-  the mode from the RTG registers (`C_MENU_RTG_NATIVE`). Added in the JS fork
-  2026-10-15.
+  the mode from the RTG registers (`C_MENU_RTG_NATIVE`). Also the scaler's
+  memory bandwidth (field: 1080p30 picture briefly pushed down): `avm_arbit`
+  generic `G_PRIORITY_S1` (default false = round-robin) and `avm_arbit_general`
+  `G_PRIORITY_HIGH`, which `framework.vhd` sets so ascal (`hr_dig`) wins the
+  HyperRAM over core and QNICE; `ascal.vhd` counts line syncs that arrive while
+  one is still pending (`o_hspn`) instead of losing them, so a late line fetch
+  costs a few stale lines, not a frame shifted down. TBs `~/aexp-work/arbprio`,
+  `~/aexp-work/ascalcatch` (red/green on the original ascal). Added in the JS
+  fork 2026-10-15.
   All other framework fixes
   go into `CORE/CORE.xdc` (constraints) or get documented for upstreaming.
   Git remote `upstream` = sy2002/MiSTer2MEGA65 (master = V2.0.1).
