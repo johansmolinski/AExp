@@ -9,7 +9,7 @@ package video_modes_pkg is
                                                    -- 000 =  25.200 MHz
                                                    -- 001 =  27.000 MHz
                                                    -- 010 =  74.250 MHz
-                                                   -- 011 = 148.500 MHz
+                                                   -- 011 =  65.000 MHz (M2M-UPSTREAM rtg-native-modes, was 148.500 MHz)
                                                    -- 100 =  25.175 MHz
                                                    -- 101 =  27.027 MHz
                                                    -- 110 =  74.176 MHz
@@ -185,6 +185,50 @@ package video_modes_pkg is
       V_POL       => '1'         -- vertical sync pulse polarity (1 = positive, 0 = negative)
    );
 
+   -- M2M-UPSTREAM rtg-native-modes (Megamiga 2026-10-15): two modes for a core that shows a
+   -- framebuffer in its own resolution (the RTG card), so the display gets the screenmode
+   -- 1:1 instead of a scaled picture. The other cores never select them.
+
+   -- VESA DMT 1024x768 @ 60 Hz (65.000 MHz, 48.36 kHz, 60.00 Hz)
+   -- No CEA/CTA VIC exists for it (VIC 0 = "no VIC" in the AVI InfoFrame).
+   constant C_SVGA_1024_768_60 : video_modes_t := (
+      CLK_KHZ     => 65000,      -- 65.000 MHz
+      CLK_SEL     => "011",
+      CEA_CTA_VIC => 0,          -- not a CEA mode
+      ASPECT      => "01",       -- aspect ratio: 01=4:3, 10=16:9
+      PIXEL_REP   => '0',        -- no pixel repetition
+      H_PIXELS    => 1024,       -- horizontal display width in pixels
+      V_PIXELS    => 768,        -- vertical display width in rows
+      H_FP        => 24,         -- horizontal front porch width in pixels
+      H_PULSE     => 136,        -- horizontal sync pulse width in pixels
+      H_BP        => 160,        -- horizontal back porch width in pixels
+      V_FP        => 3,          -- vertical front porch width in rows
+      V_PULSE     => 6,          -- vertical sync pulse width in rows
+      V_BP        => 29,         -- vertical back porch width in rows
+      H_POL       => '0',        -- horizontal sync pulse polarity (1 = positive, 0 = negative)
+      V_POL       => '0'         -- vertical sync pulse polarity (1 = positive, 0 = negative)
+   );
+
+   -- HDMI 1080p @ 30 Hz (1920x1080), CEA-861 VIC 34: the 74.25 MHz pixel clock of 720p.
+   -- 1080p at 50/60 Hz would need 148.5 MHz (see video_out_clock.vhd).
+   constant C_HDMI_1080p_30 : video_modes_t := (
+      CLK_KHZ     => 74250,      -- 74.250 MHz
+      CLK_SEL     => "010",
+      CEA_CTA_VIC => 34,         -- CEA/CTA VIC: 1920x1080p, 30 Hz, 16:9
+      ASPECT      => "10",       -- aspect ratio: 01=4:3, 10=16:9
+      PIXEL_REP   => '0',        -- no pixel repetition
+      H_PIXELS    => 1920,       -- horizontal display width in pixels
+      V_PIXELS    => 1080,       -- vertical display width in rows
+      H_FP        => 88,         -- horizontal front porch width in pixels
+      H_PULSE     => 44,         -- horizontal sync pulse width in pixels
+      H_BP        => 148,        -- horizontal back porch width in pixels
+      V_FP        => 4,          -- vertical front porch width in rows
+      V_PULSE     => 5,          -- vertical sync pulse width in rows
+      V_BP        => 36,         -- vertical back porch width in rows
+      H_POL       => '1',        -- horizontal sync pulse polarity (1 = positive, 0 = negative)
+      V_POL       => '1'         -- vertical sync pulse polarity (1 = positive, 0 = negative)
+   );
+
    type video_modes_vector is array(natural range<>) of video_modes_t;
 
    type video_mode_type is (
@@ -194,7 +238,10 @@ package video_modes_pkg is
       C_VIDEO_HDMI_5_4_50   ,  -- PAL  576p in 5:4 @ 50 Hz
       C_VIDEO_HDMI_640_60   ,  -- HDMI 640x480     @ 60 Hz
       C_VIDEO_HDMI_720_5994 ,  -- HDMI 720x480     @ 59.94 Hz
-      C_VIDEO_SVGA_800_60      -- SVGA 800x600     @ 60 Hz
+      C_VIDEO_SVGA_800_60   ,  -- SVGA 800x600     @ 60 Hz
+      -- M2M-UPSTREAM rtg-native-modes (Megamiga 2026-10-15)
+      C_VIDEO_SVGA_1024_60  ,  -- VESA 1024x768    @ 60 Hz
+      C_VIDEO_HDMI_1080_30     -- HDMI 1920x1080   @ 30 Hz
    );
 
    pure function video_mode_to_slv(video_mode : video_mode_type) return std_logic_vector;
@@ -215,6 +262,8 @@ package body video_modes_pkg is
          when C_VIDEO_HDMI_640_60   => return "0100";
          when C_VIDEO_HDMI_720_5994 => return "0101";
          when C_VIDEO_SVGA_800_60   => return "0110";
+         when C_VIDEO_SVGA_1024_60  => return "0111";   -- M2M-UPSTREAM rtg-native-modes
+         when C_VIDEO_HDMI_1080_30  => return "1000";   -- M2M-UPSTREAM rtg-native-modes
       end case;
    end function video_mode_to_slv;
 
@@ -228,6 +277,8 @@ package body video_modes_pkg is
          when "0100" => return C_VIDEO_HDMI_640_60;
          when "0101" => return C_VIDEO_HDMI_720_5994;
          when "0110" => return C_VIDEO_SVGA_800_60;
+         when "0111" => return C_VIDEO_SVGA_1024_60;    -- M2M-UPSTREAM rtg-native-modes
+         when "1000" => return C_VIDEO_HDMI_1080_30;    -- M2M-UPSTREAM rtg-native-modes
          when others => return C_VIDEO_HDMI_16_9_50;
       end case;
    end function slv_to_video_mode;

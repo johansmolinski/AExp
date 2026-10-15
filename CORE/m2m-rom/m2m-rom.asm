@@ -8838,7 +8838,12 @@ SHR_RNOBJ       .BLOCK 8                        ; RENAME: the object
 ; with its blank line), the " AR3 ROM:%s" line (7 manual ROMs) and "Freeze
 ; cartridge" with its blank line (229 items): demand 3867, MENU_HEAP_SIZE 3872,
 ; headroom 5, release HEAP_SIZE -256 (the combined total is unchanged).
-MENU_HEAP_SIZE  .EQU 3872
+;MENU_HEAP_SIZE  .EQU 3872
+; Megamiga 0.6.3 RTG native resolution: the line before "Back to Settings" in
+; the HDMI submenu became the "RTG native resolution" toggle (+22 characters,
+; 229 items): demand 3889, MENU_HEAP_SIZE 3904, headroom 15, release HEAP_SIZE
+; -32 (the combined total is unchanged).
+MENU_HEAP_SIZE  .EQU 3904
 
 #ifndef RELEASE
 
@@ -8893,7 +8898,8 @@ HEAP            .BLOCK 1
 ; the combined total is 32 words smaller: 18528, stack margin 287 words.
 ;HEAP_SIZE       .EQU 14944                      ; 18560 - 3616 = 14944
 ;HEAP_SIZE       .EQU 14912                      ; 18528 - 3616 = 14912
-HEAP_SIZE       .EQU 14656                      ; 18528 - 3872 = 14656
+;HEAP_SIZE       .EQU 14656                      ; 18528 - 3872 = 14656
+HEAP_SIZE       .EQU 14624                      ; 18528 - 3904 = 14624
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

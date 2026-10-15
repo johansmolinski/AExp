@@ -958,6 +958,11 @@ constant C_MENU_HDMI_5_4_50   : natural := 117;
 -- consumed in the qnice_clk domain; vga_to_hdmi.vhd does its own CDC.
 constant C_MENU_HDMI_DVI      : natural := 119;
 
+-- RTG native resolution: single-select, default ON. While the RTG card shows a screenmode
+-- that one of the HDMI modes below shows 1:1 (or 2:1), HDMI switches to that mode instead
+-- of scaling the framebuffer into the HDMI mode of the radio above. Off = always scaled.
+constant C_MENU_RTG_NATIVE    : natural := 120;
+
 -- The HDMI Filter radio is read by the firmware only (dispatcher
 -- LOAD_HDMI_FILTER with ASCAL_USAGE=1), never by any VHDL: these eight
 -- lines exist solely as the scrape source for osm_const.asm.
@@ -1077,6 +1082,25 @@ signal main_uart_rts_n        : std_logic;
 
 attribute async_reg of main_serial_meta : signal is "true";   -- attribute declared above
 attribute async_reg of main_serial_sync : signal is "true";
+
+-- RTG native resolution (C_MENU_RTG_NATIVE): the HDMI mode that shows the RTG screenmode
+-- 1:1, as a code (C_RTGV_*), found in the core clock domain from the RTG registers and
+-- carried into the QNICE clock domain, where it must stay the same for C_RTGV_SETTLE
+-- cycles before HDMI follows it (the driver writes width, height and enable one after
+-- the other, and every HDMI mode change makes the display resync).
+constant C_RTGV_NONE          : std_logic_vector(2 downto 0) := "000";  -- scaled (the menu's HDMI mode)
+constant C_RTGV_640           : std_logic_vector(2 downto 0) := "001";  --  640x480 @ 60 Hz
+constant C_RTGV_800           : std_logic_vector(2 downto 0) := "010";  --  800x600 @ 60 Hz
+constant C_RTGV_1024          : std_logic_vector(2 downto 0) := "011";  -- 1024x768 @ 60 Hz
+constant C_RTGV_720P          : std_logic_vector(2 downto 0) := "100";  -- 1280x720 @ 60 Hz
+constant C_RTGV_1080P         : std_logic_vector(2 downto 0) := "101";  -- 1920x1080 @ 30 Hz
+constant C_RTGV_SETTLE        : natural := 5_000_000;                   -- 100 ms at 50 MHz
+signal main_rtgv              : std_logic_vector(2 downto 0) := C_RTGV_NONE;
+signal qnice_rtgv_cdc         : std_logic_vector(2 downto 0);
+signal qnice_rtgv_last        : std_logic_vector(2 downto 0) := C_RTGV_NONE;
+signal qnice_rtgv_cnt         : natural range 0 to C_RTGV_SETTLE := 0;
+signal qnice_rtgv             : std_logic_vector(2 downto 0) := C_RTGV_NONE;
+signal qnice_rtg_native       : std_logic;
 
 begin
 
@@ -1933,8 +1957,71 @@ begin
    -- Audio and video settings (QNICE clock domain)
    ---------------------------------------------------------------------------------------------
 
-   -- Default (fall-through) is 720p 50 Hz 16:9.
-   qnice_video_mode_o <= C_VIDEO_HDMI_5_4_50   when qnice_osm_control_i(C_MENU_HDMI_5_4_50)    = '1' else
+   -- RTG native resolution: which HDMI mode shows the RTG screenmode 1:1 (or exactly 2:1,
+   -- the doubled low-resolution modes). Everything else stays scaled. fb_* are the RTG
+   -- registers (main.vhd, core clock), read back from the output ports.
+   p_rtgv : process (main_clk)
+      variable w, h : natural range 0 to 4095;
+   begin
+      if rising_edge(main_clk) then
+         w := to_integer(unsigned(fb_hsize_o));
+         h := to_integer(unsigned(fb_vsize_o));
+         main_rtgv <= C_RTGV_NONE;
+         if fb_ena_o = '1' then
+            if    (w =  640 and h = 480) or (w = 320 and h = 240) then main_rtgv <= C_RTGV_640;
+            elsif (w =  800 and h = 600) or (w = 400 and h = 300) then main_rtgv <= C_RTGV_800;
+            elsif (w = 1024 and h = 768) or (w = 512 and h = 384) then main_rtgv <= C_RTGV_1024;
+            elsif (w = 1280 and h = 720) or (w = 640 and h = 360) then main_rtgv <= C_RTGV_720P;
+            elsif (w = 1920 and h = 1080) or (w = 960 and h = 540) then main_rtgv <= C_RTGV_1080P;
+            end if;
+         end if;
+      end if;
+   end process p_rtgv;
+
+   i_cdc_rtgv : entity work.cdc_stable
+      generic map (
+         G_DATA_SIZE    => 3,
+         G_REGISTER_SRC => false              -- main_rtgv is a register
+      )
+      port map (
+         src_clk_i     => main_clk,
+         src_data_i    => main_rtgv,
+         dst_clk_i     => qnice_clk_i,
+         dst_data_o    => qnice_rtgv_cdc
+      ); -- i_cdc_rtgv
+
+   -- HDMI follows a new code only after it stayed the same for C_RTGV_SETTLE cycles: no
+   -- resync for the intermediate states while the driver changes the mode (and the
+   -- multi-bit code is coherent by then).
+   p_rtgv_settle : process (qnice_clk_i)
+   begin
+      if rising_edge(qnice_clk_i) then
+         if qnice_rtgv_cdc /= qnice_rtgv_last then
+            qnice_rtgv_last <= qnice_rtgv_cdc;
+            qnice_rtgv_cnt  <= 0;
+         elsif qnice_rtgv_cnt /= C_RTGV_SETTLE then
+            qnice_rtgv_cnt  <= qnice_rtgv_cnt + 1;
+         else
+            qnice_rtgv      <= qnice_rtgv_last;
+         end if;
+         if qnice_rst_i = '1' then
+            qnice_rtgv_last <= C_RTGV_NONE;
+            qnice_rtgv_cnt  <= 0;
+            qnice_rtgv      <= C_RTGV_NONE;
+         end if;
+      end if;
+   end process p_rtgv_settle;
+
+   qnice_rtg_native <= '1' when qnice_osm_control_i(C_MENU_RTG_NATIVE) = '1' and qnice_rtgv /= C_RTGV_NONE else '0';
+
+   -- Default (fall-through) is 720p 50 Hz 16:9. The RTG modes (M2M-UPSTREAM rtg-native-modes
+   -- adds 1024x768 and 1080p30) only while the RTG card shows one of their resolutions.
+   qnice_video_mode_o <= C_VIDEO_HDMI_640_60   when qnice_rtg_native = '1' and qnice_rtgv = C_RTGV_640   else
+                         C_VIDEO_SVGA_800_60   when qnice_rtg_native = '1' and qnice_rtgv = C_RTGV_800   else
+                         C_VIDEO_SVGA_1024_60  when qnice_rtg_native = '1' and qnice_rtgv = C_RTGV_1024  else
+                         C_VIDEO_HDMI_16_9_60  when qnice_rtg_native = '1' and qnice_rtgv = C_RTGV_720P  else
+                         C_VIDEO_HDMI_1080_30  when qnice_rtg_native = '1' and qnice_rtgv = C_RTGV_1080P else
+                         C_VIDEO_HDMI_5_4_50   when qnice_osm_control_i(C_MENU_HDMI_5_4_50)    = '1' else
                          C_VIDEO_HDMI_4_3_50   when qnice_osm_control_i(C_MENU_HDMI_4_3_50)    = '1' else
                          C_VIDEO_HDMI_16_9_50;
 
@@ -1959,7 +2046,10 @@ begin
    qnice_audio_mute_o         <= '0';                                         -- audio is not muted
    qnice_audio_filter_o       <= '0';                                         -- raw Paula output; "Audio improvements"
                                                                               -- menu item removed for now
-   qnice_zoom_crop_o          <= '0';                                         -- no zoom/crop menu item in milestone 1
+   -- No zoom/crop menu item; '1' = ascal's output window is the whole HDMI picture (not the
+   -- 4:3 window of the 16:9 modes), so a native RTG screenmode is shown 1:1. The input crop
+   -- this also selects is not used while ascal shows the framebuffer.
+   qnice_zoom_crop_o          <= qnice_rtg_native;
    qnice_osm_cfg_scaling_o    <= qnice_osm_control_i(C_MENU_OSM_SCALING);
 
    -- ascal mode: with ASCAL_USAGE=1 (AUSE_CUSTOM) in config.vhd these inputs to

@@ -741,7 +741,7 @@ constant OPTM_ITEMS        : string :=
    " 576p 50 Hz 5:4\n"      &    -- 117: 576p 50 Hz 5:4
    "\n"                     &    -- 118: Line
    " DVI (no sound)\n"      &    -- 119: DVI (no sound) (single-select, default OFF)
-   "\n"                     &    -- 120: Line
+   " RTG native resolution\n" &  -- 120: RTG native resolution (single-select, default ON; was a Line)
    " Back to Settings\n"    &    -- 121: Close submenu / back to Settings
    " HDMI: %s\n"            &    -- 122: HDMI Filter submenu block: "HDMI: %s"
    " HDMI Filter\n"         &    -- 123: Headline "HDMI Filter"
@@ -910,6 +910,7 @@ constant OPTM_G_P2CART     : integer := 53;  -- A600 profile: cartridge radio No
 constant OPTM_G_P3CART     : integer := 54;  -- A1200 profile: cartridge radio None / HRTmon / Action Replay III
 constant OPTM_G_AR3ROM     : integer := 55;  -- Action Replay III ROM (manual CRT/ROM load 6, C_DEV_AMIGA_AR3)
 constant OPTM_G_FREEZE     : integer := 56;  -- Freeze cartridge: momentary, handled by the firmware (OSM_SEL_POST)
+constant OPTM_G_RTGNATIVE  : integer := 57;  -- RTG native resolution toggle: HDMI follows the RTG screenmode; read in HDL (mega65.vhd)
 
 -- Smart dependencies (M2M-UPSTREAM osm-deps): tag a line so that it is only visible
 -- while one of the items of a "mother" group is selected. This is a pure VISIBILITY
@@ -1075,7 +1076,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_HDMI,                                              -- 117: 576p 50 Hz 5:4
                                               OPTM_G_LINE,                                              -- 118: Line
                                               OPTM_G_HDMIDVI + OPTM_G_SINGLESEL,                        -- 119: DVI (no sound) (single-select, default OFF)
-                                              OPTM_G_LINE,                                              -- 120: Line
+                                              OPTM_G_RTGNATIVE + OPTM_G_SINGLESEL + OPTM_G_STDSEL,      -- 120: RTG native resolution (single-select, default ON; was a Line)
                                               OPTM_G_CLOSE + OPTM_G_SUBMENU,                            -- 121: Close submenu / back to Settings
                                               OPTM_G_SUBMENU,                                           -- 122: HDMI Filter submenu block: "HDMI: %s"
                                               OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 123: Headline "HDMI Filter"

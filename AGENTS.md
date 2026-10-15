@@ -123,6 +123,11 @@ Megamiga fork (johansmolinski):
   (READ/WRITE SECTORS in hardware, extent map from the firmware); both SD
   slots at once (`sdslots.vhd`, `sdcards.asm`, card list in the browser,
   `SDx:` paths). Next: `.uaem`.
+- RTG native resolution (branch `rtg-native`, 2026-10-15, M2M exception 19):
+  HDMI follows the RTG screenmode - 640x480 / 800x600 / 1024x768 @ 60 Hz,
+  1280x720 @ 60 Hz, 1920x1080 @ 30 Hz (and their exact halves) shown 1:1;
+  other sizes stay scaled. Menu `Settings > HDMI > RTG native resolution`
+  (item 107, was a Line, default ON).
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
@@ -162,7 +167,7 @@ the dated facts.
 
 ## Repository map
 
-- `M2M/` — the framework. **NEVER modify**, with EIGHTEEN sanctioned
+- `M2M/` — the framework. **NEVER modify**, with NINETEEN sanctioned
   exceptions (all testbeds for a later M2M upstream merge, tagged
   `M2M-UPSTREAM <name>` in-code, greppable): (1) `interlace` — new
   `video_fl_i` input through framework → av_pipeline → digital_pipeline
@@ -343,6 +348,19 @@ the dated facts.
   slot. TBs `~/aexp-work/sdslots` (HDL), `~/aexp-work/sdcards` (+ `mut.py`).
   TBs `~/aexp-work/sdhost`, `~/aexp-work/ideng`. Added in the JS fork
   2026-10-14.
+  (19) `rtg-native-modes` — two HDMI modes for a core that shows a framebuffer
+  in its own resolution: VESA 1024x768 @ 60 Hz (`C_SVGA_1024_768_60`,
+  `C_VIDEO_SVGA_1024_60`) and 1080p @ 30 Hz (`C_HDMI_1080p_30`, VIC 34,
+  `C_VIDEO_HDMI_1080_30`) in `video_modes_pkg.vhd`, entries 7/8 of
+  `VIDEO_MODE_VECTOR` (`framework.vhd`) and of the selectors/full-window lines in
+  `digital_pipeline.vhd`. `video_out_clock.vhd` slot `011` is 65 MHz instead of
+  the 148.5 MHz no mode used (M=39, D=4, CLKOUT0=3, CLKOUT1=15; DRP values from
+  Xilinx's `clk_wiz_v6_0/mmcm_pll_drp_func_7s_mmcm.vh` and the unisim MMCME2_ADV
+  DRP readback, xsim: 74.25 -> 65.00 -> 40 -> 25.2 MHz all lock). 1080p50/60
+  stays impossible (1485 Mbit/s per TMDS lane > the -2 OSERDES, HDMI domain
+  only closes at 74.25 MHz, HyperRAM ~200 MB/s). Megamiga: `mega65.vhd` picks
+  the mode from the RTG registers (`C_MENU_RTG_NATIVE`). Added in the JS fork
+  2026-10-15.
   All other framework fixes
   go into `CORE/CORE.xdc` (constraints) or get documented for upstreaming.
   Git remote `upstream` = sy2002/MiSTer2MEGA65 (master = V2.0.1).

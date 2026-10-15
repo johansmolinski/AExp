@@ -2310,6 +2310,42 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   be renamed (items inserted mid-menu). Package README.txt and notes062.md in
   `~/aexp-builds/release/`.
 
+- **RTG native resolution (branch `rtg-native` from fastdisk `a627e12`,
+  2026-10-15, M2M exception 19 `rtg-native-modes`).** The user: RTG screens
+  were scaled into the OSD's HDMI mode; the panel should get the screenmode's
+  own resolution. Before: `qnice_video_mode_o` came from the HDMI radio only,
+  ascal scaled the framebuffer (fb_* ports, exception 12) into it. Now
+  `mega65.vhd` decodes the RTG registers (`fb_ena/hsize/vsize`, core clock,
+  `p_rtgv`) into a mode code: 640x480 / 800x600 / 1024x768 @ 60 Hz, 1280x720
+  @ 60 Hz, 1920x1080 @ 30 Hz, each also for its exact half (320x240 ...
+  960x540); anything else stays scaled. `cdc_stable` into the QNICE domain,
+  then the code must stay unchanged for 100 ms (`C_RTGV_SETTLE`; the driver
+  writes width, height, enable one after the other and every mode change makes
+  the display resync) before `qnice_video_mode_o` follows; `qnice_zoom_crop_o`
+  = native, so ascal's output window is the whole picture (not the 4:3
+  window of the 16:9 modes). ascal's accumulator starts at hsize + ihsize, so
+  1:1 lands on phase 0 for every pixel (interpolating filters pass it
+  through). Menu: `Settings > HDMI > RTG native resolution`, item 107 (was a
+  Line: no renumbering, OPTM_SIZE 214 unchanged, +22 characters, demand 3608
+  of MENU_HEAP_SIZE 3616). Framework (exception 19): VESA 1024x768@60 and
+  1080p30 (VIC 34, 74.25 MHz like 720p) in `video_modes_pkg.vhd`, entries 7/8
+  in framework.vhd + digital_pipeline.vhd; `video_out_clock.vhd` slot 011 =
+  65 MHz (was 148.5 MHz, unused): M=39 D=4 CLKOUT0=3 CLKOUT1=15, values from
+  Xilinx clk_wiz_v6_0 `mmcm_pll_drp_func_7s_mmcm.vh` (its lock/OPTIMIZED
+  filter lookup reproduces every proven table entry: M=10/17/21/22/31/37/47)
+  and the unisim MMCME2_ADV DRP readback; xsim of the real video_out_clock
+  (scratch TB `tb_voc.vhd`, `~/drp/voc` on fedora): 74.25 -> 65.00 (x5 325)
+  -> 40.00 -> 25.20 MHz, all lock. 1080p50/60 not possible: 148.5 MHz = 1485
+  Mbit/s per TMDS lane (> the -2 OSERDES), the HDMI domain closes only at
+  74.25 MHz, and 1920x1080x60 at 16 bit is ~250 MB/s of HyperRAM reads (the
+  HyperRAM peaks at ~200 MB/s). Known: in 640x480 the 720x576 OSM is clipped
+  (as in every M2M core's 640x480 mode). Build `rtgnative-a` (Fedora, R6):
+  route WNS -0.496, phys_opt -0.092, failing paths only inside the 68040
+  (`cpu_clk`, eaf_o -> fpc, 43 logic levels, 76 % route); HDMI domain met.
+  Re-roll 8/16 (place ExtraTimingOpt, route Explore, phys_opt
+  AggressiveExplore) passed: WNS +0.007, WHS +0.025, bitstream md5
+  `fa790b74`, in `~/aexp-builds/Megamiga-rtgnative-a/`. Hardware test pending.
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).

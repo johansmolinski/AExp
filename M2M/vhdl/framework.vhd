@@ -282,14 +282,18 @@ architecture synthesis of framework is
 -- Constants
 ---------------------------------------------------------------------------------------------
 
-constant VIDEO_MODE_VECTOR    : video_modes_vector(0 to 6) := (
+-- M2M-UPSTREAM rtg-native-modes (Megamiga 2026-10-15): entries 7 and 8 for a core that shows
+-- a framebuffer in its own resolution (original: video_modes_vector(0 to 6))
+constant VIDEO_MODE_VECTOR    : video_modes_vector(0 to 8) := (
    C_HDMI_720p_50,        -- HDMI 1280x720   @ 50 Hz
    C_HDMI_720p_60,        -- 1280x720        @ 60 Hz
    C_HDMI_576p_50,        -- PAL 576p in 4:3 @ 50 Hz
    C_HDMI_576p_50,        -- PAL 576p in 5:4 @ 50 Hz
    C_HDMI_640x480p_60,    -- HDMI 640x480    @ 60 Hz
    C_HDMI_720x480p_5994,  -- HDMI 720x480    @ 59.94 Hz
-   C_SVGA_800_600_60);    -- SVGA 800x600    @ 60 Hz
+   C_SVGA_800_600_60,     -- SVGA 800x600    @ 60 Hz
+   C_SVGA_1024_768_60,    -- VESA 1024x768   @ 60 Hz   (M2M-UPSTREAM rtg-native-modes)
+   C_HDMI_1080p_30);      -- HDMI 1920x1080  @ 30 Hz   (M2M-UPSTREAM rtg-native-modes)
 
 signal video_mode : video_modes_t;
 
@@ -495,7 +499,9 @@ begin
          sys_pps_o         => sys_pps
       ); -- i_clk_m2m
 
-   video_mode <= C_SVGA_800_600_60    when qnice_video_mode_i = C_VIDEO_SVGA_800_60   else
+   video_mode <= C_HDMI_1080p_30      when qnice_video_mode_i = C_VIDEO_HDMI_1080_30  else  -- M2M-UPSTREAM rtg-native-modes
+                 C_SVGA_1024_768_60   when qnice_video_mode_i = C_VIDEO_SVGA_1024_60  else  -- M2M-UPSTREAM rtg-native-modes
+                 C_SVGA_800_600_60    when qnice_video_mode_i = C_VIDEO_SVGA_800_60   else
                  C_HDMI_720x480p_5994 when qnice_video_mode_i = C_VIDEO_HDMI_720_5994 else
                  C_HDMI_640x480p_60   when qnice_video_mode_i = C_VIDEO_HDMI_640_60   else
                  C_HDMI_576p_50       when qnice_video_mode_i = C_VIDEO_HDMI_5_4_50   else
