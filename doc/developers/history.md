@@ -2094,6 +2094,24 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   two; the release notes say to start with the new file. Package README.txt
   and notes061.md in `~/aexp-builds/release/`.
 
+- **MEGAMIGA 0.6.1 RELEASED (2026-10-15, tag `V0.6.1` = `6c0ce23` on main,
+  GitHub release asset `Megamiga-0.6.1-R6.zip`, R6 only).** Fast hard disks
+  (sd-host + ide_engine), both SD slots, shared folder SDCard: read/write,
+  explicit profiles, partitions in the browser, cards without FAT32. The user
+  on fastdisk-e2 (68040, AGA, Z3 RAM, AmigaOS 3.2 installed from SDCard:): "It
+  all seems to work fine!". Release build on the Fedora host (rel061): route
+  WNS -0.378 (68040 RDindex_A -> sdram_ctrl sd_ba, 17 levels), post-route
+  phys_opt +0.038 / WHS +0.036, no re-roll - the same placement as build e
+  (firmware is BRAM contents only), and the bitstream body is byte-identical
+  to the hardware-tested `mega65_r6_fastdisk_e2.bit`. Before the push the
+  fastdisk history was rebased onto main (its five early rebrand commits with
+  the first logo images dropped; main already had the clean rebrand), old tip
+  kept locally as `fastdisk-backup`. Submodules pushed: QNICE
+  `fat32-fastseek` 75873a2, Minimig branch `share` 39b2d9c. A 0.6.0 settings
+  file must not be renamed (items 8/9 inserted). Follow-up: a multicycle or
+  register stage for the 68040 -> sdram_ctrl address path, which every build
+  closes only by a few tens of ps.
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).

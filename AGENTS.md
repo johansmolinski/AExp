@@ -30,9 +30,9 @@ the history file.
   submenus), `V0.3.1` (floppy buffers in SDRAM, master+slave HDF), 0.4.x
   (RTG card + blitter, text/plane masks/read-ahead, PMOD serial), 0.5.0
   (network card), 0.5.1 (AmigaVision fix), 0.5.2 (32K ROM, hard disks
-  on SD card partitions), 0.6.0 (68040, Megamiga.card). All
-  hardware-confirmed by the user except the PMOD serial port (no tester
-  hardware).
+  on SD card partitions), 0.6.0 (68040, Megamiga.card), 0.6.1 (fast hard
+  disks, both SD cards, SDCard:, explicit profiles). All hardware-confirmed
+  by the user, the PMOD serial port by an outside tester.
 
 ### Increment index (details: `doc/developers/history.md`)
 
@@ -95,7 +95,8 @@ Megamiga fork (johansmolinski):
 - 0.5.2: 32K QNICE ROM (M2M exception 15 `rom-32k`, window at
   `0x8000`; HW-confirmed) + hard disks on SD card partitions through HDF
   link files (`MEGAMIGA-PARTITION n`, MBR type `0x7F`, `HDF_LINK`).
-- 0.6.1-dev (branch `share`, from main without Gayle): shared folder - `/amiga`
+- 0.6.1 (released 2026-10-15, tag `V0.6.1`; developed on branches `share` and
+  `fastdisk`, from main without Gayle): shared folder - `/amiga`
   of the SD card as the read-only volume `SDCard:` (MiSTer's shared-folder
   protocol at `$DD4000`, `share_buf.vhd`, QNICE device 0x010B, firmware
   `SHARE_STEP`, Amiga handler `CORE/share/MegamigaFS`, removable volume);
