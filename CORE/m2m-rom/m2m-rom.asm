@@ -3086,6 +3086,21 @@ IDE_SEL         INCRB
                 DECRB
                 RET
 
+; IDE_MULT_REG: the multiple count of drive R8 into the board (READ/WRITE
+; MULTIPLE: the sector engine takes them while it is not 0, the board groups
+; their sectors into blocks of this size). Selects the IDE device.
+; Input: R8: drive, R9: count. Registers preserved.
+IDE_MULT_REG    INCRB
+                RSUB    IDE_SEL, 1
+                MOVE    IDE_ENG_U0, R0
+                CMP     0, R8
+                RBRA    _IMR_U, Z
+                MOVE    IDE_ENG_U1, R0
+_IMR_U          ADD     IDE_ENG_MULT, R0
+                MOVE    R9, @R0
+                DECRB
+                RET
+
 ; IDE_INIT: called once from START_FIRMWARE. No disk, board out of the
 ; autoconfig chain, event shadow in sync with the hardware.
 IDE_INIT        INCRB
@@ -3390,12 +3405,17 @@ _HDFP_SKD       CMP     0, R9
                 MOVE    IDE_DEF_HEADS, @R8      ; (until INITIALIZE DEVICE
                 MOVE    HDF_SPT, R8             ; PARAMETERS changes it)
                 MOVE    IDE_DEF_SPT, @R8
+                MOVE    HDF_MULT, R8            ; READ/WRITE MULTIPLE in blocks
+                MOVE    IDE_MULT_MAX, @R8       ; of 16 (until SET MULTIPLE)
                 MOVE    R6, R8                  ; mounted: bit 0 or 1
                 ADD     1, R8
                 MOVE    HDF_UNITS, R1
                 OR      R8, @R1
                 MOVE    R6, R8                  ; READ/WRITE SECTORS in hardware
                 RSUB    HDF_ENG_SETUP, 1
+                MOVE    R6, R8                  ; the multiple count for the
+                MOVE    IDE_MULT_MAX, R9        ; board (engine, block size)
+                RSUB    IDE_MULT_REG, 1
 
                 ; drive present, board in the chain; restart the Amiga so that
                 ; Kickstart configures the board and boots from the disk
@@ -3918,6 +3938,7 @@ _IDS_WRDONE     RSUB    IDE_WRITE_SECT, 1       ; the CPU has written a sector
                 MOVE    IDE_ST_DRQ, R8          ; next sector: DRQ again
                 XOR     R9, R9
                 MOVE    IDE_FL_WRIRQ, R10
+                RSUB    IDE_MFLAGS, 1           ; (MULTIPLE: within a block)
                 RSUB    IDE_COMMIT, 1
                 RBRA    _IDS_RET, 1
 
@@ -3934,7 +3955,13 @@ _IDS_RET        DECRB
 ; IDE_NEXT: advance to the next sector of a READ/WRITE
 ; Output: C=1 if that was the last sector, else C=0; all registers preserved
 IDE_NEXT        INCRB
-                MOVE    IDE_LBA_HI, R1          ; both addresses first: an ADD
+                MOVE    IDE_BPOS, R0            ; the position in the block
+                ADD     1, @R0                  ; (READ/WRITE MULTIPLE; else
+                MOVE    IDE_BSIZE, R1           ; blocks of 1 sector)
+                CMP     @R1, @R0
+                RBRA    _INX_B, !Z
+                MOVE    0, @R0
+_INX_B          MOVE    IDE_LBA_HI, R1          ; both addresses first: an ADD
                 MOVE    IDE_LBA_LO, R0          ; between ADD and ADDC would
                 ADD     1, @R0                  ; eat the carry
                 ADDC    0, @R1
@@ -3946,6 +3973,31 @@ IDE_NEXT        INCRB
                 RET
 _INX_DONE       OR      0x0004, SR              ; C=1: done
                 DECRB
+                RET
+
+; IDE_MFLAGS: the commit flags R10 of a sector for its place in the block
+; (Megamiga 0.7, READ/WRITE MULTIPLE in blocks of IDE_BSIZE sectors; every other
+; data command has blocks of 1, which leaves R10 as it is): INTRQ only for the
+; first sector of a block, IDE_FL_MORE when the next sector belongs to the same
+; block (the board then holds the CPU's data accesses after this sector until
+; the next commit - a host moves a block without looking at the status).
+; Input/Output: R10: flags; IDE_BPOS and IDE_LEFT describe the sector.
+; Other registers preserved.
+IDE_MFLAGS      INCRB
+                MOVE    IDE_BPOS, R0
+                MOVE    @R0, R0                 ; R0: position in the block
+                CMP     0, R0
+                RBRA    _IMF_1, Z
+                AND     IDE_FL_NOIRQ, R10       ; within a block: no INTRQ
+_IMF_1          MOVE    IDE_LEFT, R1
+                CMP     1, @R1
+                RBRA    _IMF_RET, Z             ; the last sector of the command
+                ADD     1, R0
+                MOVE    IDE_BSIZE, R1
+                CMP     @R1, R0
+                RBRA    _IMF_RET, Z             ; the last sector of the block
+                OR      IDE_FL_MORE, R10
+_IMF_RET        DECRB
                 RET
 
 ; IDE_ERROR: finish the command with ERR set
@@ -3984,6 +4036,12 @@ IDE_CMD_START   INCRB
                 RBRA    _ICS_WR, Z
                 CMP     IDE_CMD_WRITE_NR, R0
                 RBRA    _ICS_WR, Z
+                CMP     IDE_CMD_READ_MULT, R0   ; Megamiga 0.7: READ/WRITE
+                RBRA    _ICS_RDM, Z             ; MULTIPLE, SET MULTIPLE MODE
+                CMP     IDE_CMD_WRITE_MULT, R0
+                RBRA    _ICS_WRM, Z
+                CMP     IDE_CMD_SET_MULT, R0
+                RBRA    _ICS_SETM, Z
 
                 CMP     IDE_CMD_INITDP, R0      ; the CHS geometry for the
                 RBRA    _ICS_OKN, !Z            ; Gayle's scsi.device: sectors
@@ -4007,13 +4065,34 @@ _ICS_OKL        CMP     0xFFFF, @R1
                 RBRA    _ICS_ABRT, Z
                 CMP     @R1++, R0
                 RBRA    _ICS_OKL, !Z
-                MOVE    IDE_ST_READY, R8
+_ICS_OKD        MOVE    IDE_ST_READY, R8
                 XOR     R9, R9
                 MOVE    IDE_FL_IRQ, R10
                 RSUB    IDE_COMMIT, 1
                 MOVE    IDE_STATE, R1
                 MOVE    IDE_ST_IDLE, @R1
                 RBRA    _ICS_RET, 1
+
+                ; SET MULTIPLE MODE: 0 (off) or a power of two up to
+                ; IDE_MULT_MAX, else aborted (ATA); the board gets it first
+_ICS_SETM       MOVE    IDE_TF_COUNT, R1
+                MOVE    @R1, R1
+                AND     0x00FF, R1              ; R1: count
+                RBRA    _ICS_SM1, Z
+                MOVE    R1, R2
+                AND     IDE_MULT_BAD, R2        ; 32 or more
+                RBRA    _ICS_ABRT, !Z
+                MOVE    R1, R2
+                SUB     1, R2
+                AND     R1, R2                  ; not a power of two (17..31
+                RBRA    _ICS_ABRT, !Z           ; are none either)
+_ICS_SM1        MOVE    HDF_MULT, R2
+                MOVE    R1, @R2
+                MOVE    HDF_ACTIVE, R8
+                MOVE    @R8, R8
+                MOVE    R1, R9
+                RSUB    IDE_MULT_REG, 1
+                RBRA    _ICS_OKD, 1
 
 _ICS_ABRT       MOVE    IDE_ERR_ABRT, R9        ; everything else: aborted
                 RSUB    IDE_ERROR, 1
@@ -4028,22 +4107,57 @@ _ICS_ID         RSUB    IDE_IDENTIFY, 1
                 MOVE    IDE_ST_IDWAIT, @R1
                 RBRA    _ICS_RET, 1
 
-_ICS_RD         RSUB    IDE_TF_LBA, 1           ; LBA + count, range-checked
+                ; READ/WRITE MULTIPLE: as READ/WRITE SECTORS in blocks of
+                ; the drive's multiple count (none: aborted). The sector engine
+                ; serves them itself unless they come here (CHS, engine off).
+_ICS_RDM        RSUB    IDE_MBLOCK, 1
+                RBRA    _ICS_ABRT, C
+                RBRA    _ICS_RD2, 1
+_ICS_RD         RSUB    IDE_SBLOCK, 1
+_ICS_RD2        RSUB    IDE_TF_LBA, 1           ; LBA + count, range-checked
                 RBRA    _ICS_RET, C             ; (error: already reported)
                 MOVE    IDE_STATE, R1           ; the first sector is read in
                 MOVE    IDE_ST_RDPREP, @R1      ; the next time slice
                 RBRA    _ICS_RET, 1
 
-_ICS_WR         RSUB    IDE_TF_LBA, 1
+_ICS_WRM        RSUB    IDE_MBLOCK, 1
+                RBRA    _ICS_ABRT, C
+                RBRA    _ICS_WR2, 1
+_ICS_WR         RSUB    IDE_SBLOCK, 1
+_ICS_WR2        RSUB    IDE_TF_LBA, 1
                 RBRA    _ICS_RET, C
                 MOVE    IDE_ST_DRQ, R8          ; DRQ: the CPU fills the buffer
                 XOR     R9, R9
                 MOVE    IDE_FL_WRITE, R10       ; (the first block: no INTRQ)
+                RSUB    IDE_MFLAGS, 1
                 RSUB    IDE_COMMIT, 1
                 MOVE    IDE_STATE, R1
                 MOVE    IDE_ST_WRWAIT, @R1
 
 _ICS_RET        DECRB
+                RET
+
+; IDE_SBLOCK: blocks of 1 sector (READ/WRITE SECTORS)
+; IDE_MBLOCK: blocks of the drive's multiple count (READ/WRITE MULTIPLE);
+;             C=1: the drive has none (the command is to be aborted)
+; Registers preserved.
+IDE_SBLOCK      INCRB
+                MOVE    1, R1
+                RBRA    _ISB_SET, 1
+IDE_MBLOCK      INCRB
+                MOVE    HDF_MULT, R1
+                MOVE    @R1, R1
+                CMP     0, R1
+                RBRA    _ISB_SET, !Z
+                OR      0x0004, SR              ; C=1: no multiple count
+                DECRB
+                RET
+_ISB_SET        MOVE    IDE_BSIZE, R0
+                MOVE    R1, @R0
+                MOVE    IDE_BPOS, R0
+                MOVE    0, @R0
+                AND     0xFFFB, SR              ; C=0
+                DECRB
                 RET
 
 ; IDE_TF_LBA: LBA28 and sector count of a READ/WRITE from the task file
@@ -4227,7 +4341,8 @@ _IRS_DONE       MOVE    IDE_ST_DRQ, R8          ; the CPU may read now
                 CMP     1, @R0
                 RBRA    _IRS_COMMIT, !Z
                 MOVE    IDE_FL_ENDIRQ, R10
-_IRS_COMMIT     RSUB    IDE_COMMIT, 1
+_IRS_COMMIT     RSUB    IDE_MFLAGS, 1           ; (MULTIPLE: within a block)
+                RSUB    IDE_COMMIT, 1
                 MOVE    IDE_STATE, R0
                 MOVE    IDE_ST_RDWAIT, @R0
                 RBRA    _IRS_RET, 1
@@ -4645,6 +4760,14 @@ _IID_CC         MOVE    IDE_IDW_CUR_CYL, R9
                 RSUB    IDE_ID_PUT, 1
                 MOVE    R11, R8
                 ADD     1, R9
+                RSUB    IDE_ID_PUT, 1
+
+                MOVE    HDF_MULT, R8            ; the current multiple count
+                MOVE    @R8, R8                 ; (bit 8: valid; 0 = off)
+                CMP     0, R8
+                RBRA    _IID_M0, Z
+                OR      0x0100, R8
+_IID_M0         MOVE    IDE_IDW_MULT, R9
                 RSUB    IDE_ID_PUT, 1
 
                 DECRB
@@ -5288,6 +5411,7 @@ IDE_ENG_MODE    .EQU    0                   ; offsets in a unit's block
 IDE_ENG_SECT    .EQU    1
 IDE_ENG_BASE    .EQU    3
 IDE_ENG_SHIFT   .EQU    5
+IDE_ENG_MULT    .EQU    6                   ; the multiple count (Megamiga 0.7)
 IDE_ENG_OFF     .EQU    0                   ; modes: firmware (IDE_STEP)
 IDE_ENG_FILE    .EQU    1                   ; extent map of the file
 IDE_ENG_PART    .EQU    2                   ; partition of the card
@@ -5314,6 +5438,8 @@ IDE_FL_IRQ      .EQU    0x0004              ; raise INTRQ (Gayle mode, the rules
 IDE_FL_END      .EQU    0x0008              ; the last buffer -> CPU block ends the command
 IDE_FL_WRIRQ    .EQU    0x0005              ; IDE_FL_WRITE | IDE_FL_IRQ
 IDE_FL_ENDIRQ   .EQU    0x000C              ; IDE_FL_END | IDE_FL_IRQ
+IDE_FL_MORE     .EQU    0x0010              ; the next sector is in the same block
+IDE_FL_NOIRQ    .EQU    0xFFFB              ; AND mask: no IDE_FL_IRQ
 IDE_GAYLE       .EQU    0x8119              ; bit 0: the board is the Gayle (read only)
 IDE_ERR_ABRT    .EQU    0x0004              ; command aborted
 IDE_ERR_IDNF    .EQU    0x0010              ; sector not found (out of range)
@@ -5328,6 +5454,12 @@ IDE_CMD_WRITE_NR .EQU   0x0031
 IDE_SECT_PER_CYL .EQU   1008                ; 16 heads x 63 sectors
 IDE_DEF_HEADS   .EQU    16                  ; the default CHS geometry
 IDE_DEF_SPT     .EQU    63
+IDE_CMD_READ_MULT  .EQU 0x00C4              ; READ MULTIPLE (Megamiga 0.7)
+IDE_CMD_WRITE_MULT .EQU 0x00C5              ; WRITE MULTIPLE
+IDE_CMD_SET_MULT   .EQU 0x00C6              ; SET MULTIPLE MODE
+IDE_MULT_MAX    .EQU    16                  ; the largest block (IDENTIFY 47)
+IDE_MULT_BAD    .EQU    0xFFE0              ; counts of 32 and more
+IDE_IDW_MULT    .EQU    59                  ; IDENTIFY: the current count
 IDE_CMD_INITDP  .EQU    0x0091              ; INITIALIZE DEVICE PARAMETERS
 IDE_MAX_CYL     .EQU    16383               ; CHS maximum
 IDE_IDW_CYL     .EQU    1                   ; IDENTIFY word indexes
@@ -5346,8 +5478,8 @@ IDE_LIDE_AUTO_ID .EQU   1                   ; lide.rom = auto-load ROM 1
 IDE_ASCII_SPACE .EQU    0x0020
 HDF_MIN_SIZE_HI .EQU    1                   ; at least 64 KB
 HDF_MAP_WORDS   .EQU    257                 ; extent map: 64 extents
-HDF_BLK_WORDS   .EQU    284                 ; FDH (15 since the FAT32 write
-                                            ; layer) + 12 + HDF_MAP_WORDS
+HDF_BLK_WORDS   .EQU    285                 ; FDH (15 since the FAT32 write
+                                            ; layer) + 13 + HDF_MAP_WORDS
 
 ; commands that need no data and no action: answered with DRDY right away
 ; (INITIALIZE DEVICE PARAMETERS, SET FEATURES, RECALIBRATE, READ VERIFY,
@@ -5360,7 +5492,8 @@ IDE_CMD_OK_TAB  .DW     0x0091, 0x00EF, 0x0010, 0x0040, 0x0041, 0x0070
 IDE_ID_TAB      .DW     0, 0x0040           ; fixed disk
                 .DW     3, 16               ; heads
                 .DW     6, 63               ; sectors per track
-                .DW     47, 0x8000          ; no READ/WRITE MULTIPLE
+                ;.DW     47, 0x8000          ; no READ/WRITE MULTIPLE
+                .DW     47, 0x8010          ; READ/WRITE MULTIPLE: up to 16
                 .DW     49, 0x0200          ; LBA supported
                 .DW     51, 0x0200          ; PIO mode 2 timing
                 .DW     53, 0x0001          ; words 54..58 valid
@@ -8796,6 +8929,8 @@ IDE_STATE       .BLOCK 1                        ; IDE_ST_*
 IDE_LBA_LO      .BLOCK 1                        ; sector of the command
 IDE_LBA_HI      .BLOCK 1
 IDE_LEFT        .BLOCK 1                        ; sectors left in the command
+IDE_BSIZE       .BLOCK 1                        ; sectors per block (MULTIPLE)
+IDE_BPOS        .BLOCK 1                        ; sector within the block
 HDF_UNITS       .BLOCK 1                        ; mounted drives: bit 0 master
                                                 ; (unit 0), bit 1 slave (unit 1)
 HDF_ACTIVE      .BLOCK 1                        ; drive whose state is in the
@@ -8821,6 +8956,7 @@ HDF_PST_LO      .BLOCK 1                        ; ... and its first block
 HDF_PST_HI      .BLOCK 1
 HDF_HEADS       .BLOCK 1                        ; CHS geometry (INITIALIZE DEVICE
 HDF_SPT         .BLOCK 1                        ; PARAMETERS), see IDE_TF_LBA
+HDF_MULT        .BLOCK 1                        ; multiple count (SET MULTIPLE)
 HDF_MAP         .BLOCK HDF_MAP_WORDS            ; FAT32$FILE_MAP extent map
 HDF_SAVE        .BLOCK HDF_BLK_WORDS            ; the other drive
 HDF_SAVE_END    .BLOCK 1

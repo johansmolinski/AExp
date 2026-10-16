@@ -43,6 +43,9 @@
 --                            buffer -> CPU command: its 256th word ends the command (status
 --                            DRDY|DSC instead of BSY, MiSTer's ATA_STATUS_END); the buffer
 --                            event is raised as usual, the commit that follows is ignored
+--                     bit 4: the data phase started by this commit is followed by another one
+--                            of the same READ/WRITE MULTIPLE block (Megamiga 0.7): after its
+--                            256th word the board holds data accesses until the next commit
 --   0x113-0x117  R/W: sector count, LBA 7:0, 15:8, 23:16, device/head to apply on commit
 --   0x118        R/W: bit 0: master (unit 0) present, bit 1: board enabled (in the autoconfig
 --                     chain), bit 2: slave (unit 1) present (Megamiga 0.3.1)
@@ -51,7 +54,8 @@
 --   0x120-0x125  R/W: sector engine, unit 0: mode (bits 1..0: 0 off, 1 file, 2 partition; bit 2:
 --                     the SD slot, 0 = bottom tray, 1 = back), sectors lo/hi,
 --                     base block lo/hi, log2(sectors per cluster) - see ide_engine.vhd
---   0x128-0x12D  R/W: the same for unit 1
+--   0x126        R/W: unit 0: the multiple count (SET MULTIPLE MODE, 0 = off, Megamiga 0.7)
+--   0x128-0x12E  R/W: the same for unit 1
 --   0x130        R: bit 0 SD card ready (sdhost), bit 1 engine busy
 --   0x131-0x133  R: engine statistics: commands taken, forwarded to the firmware, failed
 --   window 1     W: the extent maps of the engine, unit u at u * 2048 (FAT32$FILE_MAP format)
@@ -62,6 +66,15 @@
 -- sector n while sector n + 1.. arrive, and writes sector n + 1 while sector n goes to the
 -- card. The core side keeps DRQ up across sector boundaries while the ring has data (read) or
 -- room (write). The firmware never sees these commands (the engine forwards all others).
+--
+-- READ/WRITE MULTIPLE (Megamiga 0.7, 0xC4/0xC5): with a multiple count N (SET MULTIPLE MODE,
+-- served by the firmware, which also writes the count into 0x126/0x12E for the engine and the
+-- core side) the sectors come in blocks of N: one DRQ wait and one INTRQ per block instead of
+-- per sector. A host then moves the block's sectors back to back without looking at the
+-- status, so between two sectors of a block the board holds the data access (no DTACK, at
+-- most a few ms: the 68040 bus watchdog is 37 ms) until the next sector is there - from the
+-- engine's ring, or from the firmware (commit flag bit 4). The engine serves them for a unit
+-- with a count, everything else (CHS, no count, engine off) goes to the firmware as before.
 --   window 0xFFFF   the M2M CSR (qnice_csr.vhd): the OSM HDF mount line is a manual
 --                CRT/ROM load into this device, so the Shell writes the file size and
 --                STATUS=OK and then waits for PARSEST. PREP_LOAD_IMAGE moves the read
@@ -218,6 +231,8 @@ architecture synthesis of ide_board is
    signal phase_wr    : std_logic := '0';
    signal ptr         : unsigned(7 downto 0) := (others => '0');
    signal last_blk    : std_logic := '0';      -- the data phase ends the command (flag bit 3)
+   signal blk_more    : std_logic := '0';      -- another sector of the block follows: hold
+                                               -- data accesses while BSY (READ/WRITE MULTIPLE)
 
    -- Gayle mode
    signal intrq       : std_logic := '0';      -- ATA INTRQ
@@ -280,6 +295,9 @@ architecture synthesis of ide_board is
    signal e_avail     : unsigned(C_RING_LOG2 downto 0) := (others => '0');  -- read: full slots; write: free
    signal e_slot      : unsigned(C_RING_LOG2 - 1 downto 0) := (others => '0');
    signal e_err_pend  : std_logic := '0';
+   signal e_bsize     : unsigned(7 downto 0) := x"01";             -- sectors per block (MULTIPLE)
+   signal e_bpos      : unsigned(7 downto 0) := (others => '0');   -- sector within the block
+   signal m_mult0, m_mult1 : std_logic_vector(7 downto 0);
    signal m_acc_d, m_acc_s, m_acc_seen : std_logic := '0';
    signal m_accwr_d, m_accwr_s         : std_logic := '0';
    signal m_rdy_d, m_rdy_s, m_rdy_seen : std_logic := '0';
@@ -308,6 +326,8 @@ architecture synthesis of ide_board is
    signal q_sects0, q_sects1 : std_logic_vector(31 downto 0) := (others => '0');
    signal q_base0, q_base1   : std_logic_vector(31 downto 0) := (others => '0');
    signal q_shift0, q_shift1 : std_logic_vector(2 downto 0) := (others => '0');
+   signal q_mult0, q_mult1   : std_logic_vector(7 downto 0) := (others => '0');
+   signal q_mult0_nz, q_mult1_nz : std_logic;
    signal q_map_addr  : std_logic_vector(11 downto 0);
    signal q_map_q     : std_logic_vector(15 downto 0);
    signal q_fw_cmd    : std_logic;
@@ -366,6 +386,7 @@ begin
          status   <= C_ST_READY;
          intrq    <= '0';
          last_blk <= '0';
+         blk_more <= '0';
          error    <= x"01";                   -- diagnostic code: no error
          tf_devh  <= x"A0";
          ptr      <= (others => '0');
@@ -430,6 +451,9 @@ begin
                      ptr      <= (others => '0');
                      phase_wr <= m_nflags(0);
                      last_blk <= m_nflags(3);
+                     blk_more <= m_nflags(4);    -- Megamiga 0.7: MULTIPLE, see the header
+                  else
+                     blk_more <= '0';            -- (an error ends a block too)
                   end if;
                end if;
                dly_ack <= C_EVT_DELAY;
@@ -465,7 +489,11 @@ begin
                   byte     := data_i(15 downto 8);
                   rdata    <= (others => '1');
 
-                  if rw_i = '1' then
+                  -- Megamiga 0.7: READ/WRITE MULTIPLE - between two sectors of a block the
+                  -- data access waits (no DTACK) until the next sector is there (see header)
+                  if is_tf and reg = 0 and present and status(C_BSY) = '1' and blk_more = '1' then
+                     null;
+                  elsif rw_i = '1' then
                      -------------------------------------------------------------- reads
                      if is_rom then
                         if rom_c_valid = '1' and rom_c_addr = a(15 downto 2) then
@@ -574,6 +602,7 @@ begin
                               if present and status(C_BSY) = '0' then
                                  tf_cmd  <= byte;
                                  intrq   <= '0';
+                                 blk_more <= '0';
                                  status  <= C_ST_BUSY;
                                  error   <= x"00";
                                  dly_cmd <= C_EVT_DELAY;
@@ -594,7 +623,8 @@ begin
                         srst <= byte(2);
                         nien <= byte(1);
                         if byte(2) = '1' then
-                           status <= C_ST_BUSY;
+                           status   <= C_ST_BUSY;
+                           blk_more <= '0';
                         elsif srst = '1' then
                            device_reset;
                         end if;
@@ -643,6 +673,18 @@ begin
                e_slot     <= (others => '0');
                ptr        <= (others => '0');
                e_err_pend <= '0';
+               -- Megamiga 0.7: READ/WRITE MULTIPLE in blocks of the unit's multiple count
+               -- (the engine takes them only for a unit with a count), else blocks of 1
+               e_bpos     <= (others => '0');
+               blk_more   <= '0';
+               e_bsize    <= x"01";
+               if tf_cmd = x"C4" or tf_cmd = x"C5" then
+                  if tf_devh(4) = '0' and m_mult0 /= x"00" then
+                     e_bsize <= unsigned(m_mult0);
+                  elsif tf_devh(4) = '1' and m_mult1 /= x"00" then
+                     e_bsize <= unsigned(m_mult1);
+                  end if;
+               end if;
                if m_accwr_s = '1' then
                   e_mode   <= EM_WRITE;
                   va       := to_unsigned(C_RING, C_RING_LOG2 + 1);
@@ -665,8 +707,9 @@ begin
                else
                   status <= C_ST_READY;
                end if;
-               e_mode <= EM_NONE;
-               e_irq  := true;                    -- WRITE complete
+               e_mode   <= EM_NONE;
+               blk_more <= '0';
+               e_irq    := true;                  -- WRITE complete
             elsif e_mode = EM_READ and m_finerr_s = '1' then
                e_err_pend <= '1';
             end if;
@@ -678,6 +721,15 @@ begin
             m_free_tgl <= not m_free_tgl;
             va         := va - 1;
             e_left     <= e_left - 1;
+            -- the block (MULTIPLE; else every sector is one): blk_more while the next
+            -- sector belongs to the same block
+            if e_bpos + 1 = e_bsize or e_left = 1 then
+               e_bpos   <= (others => '0');
+               blk_more <= '0';
+            else
+               e_bpos   <= e_bpos + 1;
+               blk_more <= '1';
+            end if;
             if e_left = 1 then
                if e_mode = EM_READ then
                   status <= C_ST_READY;           -- all data delivered
@@ -686,28 +738,33 @@ begin
                   status <= C_ST_BUSY;            -- until the last sector is on the card
                end if;
             elsif va /= 0 and not (e_mode = EM_READ and e_err_pend = '1') then
-               e_irq := true;                     -- DRQ stays, ptr wrapped to 0: the
-                                                  -- next block (read or write)
+               -- DRQ stays, ptr wrapped to 0: the next sector (read or write); INTRQ
+               -- only when it starts a block
+               --e_irq := true;
+               e_irq := e_bpos + 1 = e_bsize;
             else
                status <= C_ST_BUSY;
             end if;
          elsif e_mode = EM_READ and status(C_BSY) = '1' then
             if e_err_pend = '1' then
-               status <= C_ST_ERR;
-               error  <= x"40";                   -- UNC
-               e_mode <= EM_NONE;
-               e_irq  := true;
+               status   <= C_ST_ERR;
+               error    <= x"40";                 -- UNC
+               e_mode   <= EM_NONE;
+               blk_more <= '0';                   -- (releases a held data access)
+               e_irq    := true;
             elsif va /= 0 then
                status   <= C_ST_DRQ;
                ptr      <= (others => '0');
                phase_wr <= '0';
-               e_irq    := true;                  -- a block for the CPU
+               --e_irq    := true;                -- a block for the CPU
+               e_irq    := blk_more = '0';        -- a block for the CPU (not within one)
             end if;
          elsif e_mode = EM_WRITE and status(C_BSY) = '1' and e_left /= 0 and va /= 0 then
             status   <= C_ST_DRQ;
             ptr      <= (others => '0');
             phase_wr <= '1';
-            e_irq    := true;                     -- room for the next block
+            --e_irq    := true;                   -- room for the next block
+            e_irq    := blk_more = '0';           -- room for the next block (not within one)
          end if;
          e_avail <= va;
          -- Gayle mode: the engine's commands raise INTRQ like the firmware's commits (the
@@ -756,7 +813,7 @@ begin
 
    i_cdc_to_core : entity work.cdc_stable
       generic map (
-         G_DATA_SIZE    => 68,
+         G_DATA_SIZE    => 84,
          G_REGISTER_SRC => true
       )
       port map (
@@ -773,6 +830,8 @@ begin
          src_data_i(65)           => q_ctrl(1),
          src_data_i(66)           => q_commit,
          src_data_i(67)           => q_ctrl(2),
+         src_data_i(75 downto 68) => q_mult0,
+         src_data_i(83 downto 76) => q_mult1,
          dst_clk_i                => clk_i,
          dst_data_o( 7 downto  0) => m_nstat,
          dst_data_o(15 downto  8) => m_nerr,
@@ -785,7 +844,9 @@ begin
          dst_data_o(64)           => m_present,
          dst_data_o(65)           => m_board_ena,
          dst_data_o(66)           => m_commit_tgl,
-         dst_data_o(67)           => m_present1
+         dst_data_o(67)           => m_present1,
+         dst_data_o(75 downto 68) => m_mult0,
+         dst_data_o(83 downto 76) => m_mult1
       ); -- i_cdc_to_core
 
    i_cdc_to_qnice : entity work.cdc_stable
@@ -817,6 +878,9 @@ begin
 
    -- read ring: the engine writes (QNICE clock), the CPU reads (core clock)
    rr_addr <= std_logic_vector(e_slot) & std_logic_vector(ptr);
+
+   q_mult0_nz <= '1' when q_mult0 /= x"00" else '0';
+   q_mult1_nz <= '1' when q_mult1 /= x"00" else '0';
 
    i_rring : entity work.tdp_ram
       generic map (
@@ -901,6 +965,8 @@ begin
          cfg_mode1_i  => q_mode1(1 downto 0),
          cfg_slot0_i  => q_mode0(2),
          cfg_slot1_i  => q_mode1(2),
+         cfg_mult0_i  => q_mult0_nz,
+         cfg_mult1_i  => q_mult1_nz,
          cfg_sects0_i => q_sects0,
          cfg_sects1_i => q_sects1,
          cfg_base0_i  => q_base0,
@@ -1013,12 +1079,14 @@ begin
                   when x"23" => q_base0(15 downto 0)   <= qnice_data_i;
                   when x"24" => q_base0(31 downto 16)  <= qnice_data_i;
                   when x"25" => q_shift0 <= qnice_data_i(2 downto 0);
+                  when x"26" => q_mult0  <= qnice_data_i(7 downto 0);
                   when x"28" => q_mode1  <= qnice_data_i(2 downto 0);
                   when x"29" => q_sects1(15 downto 0)  <= qnice_data_i;
                   when x"2A" => q_sects1(31 downto 16) <= qnice_data_i;
                   when x"2B" => q_base1(15 downto 0)   <= qnice_data_i;
                   when x"2C" => q_base1(31 downto 16)  <= qnice_data_i;
                   when x"2D" => q_shift1 <= qnice_data_i(2 downto 0);
+                  when x"2E" => q_mult1  <= qnice_data_i(7 downto 0);
                   when others => null;
                end case;
                if qnice_addr_i(7 downto 4) = x"2" then
@@ -1030,6 +1098,8 @@ begin
             q_ctrl  <= "000";
             q_mode0 <= "000";
             q_mode1 <= "000";
+            q_mult0 <= (others => '0');
+            q_mult1 <= (others => '0');
          end if;
       end if;
    end process qnice_write_proc;
@@ -1080,12 +1150,14 @@ begin
                when x"23" => d := q_base0(15 downto 0);
                when x"24" => d := q_base0(31 downto 16);
                when x"25" => d(2 downto 0) := q_shift0;
+               when x"26" => d(7 downto 0) := q_mult0;
                when x"28" => d(2 downto 0) := q_mode1;
                when x"29" => d := q_sects1(15 downto 0);
                when x"2A" => d := q_sects1(31 downto 16);
                when x"2B" => d := q_base1(15 downto 0);
                when x"2C" => d := q_base1(31 downto 16);
                when x"2D" => d(2 downto 0) := q_shift1;
+               when x"2E" => d(7 downto 0) := q_mult1;
                when x"30" => d(1 downto 0) := q_eng_busy & sd_ready_i;
                when x"31" => d := q_st_acc;
                when x"32" => d := q_st_fwd;

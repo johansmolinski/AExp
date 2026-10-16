@@ -2439,7 +2439,39 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     reached -0.155 at best, stopped after the 0.6.3 rebase. Build `dev070-b`
     (on 0.6.3, incremental from `rel063`, IMPL_MARGIN flow): met timing on the
     first pass, WNS +0.066, WHS +0.007, 115.0k LUTs, 116 BRAM tiles;
-    `~/aexp-builds/Megamiga-dev070-b`. NOT hardware-tested yet.
+    `~/aexp-builds/Megamiga-dev070-b`. HW (2026-10-16, 68040 + Z3 Fast RAM,
+    OS/Kickstart 3.2, both on the 4-bit bus): Gayle boots (KS 3.1 too), but
+    2.4 MB/s against 4.8 MB/s with lide.device. Not the hardware: the engine
+    reads 8 sectors ahead, Gayle and RIPPLE cycles cost the same; scsi.device
+    waits for one INTRQ per 512-byte sector (INT2 server, Signal, task switch:
+    ~100 us each), lide.device polls.
+  - READ/WRITE MULTIPLE (2026-10-16, for scsi.device and Linux's libata, which
+    uses it when IDENTIFY word 59 has a valid count): one INTRQ per block of N
+    sectors. Board: per-unit count registers 0x126/0x12E (-> engine: takes
+    0xC4/0xC5 for a unit with a count; -> core side through the CDC: block
+    size), `blk_more`: between two sectors of a block a data-register access
+    is HELD (no DTACK) while BSY - a host moves a block without status reads;
+    the engine path sets it itself, the firmware path by commit flag bit 4
+    (IDE_FL_MORE); INTRQ only at block starts. Firmware: SET MULTIPLE (0, 1,
+    2, 4, 8, 16, else ABRT; writes the board register before the commit),
+    per-drive HDF_MULT in the swapped block (HDF_BLK_WORDS 285), default 16 at
+    mount, READ/WRITE MULTIPLE on the firmware path (CHS, engine off; no count
+    -> ABRT) via IDE_MBLOCK/IDE_MFLAGS/IDE_NEXT's block position, IDENTIFY
+    word 47 0x8010, word 59 0x0100 | count. lide.device also switches to
+    MULTIPLE (it sends SET MULTIPLE with word 47's count). The held access is
+    at most a firmware sector (the 68040 bus watchdog is 37 ms). ROM
+    31669/32768, HEAP 0xAF72.
+    Tests: tb_ide_g (+ SET MULTIPLE, READ/WRITE MULTIPLE on file/partition,
+    counts not a multiple of N, slow CPU, firmware path with a held access
+    > 5 us, no count -> ABRT, a card error within a block releases the held
+    access): 4/4 PASS; `~/aexp-work/ideng/mut_mult.sh`: 11/11 killed
+    (no hold, hold also during DRQ, INTRQ per sector / on resume, flag bit 4
+    ignored, block size 1 or of the other unit, C5 as a read, engine without
+    MULTIPLE or with the other unit's count), `last_more` equivalent (a stale
+    blk_more after the last sector holds nothing). fw-ide4
+    (agent-extended: 10-word records, MULTIPLE flags per sector, per-drive
+    counts, remount -> 16, CHS, word 47/59, board register): 6 cases PASS,
+    110/110 mutants killed, no firmware bug.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

@@ -55,6 +55,10 @@ entity ide_engine is
       cfg_mode1_i    : in  std_logic_vector(1 downto 0);
       cfg_slot0_i    : in  std_logic := '0';
       cfg_slot1_i    : in  std_logic := '0';
+      -- Megamiga 0.7: the unit has a multiple count (SET MULTIPLE MODE): READ/WRITE
+      -- MULTIPLE (0xC4/0xC5) are served too; the board groups the sectors into blocks
+      cfg_mult0_i    : in  std_logic := '0';
+      cfg_mult1_i    : in  std_logic := '0';
       cfg_sects0_i   : in  std_logic_vector(31 downto 0);
       cfg_sects1_i   : in  std_logic_vector(31 downto 0);
       cfg_base0_i    : in  std_logic_vector(31 downto 0);
@@ -287,8 +291,13 @@ begin
                end if;
                lba  <= x"0" & unsigned(tf_i(51 downto 48)) & unsigned(tf_i(47 downto 24));
                left <= cnt;
+               -- Megamiga 0.7: + READ/WRITE MULTIPLE while the unit has a multiple count
+               --ok := tf_i(54) = '1' and sd_ready_i = '1' and
+               --      (c = x"20" or c = x"21" or c = x"30" or c = x"31");
                ok := tf_i(54) = '1' and sd_ready_i = '1' and
-                     (c = x"20" or c = x"21" or c = x"30" or c = x"31");
+                     (c = x"20" or c = x"21" or c = x"30" or c = x"31" or
+                      ((c = x"C4" or c = x"C5") and
+                       ((tf_i(52) = '0' and cfg_mult0_i = '1') or (tf_i(52) = '1' and cfg_mult1_i = '1'))));
                if tf_i(52) = '1' then
                   ok := ok and cfg_mode1_i /= "00" and
                         resize(unsigned(tf_i(51 downto 48)) & unsigned(tf_i(47 downto 24)), 33) +
@@ -299,8 +308,10 @@ begin
                         resize(cnt, 33) <= resize(unsigned(cfg_sects0_i), 33);
                end if;
                if ok then
-                  wr      <= c(4);                 -- 0x30/0x31
-                  acc_wr  <= c(4);
+                  --wr      <= c(4);                 -- 0x30/0x31
+                  --acc_wr  <= c(4);
+                  wr      <= c(4) or (c(7) and c(0));   -- 0x30/0x31/0xC5
+                  acc_wr  <= c(4) or (c(7) and c(0));
                   fin_err <= '0';
                   moved   <= (others => '0');
                   freed   <= (others => '0');
