@@ -2571,6 +2571,22 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     interrupt -> first data read ~150 us, BSY 1-1.5 %); 3.2's scsi.device
     takes ~270 us per sector against 3.1's ~170 us - its own copy, nothing
     the board can change.
+  - HW (2026-10-16): an INTERMITTENT HANG with turbo Kickstart when SysInfo
+    starts from the hard disk (frozen screen, pointer gone, drive LED off):
+    dev070-g hung with lide.device and worked with Gayle (KS 3.1); dev070-f
+    hung with Gayle and worked with lide.device (4.7 MB/s). Never seen before
+    turbo Kickstart. lide.device on 3.2 measured 2.1 MB/s once (4.5 before).
+    Ruled out in simulation: CACR handling (the TG68K keeps CACR bit 3, so
+    cpu_cache_new clears only once after reset - a ROM stress routine with
+    CACR on/off/clear, ROM table reads and Chip RAM writes gives the same
+    checksum with and without turbo kick, kick2.S), SDRAM refresh (longest gap
+    2.3 us either way; tb020 now prints it), bank-0 conflicts (one access per
+    slot), stray writes into the Kickstart (rom_readonly). Diagnostics builds
+    (commit 1203113, Minimig ad7438b): cpu_wrapper dbg_addr/dbg_state/
+    dbg_stall into the IDE snapshot (entries 12/13), IDE_DIAG prints every
+    1.34 s: `dev070-h` (cachecfg 110, WNS +0.040) and `dev070-h2` (010 =
+    turbo kick for instruction fetches only, built from a copy,
+    ~/aexp-work/build-src/dev070-h2, WNS 0.000).
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
