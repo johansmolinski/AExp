@@ -708,9 +708,13 @@ architecture synthesis of main is
 
    -- MiSTer2MEGA65 (AExp Amiga 500 port), June 2026:
    -- frame-locked pixel-CE, transplanted from MiSTer Minimig.sv:653-675
-   -- (ce_out generator) onto the single 28.375 MHz clock. 28 MHz sampling is
-   -- deliberately NOT implemented: OCS cannot do SHRES and the M2M pipeline
-   -- cannot take it (video_mixer LINE_LENGTH=768, ascal IHRES=1024). See
+   -- (ce_out generator) onto the single 28.375 MHz clock. MiSTer runs that
+   -- generator at 113.5 MHz; here the hires rate is half of video_clk, which
+   -- the analog scandoubler only accepts as a plain line doubler
+   -- (VGA_LINEDOUBLER in globals.vhd). 28 MHz sampling is deliberately NOT
+   -- implemented: the M2M pipeline cannot take it (the line doubler needs two
+   -- clocks per pixel, ascal IHRES=1024); Megamiga averages SuperHires pixel
+   -- pairs instead (video_shres_proc). See
    -- .research/INTEGRATION-SPEC-video-audio.md section 3.
    signal fs_res           : std_logic_vector(1 downto 0) := "00";
    signal frame_hires      : std_logic := '0';
@@ -1527,7 +1531,10 @@ begin
    video_vblank_o <= vid_vblank;
 
    -- frame-locked pixel clock enable: 7.09 MHz for all-lores frames,
-   -- 14.19 MHz for frames that contained any hires line
+   -- 14.19 MHz for frames that contained any hires line. 14.19 MHz is half of
+   -- video_clk, so the analog scandoubler runs as a plain line doubler
+   -- (VGA_LINEDOUBLER in globals.vhd); MiSTer's Hq2x needs four clocks per
+   -- pixel and would drop every second hires pixel.
    video_ce_proc : process (clk_main_i)
    begin
       if rising_edge(clk_main_i) then

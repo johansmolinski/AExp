@@ -137,7 +137,9 @@ Megamiga fork (johansmolinski):
 - 0.6.4 (on main since 2026-10-16, not released; more to come): A4000 profile (68040, AGA, 2 MB Chip,
   Zorro III RAM; radio line 13 + its separator 14, Profile Settings block
   77..94, everything after it +19, OPTM_SIZE 248, keys `a4000.*`), A600 default 2 MB Chip; fixes
-  the Volume/OSM Scaling/Stereo ranges (2 lines off since 0.6.1).
+  the Volume/OSM Scaling/Stereo ranges (2 lines off since 0.6.1); analog
+  Standard VGA shows every hires/SuperHires pixel (upstream AExp `f4b5fdb`,
+  plain line doubler instead of Hq2x, M2M exception 20).
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
@@ -177,7 +179,7 @@ the dated facts.
 
 ## Repository map
 
-- `M2M/` — the framework. **NEVER modify**, with NINETEEN sanctioned
+- `M2M/` — the framework. **NEVER modify**, with TWENTY sanctioned
   exceptions (all testbeds for a later M2M upstream merge, tagged
   `M2M-UPSTREAM <name>` in-code, greppable): (1) `interlace` — new
   `video_fl_i` input through framework → av_pipeline → digital_pipeline
@@ -378,6 +380,19 @@ the dated facts.
   costs a few stale lines, not a frame shifted down. TBs `~/aexp-work/arbprio`,
   `~/aexp-work/ascalcatch` (red/green on the original ascal). Added in the JS
   fork 2026-10-15.
+  (20) `line-doubler` — taken over from upstream AExp (`f4b5fdb`, WIP-V2-B2,
+  AExp issues #35/#36): `scandoubler.v` gets a parameter `LINEDOUBLER` and a
+  plain line doubler (two-line LUTRAM buffer, one pixel per input enable, each
+  line read twice) in place of MiSTer's Hq2x, which needs 4 clocks per pixel
+  and at Megamiga's 2 (14.19 MHz enable on the 28.375 MHz video clock) dropped
+  every second hires - and averaged SuperHires - pixel on analog Standard VGA.
+  Selected by `VGA_LINEDOUBLER` in globals.vhd through framework.vhd ->
+  av_pipeline.vhd -> analog_pipeline.vhd (`G_VGA_LINEDOUBLER`) ->
+  `video_mixer.sv`; the default keeps Hq2x bit-identical. Needs a regular
+  pixel enable during vblank (Megamiga's runs freely). Frees Hq2x's 5.5 BRAM
+  tiles; lowres arrives one output line (32 us) earlier. Bench
+  `CORE/sim/video/run_scandoubler.sh` (upstream's, on the real Minimig raster).
+  Added in the JS fork 2026-10-16.
   All other framework fixes
   go into `CORE/CORE.xdc` (constraints) or get documented for upstreaming.
   Git remote `upstream` = sy2002/MiSTer2MEGA65 (master = V2.0.1).
@@ -486,7 +501,10 @@ the dated facts.
 6. **Video into the framework**: active-HIGH syncs (minimig outputs are
    active-low — inverted in main.vhd), blanks must cover syncs, video CE
    is frame-locked 7.09/14.19 MHz and **never** 28 MHz (M2M line buffers:
-   video_mixer LINE_LENGTH=768, ascal IHRES=1024),
+   video_mixer LINE_LENGTH=768, ascal IHRES=1024; the analog line doubler
+   needs two clocks per pixel). 14.19 MHz is only 2 clocks per pixel, which
+   MiSTer's Hq2x cannot double (it drops every second pixel): keep
+   `VGA_LINEDOUBLER` in globals.vhd `true` (M2M exception 20),
    `qnice_scandoubler_o='1'` (15.625 kHz core!).
 7. **OPTM_PAUSE stays false** — pause_i is not implemented in the core.
 8. Commit as **sy2002 <code@sy2002.de>** (repo-local git config is set).

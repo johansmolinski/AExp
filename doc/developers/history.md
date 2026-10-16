@@ -2461,6 +2461,30 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   Build `a4000-b` (`REF=rel063`): first pass WNS +0.002 / WHS +0.007, Shell
   ROM 31338/32768; pushed with the 248-byte megamiga-0.6.4.cfg.
 
+- **Analog Standard VGA: every hires pixel (2026-10-16, branch
+  `eval-linedoubler` from main, upstream AExp `f4b5fdb` = WIP-V2-B2, AExp
+  issues #35/#36).** Upstream found that hires screens lose every second pixel
+  column on the analog output in the Standard VGA mode: the framework's
+  scandoubler doubles lines with MiSTer's Hq2x, which spends four clock enables
+  per input pixel, and the core enables hires pixels at 14.19 MHz on the
+  28.375 MHz video clock - two. Megamiga is affected identically (same
+  `video_clk_o <= main_clk`, same `video_ce_o`, scandoubler.v/video_mixer.sv/
+  hq2x.sv byte-identical to upstream's before the fix), and additionally its
+  SuperHires lines, whose averaged pixel pairs ride the same 14 MHz enable.
+  HDMI and both 15 kHz modes bypass the scandoubler (not affected, which is
+  why nobody noticed). Taken over: the framework part (M2M exception 20
+  `line-doubler`: `scandoubler.v` `LINEDOUBLER` + the plain line doubler,
+  `video_mixer.sv`, analog_pipeline/av_pipeline/framework generics),
+  `VGA_LINEDOUBLER true` in globals.vhd, the comments in main.vhd (merged by
+  hand with the SuperHires note) and upstream's bench `CORE/sim/video/`
+  (`run_scandoubler.sh`, `check_scandoubler.py`, two TBs); not taken: AExp's
+  docs, CORE_VERSION, `run_all.sh`/`run_long.sh` (Megamiga has no CORE/sim
+  gate). Quick bench on Megamiga's sources (incl. the AGA Minimig raster,
+  `q_minimig` 574/574 lines complete): all 9 line-doubler checks PASS; the two
+  Hq2x red controls (`q_hires_red`, `q_lores_same`) do not elaborate on Icarus
+  12.0 (`hq2x.sv:40`: whole-array assignment not supported), so the red half
+  is unproven here - upstream ran it on a newer Icarus.
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).
