@@ -2630,6 +2630,18 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     4.6, like the earlier one-off 2.1): the diagnostics show irq->access 93
     instead of 31 us and the CPU sampled at Z3 $403DB0xx instead of the
     board - something else ran on the CPU during that test.
+  - **Merged into main (2026-10-16, 011e767)** on top of 0.6.4 (A4000
+    profile, PrismRTG). Only the menu collided: main's A4000 layout keeps
+    the blank line after each profile's chipset radio, dev-0.7.0 had made
+    it the Gayle toggle; merged = main's layout with the toggle on lines
+    29/47/65/83 (C_PROF_GAYLE = 6 unchanged), the A4000 one off by default
+    (its Kickstart drives the A4000 IDE at $DD2000, not the Gayle), groups
+    OPTM_G_P1..P4GAYLE = 65..68 (main's A4000 groups keep 58..64). OPTM_SIZE
+    stays 248; +84 characters: demand 4320 (= 135 x 32), MENU_HEAP_SIZE
+    4320, release HEAP_SIZE 14208. Firmware 31788/32768 words. The IDE
+    diagnostics (IDE_DIAG, UART) are still on.
+    Build `main-merge-b` (incremental from dev070-i): WNS +0.101, WHS +0.007;
+    `~/aexp-builds/Megamiga-main-merge-b`.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
