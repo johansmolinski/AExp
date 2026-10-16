@@ -1383,9 +1383,9 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   (templates 8/16/32 bit, registers kept, defaults, three templates back to
   back with a 400-line one, masked template/fill/copy over a background).
 
-- **Megamiga 0.4.2, SERIAL PORT ON PMOD1 (2026-10-09, R4/R5/R6). Built, NOT
-  hardware-tested (the user has no PMOD module; released for outside
-  testers).** Paula's UART (Minimig `rxd/txd`) and CIA-B /CTS /RTS reach the
+- **Megamiga 0.4.2, SERIAL PORT ON PMOD1 (2026-10-09, R4/R5/R6). Built
+  without a PMOD module here, released for outside testers; HARDWARE-CONFIRMED
+  by a tester with an RS-232 module on 2026-10-12.** Paula's UART (Minimig `rxd/txd`) and CIA-B /CTS /RTS reach the
   PMOD1 header through the new M2M exception 13 `pmod-pins`; MegaST pin
   layout (lo: CTS in, TXD out, RXD in, RTS out; hi: MIDI OUT = TXD, MIDI IN
   ANDed into RXD), inputs through a 2-FF ASYNC_REG synchronizer, pull-ups in
@@ -1720,8 +1720,9 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   SysInfo's Dhrystone simply gains nothing from it (no write-allocate: a
   store miss writes through). The OS's CopyBack flag (CPU, SysInfo) cannot be
   switched off on a 68040 (no CACR bit); 68040.library sets it per page.
-  The user's HDF copy runs at about 25 KB/s (15 MB in ~10 min); the user
-  thinks that is not new - to look at later.
+  The user's HDF copy seemed slow (a rough, untimed impression of about
+  25 KB/s); the user thinks that is not new - to measure properly later. The
+  figure was taken out of the 0.6.0 release notes on 2026-10-12.
   MERGE + CPU MENU (2026-10-11, the user: "call the 040 done for now", merge
   to main with 0.5.2, a 68040 option in the CPU menu, the 68020 back). main
   (0.5.2) merged into cpu040 (history.md conflict: both entries kept). The
@@ -2309,6 +2310,336 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   QNICE unchanged (75873a2). Settings file 229 bytes; a 0.6.1 file must not
   be renamed (items inserted mid-menu). Package README.txt and notes062.md in
   `~/aexp-builds/release/`.
+- **Megamiga 0.7.0-dev, GAYLE IDE (branch `gayle`, Minimig branch `gayle`,
+  2026-10-12).** The HDF drives can sit on the A600/A1200 Gayle instead of the
+  RIPPLE board, per profile: "Gayle IDE controller" toggle on lines 25 / 39 /
+  53 (the blank line after the chipset radio, again no renumbering, OPTM_SIZE
+  211, `C_PROF_GAYLE` 6, groups `OPTM_G_P1..3GAYLE` 51..53), default ON for
+  A600 and A1200, OFF for A500 (Kickstart 1.3/2.04 have no scsi.device). Old
+  0.6 settings files have 0 in those bytes = Gayle off everywhere.
+  Design: the SAME drive backend (ide_board.vhd + the firmware ATA server),
+  only a second register decode in front of it - not Minimig's gayle.v/ide.v,
+  whose HPS protocol the firmware does not speak.
+  - cpu_wrapper.v: `gayle_ena` input; at reset `gayle_on <= ide_ena &
+    gayle_ena`, `ac_ide <= ide_ena & ~gayle_ena` (the board is either
+    autoconfig'd or the Gayle); `sel_gayle` = $DA0000-$DAFFFF and
+    $DE1000-$DE1FFF -> ext_sel (and the chipreq/ext_done exclusion), so Gayle
+    cycles never touch the chip bus (Minimig's own gayle stays disabled,
+    hdc_ena = 0). Without a mounted disk (board_ena 0) there is no Gayle at
+    all, as there was no RIPPLE board.
+  - ide_board.vhd: `gayle_i` (static), `addr_i` widened to 18:1 (bit 18 tells
+    $DE from $DA), `irq_o`. Decode as the real Gayle / gayle.v: CS1 at
+    $DA0000 and $DA2000 (register = A4..A2, A1 ignored: a long access is two
+    data words), CS2 at $DA1000/$DA3000 (+$18 = device control / alternate
+    status, other CS2 registers float), $DA8000 card status (bit 15 = IDE irq
+    | cs_mask 5, the written cs_mask/cs), $DA9000 bit 15 = INTRQ (writes
+    ignored, as gayle.v), $DAA000 enable bit 15, $DAB000 config 15..12, Gayle
+    ID 1,1,0,1 on bit 15 (a write restarts). ATA INTRQ: set by a commit with
+    flag bit 2 unless nIEN (control bit 1), cleared by a status read or a
+    command write, by SRST and reset; irq_o = gayle_i & INTRQ & enable,
+    OR'ed into minimig's eth_irq input in main.vhd (INT2). New commit flag
+    bit 3 (END): the 256th word of the last buffer->CPU block ends the
+    command (DRDY|DSC instead of BSY, MiSTer ide.cpp's ATA_STATUS_END); 0x119
+    reads the mode for the firmware.
+  - Firmware: commit flags follow MiSTer ide.cpp (the drive the A600/A1200
+    scsi.device is proven against): IRQ on every commit that ends BSY except
+    the first DRQ of a WRITE; the last READ sector and IDENTIFY carry END and
+    finish WITHOUT a commit (a late READY commit could land on the host's next
+    command - the race END would otherwise open); at a command event a
+    pending buffer event of the previous command is consumed. IDE_LIDE_OK is
+    true in Gayle mode (no lide.rom needed). RIPPLE mode also gets END (lide
+    polls; ready slightly earlier); irq_o stays 0 there.
+    MENU_HEAP_SIZE 3552 -> 3616 (demand 3591), release HEAP_SIZE 21440;
+    ROM 29012/32768 words.
+  - amiga_cold_boot: a Gayle toggle change cold-boots like the CPU radio.
+  - Tests (all out of repo):
+    - `~/aexp-work/ide/tb_ide_board.vhd` (`run_tb.sh`): RIPPLE PASS (and
+      irq_o never set) + `-gG_GAYLE=true` PASS (ID sequence, registers, irq
+      per ide.cpp rules, alt status does not clear, nIEN, enable, END,
+      command-write clear, reset). `mut.py`: 30 mutants (12 old + 18 Gayle)
+      all killed.
+    - `~/aexp-work/fw-ide2` (real firmware in the QNICE emulator): harness
+      checks the flags of every commit (T_DRQFL: read 04 / last 0C, write
+      01 then 05; final 04), no commit after END (stepped on even records,
+      left pending into the next command on odd ones), Gayle PREP without
+      lide.rom (lide field 2). 5 cases PASS (case_s64 regenerated without
+      the partition part: the emulator seeks with 32-bit byte offsets and
+      the 64-sectors-per-cluster image puts it past 4 GiB - an emulator
+      limit, old firmware fails it the same way). Mutants: 12 new all
+      killed; old `sel_swap_short` survives as before (all4.log).
+    - `~/aexp-work/gayle/e2e` (Verilator: real fx68k + cpu_wrapper + the
+      ghdl-converted ide_board + firmware model): RIPPLE prog PASS (0 irqs),
+      `prog_gayle.S` PASS (Gayle ID through $DE1000, no IDE board in the
+      autoconfig chain, IDENTIFY by MOVE.L, READ via $DA0000/$DA2000, WRITE
+      without irq on the first DRQ, nIEN, ABRT, RESET instruction; 6 irqs,
+      no Gayle cycle on the chip bus). Its TG68K variant fails at the first
+      autoconfig step in RIPPLE mode too (the old bench's bus models), so
+      the 32-bit CPUs are covered by e2e040 instead.
+    - `~/aexp-work/cpu060/e2e040/run_gayle.sh`: the release configuration
+      (C_CPU040 2, OPTS 311, both cores) with GAYLE 0/1 x TG68K/AP68040
+      (prog.S `.if GAYLE`: no IDE board in the chain, MOVEM bursts on
+      $DA2000, $DE1010 and a long on $DA9010 go to the board).
+      All four PASS (32 / 38 board accesses). Mutants (`mut_gayle.sh`):
+      `sel_gayle` without $DE1 -> $BA17, the IDE board still autoconfig'd
+      as the Gayle -> $BA90, both killed on both CPUs.
+  - R6 build `~/aexp-builds/Megamiga-gayle-a`: WNS +0.017, WHS +0.017,
+    85.9k LUTs (0.6.0 85.8k). NOT hardware-tested yet.
+  - HW round 1 (2026-10-12): HDToolBox found the Gayle drive but called it
+    "Unknown", existing RDBs were not seen, "Save Changes to Drive" gave
+    error -3. Cause: the scsi.device of Kickstart 3.1 (and older) addresses
+    CHS (DEVH bit 6 clear), which the firmware aborted (lide.device always
+    sends LBA). FIX (firmware only): IDE_TF_LBA converts CHS with the drive's
+    geometry like MiSTer ide.cpp, LBA = (C x heads + H) x spt + S - 1 (head <
+    heads, 1 <= S <= spt, else IDNF); per-drive HDF_HEADS/HDF_SPT in the
+    swapped drive block (HDF_BLK_WORDS 281), default 16/63 at mount; INITIALIZE
+    DEVICE PARAMETERS (0x91) sets them (count 0 = 256 sectors, heads = DEVH
+    3..0 + 1); IDENTIFY words 54..58 report the current geometry and capacity.
+    fw-ide2: CHS reads at the default geometry, after 0x91 15/32 and 1/256
+    (cylinder > 255, LBA > 65535), a CHS write read back by LBA, three IDNF
+    cases; 13 CHS mutants killed; case_p's old "CHS -> ABRT" records became
+    0x91 16/63. Firmware 29148 words. Delivered as a patched bitstream
+    (`Megamiga-gayle-b`, see below).
+  - HW round 2 (2026-10-12, gayle-b, tested on the 68040 only):
+    HARDWARE-CONFIRMED - with Gayle on, the existing drives are recognized,
+    and a new HDF was partitioned in HDToolBox (Save Changes to Drive works)
+    and its partitions formatted; with Gayle off, the Zorro board with
+    lide.device still works. Not yet tested: 68000/68020, A600 + KS 2.05.
+  - Rebased onto main 0.6.2 (2026-10-15, branch `dev-0.7.0`, old tip kept as
+    `dev-0.7.0-backup` 8c5bbe1) and again onto 0.6.3 (2026-10-16, the 0.6.2
+    state kept as `dev-0.7.0-pre063`; Minimig branch `dev-0.7.0` = the Gayle
+    cpu_wrapper commit on ec7b7f0). Merges: `ext_sel`/`chipreq` with
+    `sel_ide | sel_gayle | sel_eth | sel_shr`; the Gayle toggles on lines
+    28 / 46 / 64 (the blank line after each chipset radio, main's menu),
+    groups `OPTM_G_P1/P2/P3GAYLE` (57/58/59, 58/59/60 since 0.6.3 took 57
+    for RTG native resolution); main.vhd `eth_irq_i or ide_irq_i` next to the
+    cart ports; MENU_HEAP_SIZE 3936 (demand 3930), release HEAP_SIZE 14592
+    (on 0.6.3: demand 3889 + 63 = 3952, MENU_HEAP_SIZE 3968, HEAP_SIZE 14560); HDF_BLK_WORDS 284 (main's FDH 15 + 12 + the
+    CHS geometry); the CHS default geometry is set after HDF_DSLOT/HDF_DGEN,
+    so partitions get it too. Firmware: ROM 31502/32768, banks 3850/3621/1477.
+  - NEW with the rebase: the sector engine (0.6.1) serves READ/WRITE SECTORS
+    in hardware, but only the firmware raised INTRQ, so in Gayle mode
+    scsi.device waited for an interrupt that never came. ide_board.vhd now
+    raises INTRQ for engine transfers (Gayle mode, unless nIEN) like a real
+    drive: per READ block (DRQ set), per WRITE block after the first, at the
+    WRITE end and on errors; none after the last READ block. RIPPLE mode is
+    unchanged (lide.device polls). CHS commands still go to the firmware
+    (the engine only takes LBA, DEVH bit 6). Tests: `~/aexp-work/ideng/run_g.sh`
+    (`tb_ide_g.vhd`, scsi.device-style: wait for INTRQ, read status, move
+    the block) PASS for both scenarios x GAYLE true/false; red check (engine
+    without INTRQ) fails; mutants "no per-block IRQ" and "no write-end IRQ"
+    killed. `~/aexp-work/ide/run_tb.sh R=<checkout>` IDE BOARD TB + GAYLE PASS.
+    `~/aexp-work/fw-ide4` (fw-ide3 + Gayle: CHS, GAYLE records, END/IRQ flags,
+    0x91, IDENTIFY 54..58): 6 cases PASS, 84/84 mutants killed.
+    e2e040 `run_gayle.sh` (W=worktree): all four PASS (32 / 38 board
+    accesses). tb020.sv had to tie the 0.6.2 inputs `cart_ar3`/`cart_ovl` to
+    0: left open, `cart_ar3` made the Zorro II RAM decode X and the TG68K
+    stalled in the Fast RAM fill (the AP68040 uses the fp_* port, so it passed).
+  - R6 build `dev070-a` (on 0.6.2, no reference): WNS -0.335 (68040 core and
+    TG68K -> sdram_ctrl paths, none in the Gayle logic); 11 re-roll attempts
+    reached -0.155 at best, stopped after the 0.6.3 rebase. Build `dev070-b`
+    (on 0.6.3, incremental from `rel063`, IMPL_MARGIN flow): met timing on the
+    first pass, WNS +0.066, WHS +0.007, 115.0k LUTs, 116 BRAM tiles;
+    `~/aexp-builds/Megamiga-dev070-b`. HW (2026-10-16, 68040 + Z3 Fast RAM,
+    OS/Kickstart 3.2, both on the 4-bit bus): Gayle boots (KS 3.1 too), but
+    2.4 MB/s against 4.8 MB/s with lide.device. Not the hardware: the engine
+    reads 8 sectors ahead, Gayle and RIPPLE cycles cost the same; scsi.device
+    waits for one INTRQ per 512-byte sector (INT2 server, Signal, task switch:
+    ~100 us each), lide.device polls.
+  - READ/WRITE MULTIPLE (2026-10-16, for scsi.device and Linux's libata, which
+    uses it when IDENTIFY word 59 has a valid count): one INTRQ per block of N
+    sectors. Board: per-unit count registers 0x126/0x12E (-> engine: takes
+    0xC4/0xC5 for a unit with a count; -> core side through the CDC: block
+    size), `blk_more`: between two sectors of a block a data-register access
+    is HELD (no DTACK) while BSY - a host moves a block without status reads;
+    the engine path sets it itself, the firmware path by commit flag bit 4
+    (IDE_FL_MORE); INTRQ only at block starts. Firmware: SET MULTIPLE (0, 1,
+    2, 4, 8, 16, else ABRT; writes the board register before the commit),
+    per-drive HDF_MULT in the swapped block (HDF_BLK_WORDS 285), default 16 at
+    mount, READ/WRITE MULTIPLE on the firmware path (CHS, engine off; no count
+    -> ABRT) via IDE_MBLOCK/IDE_MFLAGS/IDE_NEXT's block position, IDENTIFY
+    word 47 0x8010, word 59 0x0100 | count. lide.device also switches to
+    MULTIPLE (it sends SET MULTIPLE with word 47's count). The held access is
+    at most a firmware sector (the 68040 bus watchdog is 37 ms). ROM
+    31669/32768, HEAP 0xAF72.
+    Tests: tb_ide_g (+ SET MULTIPLE, READ/WRITE MULTIPLE on file/partition,
+    counts not a multiple of N, slow CPU, firmware path with a held access
+    > 5 us, no count -> ABRT, a card error within a block releases the held
+    access): 4/4 PASS; `~/aexp-work/ideng/mut_mult.sh`: 11/11 killed
+    (no hold, hold also during DRQ, INTRQ per sector / on resume, flag bit 4
+    ignored, block size 1 or of the other unit, C5 as a read, engine without
+    MULTIPLE or with the other unit's count), `last_more` equivalent (a stale
+    blk_more after the last sector holds nothing). fw-ide4
+    (agent-extended: 10-word records, MULTIPLE flags per sector, per-drive
+    counts, remount -> 16, CHS, word 47/59, board register): 6 cases PASS,
+    110/110 mutants killed, no firmware bug.
+    Build `dev070-c` (incremental from dev070-b): WNS +0.013, WHS +0.007;
+    `~/aexp-builds/Megamiga-dev070-c`. HW (2026-10-16, same setup: 68040,
+    Z3 Fast RAM, KS/OS 3.2, 4-bit card): Gayle 2.4 -> 2.9 MB/s, so the 3.2
+    scsi.device uses MULTIPLE; the rest is its own per-block Wait()/copy
+    overhead. The user accepts it ("If that's a limitation of how Gayle works,
+    then it's fine. Lide is still an option for most use cases"): lide.device
+    (Gayle off) stays the fast choice for AmigaOS, Gayle is for the Kickstart's
+    own scsi.device and Linux. lide.device with MULTIPLE not measured yet.
+  - HW (2026-10-16, dev070-c): 68020 + Z3 Fast RAM: Gayle 1 MB/s, lide.device
+    4.5 MB/s. 8 KB at 1 MB/s = ~8 ms per block: lost interrupts, recovered by
+    a timeout. Cause: `$DA9000` bit 15 followed INTRQ (as gayle.v), which a
+    status read clears; the engine raises the next block's INTRQ the moment a
+    block ends when the ring already holds it (the slower 68020 copy keeps the
+    ring full, the 68040 mostly empties it), and a status read before the
+    INT2 server ran lost it (the server then saw $DA9000 = 0: not mine). On
+    MiSTer the ARM side is slow enough that this never shows. FIX (as a real
+    Gayle, UAE, and what Linux's pata_gayle expects: it acknowledges with
+    0x7C): bit 15 of $DA9000 is a LATCH, set when INTRQ rises, cleared by
+    writing 0 to it (a 1 changes nothing) or a reset; INT2 = latch and
+    $DAA000. RED/GREEN: tb_ide_g's Gayle host now reads the status right after
+    every block and serves interrupts like pata_gayle (latch bit, status,
+    0x7C) - before the fix "file read 21+30 slow CPU" hangs (INTRQ timeout) in
+    both Gayle scenarios, after it 4/4 PASS. tb_ide_board's Gayle part moved to
+    the latch semantics (status read clears INTRQ = $DA8000 bit 15, not the
+    latch; 1 written to bit 15 changes nothing): PASS. mut_mult.sh + 3 latch
+    mutants (INT2 from INTRQ, acknowledge ignored, latch = level): killed (14/14).
+    Build `dev070-d` (incremental from dev070-c): WNS +0.030, WHS +0.007;
+    `~/aexp-builds/Megamiga-dev070-d`. HW: no change (68020 + Gayle still
+    1 MB/s, 68040 2.9 MB/s) - kept because it is what a real Gayle does.
+  - Diagnostics (2026-10-16, commit 74009c5, build `dev070-e` WNS +0.008):
+    free-running counters in ide_board.vhd (commands, data words, interrupts
+    latched/acknowledged, clocks latched/held/BSY/interrupt->next access, core
+    clocks, status/alternate status reads, last command), snapshot on a
+    request (0x134) through cdc_stable, read at 0x140..0x157; `IDE_DIAG`
+    firmware (m2m-rom.asm, firmware-only switch) prints them as one line on
+    the debug UART (115200) about every 1.34 s while data moves;
+    `~/aexp-work/remote/idediag.py` (this machine: /dev/ttyUSB1) decodes them.
+    tb_ide_g reads the snapshot and checks it. HW (SysInfo, 68020 / 68040,
+    Z3 Fast RAM, KS/OS 3.2): 020+Gayle 1.09 MB/s: 16 commands/s x 128
+    sectors, 133 interrupts/s (MULTIPLE 16 works), interrupt -> first data
+    read 230 us, BSY 2 %, held 0 %: the card is never the limit; the copy
+    itself takes ~460 us per sector (~1.8 us per data word; 0.1 us in
+    simulation). 040+Gayle 2.90 MB/s: interrupt -> access 86 us. lide.device
+    polls (~100 status reads per sector). CAUSE: `cachecfg` is "000" in
+    main.vhd and cpu_wrapper's turbo chip/kick paths are off ("self-disable
+    with cpucfg[1]=0 (68000)" - an AExp-era comment nobody revisited for the
+    TG68K in 0.3.0), so the TG68K fetches every Kickstart instruction over the
+    16-bit chip bus: scsi.device's word copy loop (in ROM) crawls, lide.device
+    (RAM, MOVEM) does not, the 68040's caches hide it.
+  - TURBO KICKSTART for the TG68K (2026-10-16, the user: "Yes, implement turbo kick
+    for the 68020"): main.vhd cachecfg "110" (bit 1 turbo kick, bit 2 also data
+    reads); cpu_wrapper (Minimig dev-0.7.0 360284d): sel_kickram only for
+    $F80000-$FFFFFF (the $E00000 1 MB-ROM half stays on the chip bus),
+    turbokick_d also requires ~cpu040_sel (the AP68040 keeps its tested path).
+    The fetch goes through ramsel -> main.vhd fram_addr "00" & [22:1] -> bank 0
+    of sdram_ctrl, the same {bank,row,column} the chipset port uses for the
+    kick bank ([22:19] = 1111) - i.e. the words the Kickstart loader wrote;
+    sdram_ctrl's CPU cache snoops every chipset-port write (snoop_act =
+    chipWE), so a Kickstart reload leaves no stale lines. Turbo chip stays off.
+    Test `~/aexp-work/cpu060/e2e040/run_kick.sh` (prog_kick.S + kick.S at
+    $F80000; the ROM in the SDRAM model with one signature, on the chip bus
+    with another): TG68K + 110 -> SDRAM path, TG68K + 000 and AP68040 + 110 ->
+    chip bus, the loop checksum equal on all paths; 2000-iteration ROM loop:
+    290,668 cycles over the chip bus vs 20,572 with turbo kick and the
+    instruction cache on (CACR, as Kickstart sets it) = 14x; uncached 146,556.
+    Build `dev070-f` (incremental from dev070-e): WNS +0.029, WHS +0.007;
+    `~/aexp-builds/Megamiga-dev070-f`. e2e040 `run_gayle.sh` with cachecfg
+    110 (now its default): all four PASS (32 / 38 board accesses). HW
+    (dev070-f, SysInfo): 68020 + Gayle + KS 3.2 1.09 -> 1.9 MB/s (interrupt ->
+    first data read 230 -> ~150 us); KS 3.1 0.5 MB/s (first measurement):
+    READ MULTIPLE 128 sectors too, but BSY 79 % and ~220 status reads per
+    sector - its scsi.device addresses CHS, which the engine forwarded, so the
+    firmware fetched every sector (~870 us each).
+  - CHS IN THE ENGINE (2026-10-16, the user: "Yes, implement CHS in the
+    engine"): per-unit geometry register 0x127/0x12F ((heads - 1) << 12 |
+    sectors per track, 0 = none), written by the firmware (IDE_GEOM_REG) at
+    mount (16/63) and by INITIALIZE DEVICE PARAMETERS before its commit;
+    ide_engine.vhd E_CHS1..3: (cylinder x heads + head) x spt + sector - 1,
+    then the LBA range check; CHS invalid for the geometry (sector 0 or > spt,
+    head >= heads), past the end or without a geometry still goes to the
+    firmware (IDNF). The LBA path is unchanged (accept/forward became the
+    procedures take/forward). tb_ide_g: a CHS host mode (the LBA tests' data
+    checks, sent as CHS) - READ/WRITE MULTIPLE and SECTORS at 4/17, cylinder
+    300 at 1/1, served by the engine (the firmware sees nothing); sector 0
+    (also at C1/H1), head 4 of 4, sector 18 of 17, past the end, unit
+    without geometry -> firmware: 4/4 PASS. mut_mult.sh: 9 CHS mutants
+    killed (sector 0 at C0/H0 alone did not kill "no sector-0 check": LBA -1
+    wraps and fails the range check - hence the C1/H1 case). Firmware ROM
+    31784/32768. fw-ide4 (agent): the geometry register after every mount
+    (0xF03F), after 0x91 (the commanded drive, observed AT the commit, the
+    other drive unchanged), untouched by other commands, and with IDENTIFY;
+    geometries incl. 16/256 and 2/255; 6 cases PASS, 118/118 mutants killed
+    (8 new), no firmware bug. Build `dev070-g` (incremental from dev070-f):
+    WNS +0.056, WHS +0.007; `~/aexp-builds/Megamiga-dev070-g`.
+    HW (2026-10-16, SysInfo, 68020 + Z3 Fast RAM + Gayle): KS 3.1 0.5 -> 3.0
+    MB/s, KS 3.2 1.9 MB/s. Board side identical for both (READ MULTIPLE 128,
+    interrupt -> first data read ~150 us, BSY 1-1.5 %); 3.2's scsi.device
+    takes ~270 us per sector against 3.1's ~170 us - its own copy, nothing
+    the board can change.
+  - HW (2026-10-16): an INTERMITTENT HANG with turbo Kickstart when SysInfo
+    starts from the hard disk (frozen screen, pointer gone, drive LED off):
+    dev070-g hung with lide.device and worked with Gayle (KS 3.1); dev070-f
+    hung with Gayle and worked with lide.device (4.7 MB/s). Never seen before
+    turbo Kickstart. lide.device on 3.2 measured 2.1 MB/s once (4.5 before).
+    Ruled out in simulation: CACR handling (the TG68K keeps CACR bit 3, so
+    cpu_cache_new clears only once after reset - a ROM stress routine with
+    CACR on/off/clear, ROM table reads and Chip RAM writes gives the same
+    checksum with and without turbo kick, kick2.S), SDRAM refresh (longest gap
+    2.3 us either way; tb020 now prints it), bank-0 conflicts (one access per
+    slot), stray writes into the Kickstart (rom_readonly). Diagnostics builds
+    (commit 1203113, Minimig ad7438b): cpu_wrapper dbg_addr/dbg_state/
+    dbg_stall into the IDE snapshot (entries 12/13), IDE_DIAG prints every
+    1.34 s: `dev070-h` (cachecfg 110, WNS +0.040) and `dev070-h2` (010 =
+    turbo kick for instruction fetches only, built from a copy,
+    ~/aexp-work/build-src/dev070-h2, WNS 0.000).
+    dev070-h on HW (KS 3.1 + Gayle, SysInfo from the hard disk): hung again;
+    NOT a bus stall (waits <= 0.3 us, the CPU keeps running), the IDE board
+    idle and every interrupt acknowledged (the last command, WRITE SECTORS 1,
+    completed). The CPU loops in graphics.library 40.24 ($F98828-$F9889C of
+    KS 3.1 40.68: walk a list via (12,a2) until (54,sp), nodes in Z3 Fast RAM
+    $4009E44C): a list in Fast RAM became circular = Fast RAM data corrupted
+    earlier. Next: dev070-h2 (ROM data reads on the chip bus).
+    dev070-h2 hung too (same loop, the list walked into address 0): not the
+    data-read path. CAUSE (found in simulation, 2026-10-16): the CPU cache's
+    SNOOP in sdram_ctrl (cpu_cache_new: chipset writes update cached lines),
+    never exercised before turbo Kickstart because the cache only held Fast
+    RAM. sdram_ctrl set chipWE (= snoop_act) at every chip slot and cleared it
+    only on reset, so after a chipset write it stayed 1 through the following
+    non-chip slots, and the snoop used the LIVE chip bus (chipAddr, chipWR) -
+    whose address lines carry the CPU's current address when there is no DMA,
+    i.e. exactly the Kickstart address the CPU was fetching through the cache:
+    the snoop "updated" that cached code with bus junk (blitter-heavy
+    Workbench launches = many chipset writes). Upstream MiSTer has the same
+    code. tb020 `CHIPLOAD` drives the chip port like minimig_sram_bridge (a
+    chipset write every 5th 7 MHz cycle, a DMA read, else the CPU's banked
+    address with junk on the data bus): RED - the turbo ROM loop (I-cache on)
+    ran off the rails (result never written in 3M cycles), the chip-bus
+    reference passed. FIX (Minimig d7d29e2): chipWE is cleared at every slot
+    start and set only in a chipset write slot, and the snoop gets the
+    write's own address/data/byte selects captured with it (snoopAddr/WR/BS)
+    - each alone closes this path. GREEN: k1c 3dd07332 in 20,576 cycles
+    under load, k1 (uncached), k0c reference pass.
+    Also under load: the ROM stress routine (kick2.S) gives a142f3a0 with
+    and without turbo Kickstart; run_gayle.sh (no chip load) 4/4 PASS. Build
+    `dev070-i` (the fix + diagnostics, cachecfg 110; incremental from
+    dev070-h): WNS +0.039, WHS +0.007; `~/aexp-builds/Megamiga-dev070-i`.
+    HW (dev070-i): KS 3.1 Gayle 3.0 MB/s, lide.device 4.6 MB/s. It still hung
+    once, in the same graphics.library list walk ($F98828-$F9889E, a
+    linked list (next at +12) that never reaches its end pointer), and the
+    user then saw that the hangs came with the experimental PrismRTG driver
+    on an RTG screen: with Picasso96 restored everything works. So the
+    remaining hang is PrismRTG's (see "PrismRTG driver"), not the core; the
+    snoop bug above was real regardless (red/green in simulation).
+    KS 3.2 (dev070-i): 020 Gayle 1.9 / lide 4.6, 040 Gayle 2.8 / lide 4.6;
+    KS 3.1: 040 Gayle 2.2, lide 4.6. One 020+3.2+lide run gave 1.4 (the next
+    4.6, like the earlier one-off 2.1): the diagnostics show irq->access 93
+    instead of 31 us and the CPU sampled at Z3 $403DB0xx instead of the
+    board - something else ran on the CPU during that test.
+- **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
+  save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
+  `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
+  verifies that the 16 QNICE ROM block RAMs (32K x 1 each, `ram_slice_begin` =
+  bit) hold exactly the saved image, sets the new INIT_xx (computed by
+  `patch_firmware.py`) and runs write_bitstream: about 2.5 minutes. An
+  identity patch reproduced the build's .bit byte for byte except the header
+  date. The read-only data (m2m-rodata) was a 700-cell LUT ROM; `i_rodata` now
+  has RAM_STYLE_SELECT "block" so builds from now on can patch it too (older
+  builds refuse a rodata change). Menu/help texts are in config.vhd = HDL.
 
 - **RTG native resolution (branch `rtg-native` from fastdisk `a627e12`,
   2026-10-15, M2M exception 19 `rtg-native-modes`).** The user: RTG screens

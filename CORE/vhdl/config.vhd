@@ -116,7 +116,7 @@ constant HELP_1 : string :=
    " need that. 880 KB ADF disk images,\n" &
    " and real Amiga disks in the MEGA65\n" &
    " drive, all read and write. Hard disks:\n" &
-   " two HDF images, need /amiga/lide.rom.\n" &
+   " two HDF images (Gayle IDE, or lide.rom)\n" &
    " Space on a mounted HDF line ejects it.\n" &
    " The HDF browser also offers the SD\n" &
    " card partitions of MBR type 0x7F.\n\n" &
@@ -582,6 +582,13 @@ constant OPTM_DY           : natural := 29;
 --            [Megamiga: superseded by the per-profile CPU radio, lines 19..21 / 33..35 /
 --            47..49: 68000 / 68020 / 68040; the 68040 line took the place of the blank
 --            line after the radio, so no line moved and OPTM_SIZE is unchanged.]
+--   lines 29 / 47 / 65 / 83: per-profile "Gayle IDE controller" toggle (Megamiga 0.7,
+--            C_PROF_GAYLE = 6 in mega65.vhd; the blank line after the chipset radio, so
+--            again no line moved): on = the HDFs are on the A600/A1200 Gayle IDE for the
+--            Kickstart's own scsi.device, off = on the RIPPLE-compatible Zorro II board
+--            with lide.device (/amiga/lide.rom). Default on for A600 and A1200, off for
+--            A500 (Kickstart 1.3 has no scsi.device) and A4000 (its Kickstart drives
+--            the A4000 IDE at $DD2000, not the Gayle). A change cold-boots the Amiga.
 --   lines 157..159: chipset radio (C_MENU_CHIPSET_OCS = 157, C_MENU_CHIPSET_AGA = 159):
 --            OCS / ECS (158, default) / AGA -> userio 0xF3 G/E bits (amiga_config.vhd);
 --            a change cold-boots the Amiga. AGA = Minimig-AGA with the chip48 wide read.
@@ -651,7 +658,7 @@ constant OPTM_ITEMS        : string :=
    " Chipset: OCS\n"        &    --  26: A500: chipset OCS
    " Chipset: ECS\n"        &    --  27: A500: chipset ECS
    " Chipset: AGA\n"        &    --  28: A500: chipset AGA
-   "\n"                     &    --  29: Line (this profile)
+   " Gayle IDE controller\n" &  --  29: A500: Gayle IDE toggle (was a Line)
    " Chip RAM: 512 KB\n"    &    --  30: A500: chip RAM 512 KB
    " Chip RAM: 1 MB\n"      &    --  31: A500: chip RAM 1 MB
    " Chip RAM: 2 MB\n"      &    --  32: A500: chip RAM 2 MB
@@ -669,7 +676,7 @@ constant OPTM_ITEMS        : string :=
    " Chipset: OCS\n"        &    --  44: A600: chipset OCS
    " Chipset: ECS\n"        &    --  45: A600: chipset ECS
    " Chipset: AGA\n"        &    --  46: A600: chipset AGA
-   "\n"                     &    --  47: Line (this profile)
+   " Gayle IDE controller\n" &  --  47: A600: Gayle IDE toggle (was a Line)
    " Chip RAM: 512 KB\n"    &    --  48: A600: chip RAM 512 KB
    " Chip RAM: 1 MB\n"      &    --  49: A600: chip RAM 1 MB
    " Chip RAM: 2 MB\n"      &    --  50: A600: chip RAM 2 MB
@@ -687,7 +694,7 @@ constant OPTM_ITEMS        : string :=
    " Chipset: OCS\n"        &    --  62: A1200: chipset OCS
    " Chipset: ECS\n"        &    --  63: A1200: chipset ECS
    " Chipset: AGA\n"        &    --  64: A1200: chipset AGA
-   "\n"                     &    --  65: Line (this profile)
+   " Gayle IDE controller\n" &  --  65: A1200: Gayle IDE toggle (was a Line)
    " Chip RAM: 512 KB\n"    &    --  66: A1200: chip RAM 512 KB
    " Chip RAM: 1 MB\n"      &    --  67: A1200: chip RAM 1 MB
    " Chip RAM: 2 MB\n"      &    --  68: A1200: chip RAM 2 MB
@@ -705,7 +712,7 @@ constant OPTM_ITEMS        : string :=
    " Chipset: OCS\n"        &    --  80: A4000: chipset OCS
    " Chipset: ECS\n"        &    --  81: A4000: chipset ECS
    " Chipset: AGA\n"        &    --  82: A4000: chipset AGA
-   "\n"                     &    --  83: Line (this profile)
+   " Gayle IDE controller\n" &  --  83: A4000: Gayle IDE toggle (was a Line)
    " Chip RAM: 512 KB\n"    &    --  84: A4000: chip RAM 512 KB
    " Chip RAM: 1 MB\n"      &    --  85: A4000: chip RAM 1 MB
    " Chip RAM: 2 MB\n"      &    --  86: A4000: chip RAM 2 MB
@@ -938,6 +945,10 @@ constant OPTM_G_P4SLOW     : integer := 61;  -- A4000 profile: Slow RAM toggle
 constant OPTM_G_P4FAST     : integer := 62;  -- A4000 profile: Zorro II Fast RAM toggle
 constant OPTM_G_P4Z3       : integer := 63;  -- A4000 profile: Zorro III RAM toggle
 constant OPTM_G_P4CART     : integer := 64;  -- A4000 profile: cartridge radio None / HRTmon / Action Replay III
+constant OPTM_G_P1GAYLE    : integer := 65;  -- A500 profile: Gayle IDE controller toggle (Megamiga 0.7)
+constant OPTM_G_P2GAYLE    : integer := 66;  -- A600 profile: Gayle IDE controller toggle
+constant OPTM_G_P3GAYLE    : integer := 67;  -- A1200 profile: Gayle IDE controller toggle
+constant OPTM_G_P4GAYLE    : integer := 68;  -- A4000 profile: Gayle IDE controller toggle (off by default)
 
 -- Smart dependencies (M2M-UPSTREAM osm-deps): tag a line so that it is only visible
 -- while one of the items of a "mother" group is selected. This is a pure VISIBILITY
@@ -1012,7 +1023,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P1CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  26: A500: chipset OCS
                                               OPTM_G_P1CS + OPTM_DEP(OPTM_G_PROFILE, 0),                --  27: A500: chipset ECS
                                               OPTM_G_P1CS + OPTM_DEP(OPTM_G_PROFILE, 0),                --  28: A500: chipset AGA
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 0),                --  29: Line (this profile)
+                                              OPTM_G_P1GAYLE + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  29: A500: Gayle IDE toggle
                                               OPTM_G_P1CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  30: A500: chip RAM 512 KB
                                               OPTM_G_P1CHIP + OPTM_DEP(OPTM_G_PROFILE, 0),              --  31: A500: chip RAM 1 MB
                                               OPTM_G_P1CHIP + OPTM_DEP(OPTM_G_PROFILE, 0),              --  32: A500: chip RAM 2 MB
@@ -1030,7 +1041,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P2CS + OPTM_DEP(OPTM_G_PROFILE, 1),                --  44: A600: chipset OCS
                                               OPTM_G_P2CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  45: A600: chipset ECS
                                               OPTM_G_P2CS + OPTM_DEP(OPTM_G_PROFILE, 1),                --  46: A600: chipset AGA
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 1),                --  47: Line (this profile)
+                                              OPTM_G_P2GAYLE + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  47: A600: Gayle IDE toggle
                                               OPTM_G_P2CHIP + OPTM_DEP(OPTM_G_PROFILE, 1),              --  48: A600: chip RAM 512 KB
                                               OPTM_G_P2CHIP + OPTM_DEP(OPTM_G_PROFILE, 1),              --  49: A600: chip RAM 1 MB
                                               OPTM_G_P2CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  50: A600: chip RAM 2 MB
@@ -1048,7 +1059,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P3CS + OPTM_DEP(OPTM_G_PROFILE, 2),                --  62: A1200: chipset OCS
                                               OPTM_G_P3CS + OPTM_DEP(OPTM_G_PROFILE, 2),                --  63: A1200: chipset ECS
                                               OPTM_G_P3CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  64: A1200: chipset AGA
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 2),                --  65: Line (this profile)
+                                              OPTM_G_P3GAYLE + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  65: A1200: Gayle IDE toggle
                                               OPTM_G_P3CHIP + OPTM_DEP(OPTM_G_PROFILE, 2),              --  66: A1200: chip RAM 512 KB
                                               OPTM_G_P3CHIP + OPTM_DEP(OPTM_G_PROFILE, 2),              --  67: A1200: chip RAM 1 MB
                                               OPTM_G_P3CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  68: A1200: chip RAM 2 MB
@@ -1066,7 +1077,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P4CS + OPTM_DEP(OPTM_G_PROFILE, 3),                  --  80: A4000: chipset OCS
                                               OPTM_G_P4CS + OPTM_DEP(OPTM_G_PROFILE, 3),                  --  81: A4000: chipset ECS
                                               OPTM_G_P4CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3),  --  82: A4000: chipset AGA
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 3),                  --  83: Line (this profile)
+                                              OPTM_G_P4GAYLE + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  83: A4000: Gayle IDE toggle
                                               OPTM_G_P4CHIP + OPTM_DEP(OPTM_G_PROFILE, 3),                --  84: A4000: chip RAM 512 KB
                                               OPTM_G_P4CHIP + OPTM_DEP(OPTM_G_PROFILE, 3),                --  85: A4000: chip RAM 1 MB
                                               OPTM_G_P4CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  86: A4000: chip RAM 2 MB

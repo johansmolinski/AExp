@@ -144,6 +144,17 @@ Megamiga fork (johansmolinski):
   Works on the 68020, not on the 68040 (ScreenMode quits); paused 2026-10-16,
   next steps in the history entry.
 
+- 0.7.0-dev (branch `dev-0.7.0`, rebased onto 0.6.3 on 2026-10-16; 0.7.0 = the Linux release, with every fix
+  Linux on the 68040 needs). Gayle IDE: per-profile "Gayle IDE controller"
+  toggle (default on for A600/A1200): the same drive
+  (ide_board.vhd + firmware) answers at the A600/A1200 Gayle addresses
+  ($DA0000-$DAFFFF, $DE1000) instead of the RIPPLE board, with ATA INTRQ on
+  INT2 (commit flags IRQ/END, ide.cpp rules), for the Kickstart's own
+  scsi.device; no lide.rom needed there. HW-confirmed on the 68040 (gayle-b,
+  2026-10-12), the RIPPLE board with Gayle off too. Merged into main
+  2026-10-16 on top of 0.6.4: the toggle is on lines 29/47/65/83 (A4000 too, off
+  there by default), groups 65..68.
+
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
 mutant set.
@@ -169,6 +180,8 @@ mutant set.
 - **IDE**: RIPPLE-compatible Zorro II board, master + slave HDF,
   `/amiga/lide.rom` boot ROM; READ/WRITE SECTORS by the sector engine
   (`ide_engine.vhd`, 0.6.1), everything else by the firmware ATA server.
+  Or (per profile, 0.7) the same drives on the A600/A1200 Gayle IDE for
+  the Kickstart's scsi.device.
 - **SD cards**: both slots at once (0.6.1, M2M exception 18): SD0 = bottom
   tray (native 4-bit), SD1 = back slot (usually SPI: the boot firmware used
   it); paths in the settings file carry the card.

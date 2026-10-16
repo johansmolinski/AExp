@@ -159,6 +159,10 @@ entity main is
       fram_ready_i            : in  std_logic;
       fram_state_o            : out std_logic_vector(1 downto 0);   -- cpustate (sdram cache)
       cpu_cacr_o              : out std_logic_vector(3 downto 0);   -- 68k cache control
+      -- Megamiga 0.7 diagnostics: the CPU's address, bus state, stall clocks (cpu_wrapper)
+      dbg_cpu_addr_o          : out std_logic_vector(31 downto 0);
+      dbg_cpu_state_o         : out std_logic_vector(7 downto 0);
+      dbg_cpu_stall_o         : out std_logic_vector(23 downto 0);
       -- Megamiga (cpu040): the AP68040's Fast RAM port into the SDRAM controller (core clock,
       -- toggle handshake; amiga_sdram.vhd fp_*)
       fp_req_o                : out std_logic;
@@ -201,7 +205,12 @@ entity main is
       -- direction, strobes and write data are the fram_* outputs above: cpu_wrapper
       -- drives them from the CPU for every bus cycle. ide_rst_o = Amiga reset or the
       -- CPU's RESET instruction (the Zorro reset line: it also un-configures the board).
+      -- Megamiga 0.7: gayle_ena_i makes it the A600/A1200 Gayle instead (not autoconfig'd,
+      -- selected at $DA0000-$DAFFFF and $DE1000-$DE1FFF, fram_addr_o(18 downto 1) = the
+      -- offset, latched with ide_ena_i); ide_irq_i is its interrupt (INT2).
       ide_ena_i               : in  std_logic;
+      gayle_ena_i             : in  std_logic;
+      ide_irq_i               : in  std_logic;
       ide_sel_o               : out std_logic;
       ide_data_i              : in  std_logic_vector(15 downto 0);
       ide_ready_i             : in  std_logic;
@@ -544,6 +553,7 @@ architecture synthesis of main is
          ramshared      : out std_logic;
 
          ide_ena        : in  std_logic;
+         gayle_ena      : in  std_logic;
          z3ena          : in  std_logic;
          eth_ena        : in  std_logic;
          ext_eth        : out std_logic;
@@ -563,6 +573,9 @@ architecture synthesis of main is
          snoop_addr     : in  std_logic_vector(20 downto 1);
          slowram_ena    : in  std_logic;
          cpu040_sel     : in  std_logic;
+         dbg_addr       : out std_logic_vector(31 downto 0);
+         dbg_state      : out std_logic_vector(7 downto 0);
+         dbg_stall      : out std_logic_vector(23 downto 0);
          fp_req         : out std_logic;
          fp_we          : out std_logic;
          fp_line        : out std_logic;
@@ -935,7 +948,10 @@ begin
 
          cpucfg          => cpu_cpucfg,          -- 68000 (fx68k) or 68020 (TG68K)
          fastramcfg      => cpu_fastramcfg,      -- 8 MB Zorro II Fast RAM or none
-         cachecfg        => "000",               -- no caches
+         -- Megamiga 0.7: bit 1 turbo Kickstart (+ bit 2: also data reads) for the TG68K:
+         -- Kickstart code through the SDRAM CPU port instead of the chip bus (cpu_wrapper)
+         --cachecfg        => "000",               -- no caches
+         cachecfg        => "110",
          bootrom         => '0',                 -- normal A500 memory map
          cart_ar3        => cart_ar3_i,
          cart_ovl        => cart_ovl,
@@ -970,6 +986,7 @@ begin
          ramshared       => open,
 
          ide_ena         => ide_ena_i,           -- IDE board in the autoconfig chain
+         gayle_ena       => gayle_ena_i,         -- ... or as the Gayle
          z3ena           => z3_ram_i,            -- 16 MB Zorro III board (68020 only)
          eth_ena         => eth_ena_i,           -- network card in the autoconfig chain
          ext_eth         => cpu_ext_eth,
@@ -989,6 +1006,9 @@ begin
          snoop_addr      => ram_addr_o(20 downto 1),
          slowram_ena     => slow_ram_i,
          cpu040_sel      => cpu_040_i,
+         dbg_addr        => dbg_cpu_addr_o,
+         dbg_state       => dbg_cpu_state_o,
+         dbg_stall       => dbg_cpu_stall_o,
          fp_req          => fp_req_o,
          fp_we           => fp_we_o,
          fp_line         => fp_line_o,
@@ -1455,7 +1475,9 @@ begin
          txd            => uart_txd_o,
          cts_n          => uart_cts_n_i,
          rts_n          => uart_rts_n_o,
-         eth_irq        => eth_irq_i,
+         -- Megamiga 0.7: + the Gayle IDE interrupt (INT2 as well)
+         --eth_irq        => eth_irq_i,
+         eth_irq        => eth_irq_i or ide_irq_i,
          cart_hrtmon    => cart_hrtmon_i,
          cart_ar3       => cart_ar3_i,
          cart_freeze    => cart_freeze,
