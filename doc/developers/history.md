@@ -2447,6 +2447,8 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   A4000 steps 3b/3c: the A4000 loads its own Kickstart and master, none of
   the A1200's files, and the A1200 gets its own back): PASS; mutant
   "A4000 row = A1200 keys" fails 3 checks.
+  Build `a4000-a` (Fedora, `REF=rel063`): first pass WNS +0.038 / WHS +0.007,
+  no re-roll, Shell ROM 31338/32768; not yet on the hardware.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
