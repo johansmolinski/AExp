@@ -2499,7 +2499,28 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     latch; 1 written to bit 15 changes nothing): PASS. mut_mult.sh + 3 latch
     mutants (INT2 from INTRQ, acknowledge ignored, latch = level): killed (14/14).
     Build `dev070-d` (incremental from dev070-c): WNS +0.030, WHS +0.007;
-    `~/aexp-builds/Megamiga-dev070-d`. NOT hardware-tested yet.
+    `~/aexp-builds/Megamiga-dev070-d`. HW: no change (68020 + Gayle still
+    1 MB/s, 68040 2.9 MB/s) - kept because it is what a real Gayle does.
+  - Diagnostics (2026-10-16, commit 74009c5, build `dev070-e` WNS +0.008):
+    free-running counters in ide_board.vhd (commands, data words, interrupts
+    latched/acknowledged, clocks latched/held/BSY/interrupt->next access, core
+    clocks, status/alternate status reads, last command), snapshot on a
+    request (0x134) through cdc_stable, read at 0x140..0x157; `IDE_DIAG`
+    firmware (m2m-rom.asm, firmware-only switch) prints them as one line on
+    the debug UART (115200) about every 1.34 s while data moves;
+    `~/aexp-work/remote/idediag.py` (this machine: /dev/ttyUSB1) decodes them.
+    tb_ide_g reads the snapshot and checks it. HW (SysInfo, 68020 / 68040,
+    Z3 Fast RAM, KS/OS 3.2): 020+Gayle 1.09 MB/s: 16 commands/s x 128
+    sectors, 133 interrupts/s (MULTIPLE 16 works), interrupt -> first data
+    read 230 us, BSY 2 %, held 0 %: the card is never the limit; the copy
+    itself takes ~460 us per sector (~1.8 us per data word; 0.1 us in
+    simulation). 040+Gayle 2.90 MB/s: interrupt -> access 86 us. lide.device
+    polls (~100 status reads per sector). CAUSE: `cachecfg` is "000" in
+    main.vhd and cpu_wrapper's turbo chip/kick paths are off ("self-disable
+    with cpucfg[1]=0 (68000)" - an AExp-era comment nobody revisited for the
+    TG68K in 0.3.0), so the TG68K fetches every Kickstart instruction over the
+    16-bit chip bus: scsi.device's word copy loop (in ROM) crawls, lide.device
+    (RAM, MOVEM) does not, the 68040's caches hide it.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
