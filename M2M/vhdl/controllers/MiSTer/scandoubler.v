@@ -293,7 +293,7 @@ endmodule
 // Each half spans the full address range of LENGTH (1024 entries for LENGTH
 // 513..1024). A whole input line including its blanking fits, also when an
 // analog overscan widens the active window beyond LENGTH. Both halves are
-// distributed RAM.
+// block RAM in Megamiga (distributed RAM in AExp, see the declarations).
 //
 // Write: address 0 is the first pixel sampled with hblank low; the address
 // saturates at the top. The write half is the one not being read, including
@@ -325,8 +325,17 @@ module linedoubler #(
 	output [DWIDTH:0] pix_out
 );
 
-(* ram_style = "distributed" *) reg [DWIDTH:0] ram0[0:DEPTH-1];
-(* ram_style = "distributed" *) reg [DWIDTH:0] ram1[0:DEPTH-1];
+// Megamiga (2026-10-16): block RAM instead of distributed RAM. AExp chose
+// LUTRAM because its BRAM is full; Megamiga has BRAM to spare, and 256 new
+// RAM64M shapes made incremental implementation from a reference build fail
+// ("Could not place all LUTRAM shapes"). Both halves are read every clock, but
+// pix_out only shows the half rbuf_d names, and the write half (we_b) is never
+// that half in the same clock, also not in the swap clock - so a write/read
+// collision at one address only reaches the unused output.
+//(* ram_style = "distributed" *) reg [DWIDTH:0] ram0[0:DEPTH-1];
+//(* ram_style = "distributed" *) reg [DWIDTH:0] ram1[0:DEPTH-1];
+(* ram_style = "block" *) reg [DWIDTH:0] ram0[0:DEPTH-1];
+(* ram_style = "block" *) reg [DWIDTH:0] ram1[0:DEPTH-1];
 
 reg  [DWIDTH:0] q0, q1;
 reg             rbuf = 0;          // half that holds the previous, complete input line

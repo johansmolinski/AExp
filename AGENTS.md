@@ -389,8 +389,10 @@ the dated facts.
   Selected by `VGA_LINEDOUBLER` in globals.vhd through framework.vhd ->
   av_pipeline.vhd -> analog_pipeline.vhd (`G_VGA_LINEDOUBLER`) ->
   `video_mixer.sv`; the default keeps Hq2x bit-identical. Needs a regular
-  pixel enable during vblank (Megamiga's runs freely). Frees Hq2x's 5.5 BRAM
-  tiles; lowres arrives one output line (32 us) earlier. Bench
+  pixel enable during vblank (Megamiga's runs freely). The buffer is BLOCK
+  RAM in Megamiga (`ram_style`, AExp: distributed): AExp's 256 RAM64M broke
+  incremental builds (`REF=`) - keep it in BRAM so the REF chains carry it.
+  Lowres arrives one output line (32 us) earlier. Bench
   `CORE/sim/video/run_scandoubler.sh` (upstream's, on the real Minimig raster).
   Added in the JS fork 2026-10-16.
   All other framework fixes

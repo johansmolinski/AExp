@@ -2484,6 +2484,18 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   Hq2x red controls (`q_hires_red`, `q_lores_same`) do not elaborate on Icarus
   12.0 (`hq2x.sv:40`: whole-array assignment not supported), so the red half
   is unproven here - upstream ran it on a newer Icarus.
+  Build `linedbl-b` (Fedora, `REF=a4000-b`) failed in place_design: "Could not
+  place all LUTRAM shapes" - upstream forces the two 1K x 24 halves to
+  distributed RAM (AExp's BRAM is full), 256 RAM64M that the reused placement
+  had no room for (LUT as memory 2867 -> 4162). A fresh build (`linedbl-c`)
+  placed but missed timing in the 68040 (WNS -0.410, re-rolls). So the halves
+  are block RAM in Megamiga (`ram_style = "block"`, original kept as a
+  comment), which keeps the LUTRAM layout of the reference builds. Collision
+  safety: both halves are read every clock, pix_out shows only rbuf_d's half,
+  and the write half we_b is never that half in the same clock (also not in
+  the swap clock). Proof: the quick bench on a copy whose read returns X when
+  it hits the address written in the same clock (worst-case BRAM collision):
+  9/9 PASS; mutant "write half = read half" on that copy: 9/9 FAIL.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
