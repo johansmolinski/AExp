@@ -2472,6 +2472,8 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     (agent-extended: 10-word records, MULTIPLE flags per sector, per-drive
     counts, remount -> 16, CHS, word 47/59, board register): 6 cases PASS,
     110/110 mutants killed, no firmware bug.
+    Build `dev070-c` (incremental from dev070-b): WNS +0.013, WHS +0.007;
+    `~/aexp-builds/Megamiga-dev070-c`. NOT hardware-tested yet.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
