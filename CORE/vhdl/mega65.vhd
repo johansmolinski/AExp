@@ -910,17 +910,17 @@ signal mem_arb_waitrequest         : std_logic_vector(C_ARB_SLAVES - 1 downto 0)
 -- derived drive count. The firmware keeps these two radios consistent in
 -- OSM_SEL_POST; the HDL never has to repair an inconsistent combination, it
 -- just decodes what it is given.
-constant C_MENU_DRIVES_1      : natural := 101;
-constant C_MENU_DRIVES_2      : natural := 102;
-constant C_MENU_DRIVES_3      : natural := 103;
-constant C_MENU_DF0_IMG       : natural := 107;
-constant C_MENU_DF0_HW        : natural := 108;
-constant C_MENU_DF1_IMG       : natural := 112;
-constant C_MENU_DF1_HW        : natural := 113;
-constant C_MENU_DF1_OFF       : natural := 114;
-constant C_MENU_DF2_IMG       : natural := 118;
-constant C_MENU_DF2_HW        : natural := 119;
-constant C_MENU_DF2_OFF       : natural := 120;
+constant C_MENU_DRIVES_1      : natural := 102;
+constant C_MENU_DRIVES_2      : natural := 103;
+constant C_MENU_DRIVES_3      : natural := 104;
+constant C_MENU_DF0_IMG       : natural := 108;
+constant C_MENU_DF0_HW        : natural := 109;
+constant C_MENU_DF1_IMG       : natural := 113;
+constant C_MENU_DF1_HW        : natural := 114;
+constant C_MENU_DF1_OFF       : natural := 115;
+constant C_MENU_DF2_IMG       : natural := 119;
+constant C_MENU_DF2_HW        : natural := 120;
+constant C_MENU_DF2_OFF       : natural := 121;
 
 -- Flat main-menu indexes of the six twin lines, one pair per drive: the mount
 -- line and its "Hardware Floppy" TEXT twin. These carry NO osm_control meaning
@@ -938,8 +938,8 @@ constant C_MENU_DF1_MOUNT_LN  : natural := 4;
 constant C_MENU_DF1_HW_LN     : natural := 5;
 constant C_MENU_DF2_MOUNT_LN  : natural := 6;
 constant C_MENU_DF2_HW_LN     : natural := 7;
-constant C_MENU_HDF_MOUNT_LN  : natural := 17;   -- HDF master mount line (Profile Settings), firmware-only
-constant C_MENU_HDF1_MOUNT_LN : natural := 18;   -- HDF slave mount line (Profile Settings), firmware-only
+constant C_MENU_HDF_MOUNT_LN  : natural := 18;   -- HDF master mount line (Profile Settings), firmware-only
+constant C_MENU_HDF1_MOUNT_LN : natural := 19;   -- HDF slave mount line (Profile Settings), firmware-only
 constant C_MENU_SHARE          : natural := 8;    -- Shared folder "Mount SDCard" toggle (main menu), firmware-only
 
 -- per-unit drive mode, two bits each in main_drv_mode (unit u at 2u+1 downto 2u)
@@ -947,60 +947,60 @@ constant C_DRV_IMAGE          : std_logic_vector(1 downto 0) := "00";  -- simula
 constant C_DRV_HW             : std_logic_vector(1 downto 0) := "01";  -- the MEGA65 mechanism
 constant C_DRV_OFF            : std_logic_vector(1 downto 0) := "10";  -- unit does not exist
 
-constant C_MENU_HDMI_16_9_50  : natural := 133;
-constant C_MENU_HDMI_4_3_50   : natural := 134;
-constant C_MENU_HDMI_5_4_50   : natural := 135;
+constant C_MENU_HDMI_16_9_50  : natural := 134;
+constant C_MENU_HDMI_4_3_50   : natural := 135;
+constant C_MENU_HDMI_5_4_50   : natural := 136;
 
 -- DVI (no sound): single-select, default OFF. Drives the framework's qnice_dvi
 -- input, which makes M2M's vga_to_hdmi.vhd force plain DVI encoding on every
 -- non-video period - no audio sample packets and no HDMI data islands at all.
 -- Pixel timing is untouched, so the picture geometry stays identical. The bit is
 -- consumed in the qnice_clk domain; vga_to_hdmi.vhd does its own CDC.
-constant C_MENU_HDMI_DVI      : natural := 137;
+constant C_MENU_HDMI_DVI      : natural := 138;
 
 -- RTG native resolution: single-select, default ON. While the RTG card shows a screenmode
 -- that one of the HDMI modes below shows 1:1 (or 2:1), HDMI switches to that mode instead
 -- of scaling the framebuffer into the HDMI mode of the radio above. Off = always scaled.
-constant C_MENU_RTG_NATIVE    : natural := 138;
+constant C_MENU_RTG_NATIVE    : natural := 139;
 
 -- The HDMI Filter radio is read by the firmware only (dispatcher
 -- LOAD_HDMI_FILTER with ASCAL_USAGE=1), never by any VHDL: these eight
 -- lines exist solely as the scrape source for osm_const.asm.
-constant C_MENU_FLT_NO_FILTER     : natural := 143;
-constant C_MENU_FLT_SHARP         : natural := 144;
-constant C_MENU_FLT_BICUBIC       : natural := 145;
-constant C_MENU_FLT_SMOOTH        : natural := 146;
-constant C_MENU_FLT_LANCZOS       : natural := 147;
-constant C_MENU_FLT_SCANLINES     : natural := 148;
-constant C_MENU_FLT_CRT_SVIDEO    : natural := 149;
-constant C_MENU_FLT_CRT_COMPOSITE : natural := 150;
+constant C_MENU_FLT_NO_FILTER     : natural := 144;
+constant C_MENU_FLT_SHARP         : natural := 145;
+constant C_MENU_FLT_BICUBIC       : natural := 146;
+constant C_MENU_FLT_SMOOTH        : natural := 147;
+constant C_MENU_FLT_LANCZOS       : natural := 148;
+constant C_MENU_FLT_SCANLINES     : natural := 149;
+constant C_MENU_FLT_CRT_SVIDEO    : natural := 150;
+constant C_MENU_FLT_CRT_COMPOSITE : natural := 151;
 
 -- HDMI flicker-free toggle (issue #12): single-select, default ON, read here in HDL
 -- (like the VGA radio) and CDC'd into the hr_clk domain to drive the core-speed FSM.
-constant C_MENU_HDMI_FF       : natural := 153;
+constant C_MENU_HDMI_FF       : natural := 154;
 
-constant C_MENU_VGA_STD       : natural := 157;   -- VGA: Standard (scandoubled 31.25 kHz); default
-constant C_MENU_VGA_15KHZHSVS : natural := 161;   -- VGA: raw 15.625 kHz RGB with separate HS/VS
-constant C_MENU_VGA_15KHZCS   : natural := 162;   -- VGA: raw 15.625 kHz RGB with composite sync (SCART)
+constant C_MENU_VGA_STD       : natural := 158;   -- VGA: Standard (scandoubled 31.25 kHz); default
+constant C_MENU_VGA_15KHZHSVS : natural := 162;   -- VGA: raw 15.625 kHz RGB with separate HS/VS
+constant C_MENU_VGA_15KHZCS   : natural := 163;   -- VGA: raw 15.625 kHz RGB with composite sync (SCART)
 
 -- OSM Scaling follows the C64 layout: line 169 (100%, default) maps to bit 0,
 -- while line 177 (50%) maps to bit 8 for the framework's first_nonzero_bit decode.
 -- (Megamiga 0.6.4: these three ranges were 2 lines too low since the "Mount
 -- SDCard" lines of 0.6.1: the headline and the line were in them, the last two
 -- items were not. Volume 100% played at 90%, 5% and 0% did nothing.)
-subtype C_MENU_OSM_SCALING is natural range 177 downto 169;
+subtype C_MENU_OSM_SCALING is natural range 178 downto 170;
 
 -- Volume radio (master volume, 5% steps): line 186 (100%, default) down to line 206
 -- (0% = mute). Decoded below into main_volume (0..20 step index) and applied in
 -- main.vhd as a perceptual Q15 attenuation (C_VOL_LUT) on the final Paula mix,
 -- ahead of the framework's split into the HDMI and analog audio paths.
-subtype C_MENU_VOLUME is natural range 206 downto 186;
+subtype C_MENU_VOLUME is natural range 207 downto 187;
 
 -- Stereo crossfeed radio ("Stereo: %s" submenu): line 212 (Full Stereo, default)
 -- down to line 215 (Mono). Decoded below into main_stereo_mix using MiSTer's
 -- aud_mix encoding (00 = full separation, 01 = 87.5%/12.5%, 10 = 75%/25%,
 -- 11 = mono) and applied in main.vhd's audio_filters ahead of the master volume.
-subtype C_MENU_STEREO is natural range 215 downto 212;
+subtype C_MENU_STEREO is natural range 216 downto 213;
 
 -- Paula output filters (MiSTer Minimig.sv parity), both single-select toggles
 -- with OPTM_G_STDSEL = default ON. A500 Filter inserts the fixed 4400 Hz
@@ -1008,28 +1008,28 @@ subtype C_MENU_STEREO is natural range 215 downto 212;
 -- Filter arms the switchable 3 kHz low-pass on CIA-A PA1, which then follows
 -- the emulated power LED live (MiSTer's "Auto(LED)"). Both are static OSM bits
 -- wired straight into main.vhd like the keyboard/VGA bits.
-constant C_MENU_A500FILT      : natural := 218;
-constant C_MENU_LEDFILT       : natural := 219;
+constant C_MENU_A500FILT      : natural := 219;
+constant C_MENU_LEDFILT       : natural := 220;
 
 -- Keyboard mapping mode radio (issue #6): '1' = Amiga (pure positional), '0' = MEGA65
 -- (semantic "cap is law"; default). Read here in HDL and wired straight into
 -- keyboard.vhd via main.vhd, exactly like the VGA/flicker-free bits. Line 132 (MEGA65)
 -- carries OPTM_G_STDSEL, so this Amiga bit is 0 at power-up.
-constant C_MENU_KBD_AMIGA     : natural := 223;
+constant C_MENU_KBD_AMIGA     : natural := 224;
 
 -- OSM-open key radio (issue #8): selects which key(s) drive the framework's
 -- menu-open bit (qnice_keys bit 7). Decoded below into m2m_keyb's osm_key_a/b +
 -- combo inputs and threaded core->framework->m2m_keyb, so the firmware stays
 -- byte-identical (bit 7 keeps its "the menu key" meaning). Line 136 (Help) carries
 -- OPTM_G_STDSEL = the classic default. MEGA+Run/Stop is a two-key combo.
-constant C_MENU_OSMKEY_HELP   : natural := 228;
-constant C_MENU_OSMKEY_F11    : natural := 229;
-constant C_MENU_OSMKEY_F13    : natural := 230;
-constant C_MENU_OSMKEY_COMBO  : natural := 231;
+constant C_MENU_OSMKEY_HELP   : natural := 229;
+constant C_MENU_OSMKEY_F11    : natural := 230;
+constant C_MENU_OSMKEY_F13    : natural := 231;
+constant C_MENU_OSMKEY_COMBO  : natural := 232;
 
-constant C_MENU_DRV_SPINUP    : natural := 122;   -- Drive Settings: spin-up delay of the simulated drives
-constant C_MENU_SERIAL        : natural := 237;  -- Settings: Amiga serial port on PMOD1 (default OFF)
-constant C_MENU_SD_STATUS     : natural := 246;  -- main menu: empty TEXT line at the end (the SD status is painted on the bottom row; unused by the firmware)
+constant C_MENU_DRV_SPINUP    : natural := 123;   -- Drive Settings: spin-up delay of the simulated drives
+constant C_MENU_SERIAL        : natural := 238;  -- Settings: Amiga serial port on PMOD1 (default OFF)
+constant C_MENU_SD_STATUS     : natural := 247;  -- main menu: empty TEXT line at the end (the SD status is painted on the bottom row; unused by the firmware)
 
 -- Megamiga 0.3 machine profiles. The main page carries the profile radio (A500 / A600 /
 -- A1200 / A4000); Profile Settings holds one block of radios and toggles per profile, and only
@@ -1043,8 +1043,8 @@ constant C_MENU_SD_STATUS     : natural := 246;  -- main menu: empty TEXT line a
 constant C_MENU_PROF_A500     : natural := 10;
 constant C_MENU_PROF_A600     : natural := 11;
 constant C_MENU_PROF_A1200    : natural := 12;
-constant C_MENU_PROF_A4000    : natural := 13;   -- was the Line under the profile radio
-constant C_MENU_PROF_BASE     : natural := 22;   -- first line of the A500 block
+constant C_MENU_PROF_A4000    : natural := 13;
+constant C_MENU_PROF_BASE     : natural := 23;   -- first line of the A500 block
 constant C_MENU_PROF_STRIDE   : natural := 18;   -- lines per profile block
 constant C_PROF_CPU_020       : natural := 1;    -- CPU radio: 0 = 68000, 1 = 68020, 2 = 68040
 constant C_PROF_CPU_040       : natural := 2;

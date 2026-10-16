@@ -135,8 +135,8 @@ Megamiga fork (johansmolinski):
   burst counter (31 x 128 bytes per line) is left as is because no wider line
   that needs it fits the bandwidth anyway (user decision for 0.6.3).
 - 0.6.4 (branch `a4000`, not released): A4000 profile (68040, AGA, 2 MB Chip,
-  Zorro III RAM; radio line 13, Profile Settings block 76..93, everything
-  after it +18, OPTM_SIZE 247, keys `a4000.*`), A600 default 2 MB Chip; fixes
+  Zorro III RAM; radio line 13 + its separator 14, Profile Settings block
+  77..94, everything after it +19, OPTM_SIZE 248, keys `a4000.*`), A600 default 2 MB Chip; fixes
   the Volume/OSM Scaling/Stereo ranges (2 lines off since 0.6.1).
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`

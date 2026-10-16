@@ -8859,9 +8859,9 @@ SHR_RNOBJ       .BLOCK 8                        ; RENAME: the object
 ; 229 items): demand 3889, MENU_HEAP_SIZE 3904, headroom 15, release HEAP_SIZE
 ; -32 (the combined total is unchanged).
 ;MENU_HEAP_SIZE  .EQU 3904
-; Megamiga 0.6.4 A4000 profile: the line under the profile radio became
-; " A4000 (AGA)" and Profile Settings got the A4000 block (18 lines, +269
-; characters, 247 items): demand 4230, MENU_HEAP_SIZE 4256, headroom 26, release
+; Megamiga 0.6.4 A4000 profile: " A4000 (AGA)" in the profile radio (its
+; separator line kept) and the A4000 block in Profile Settings (19 lines, +271
+; characters, 248 items): demand 4236, MENU_HEAP_SIZE 4256, headroom 20, release
 ; HEAP_SIZE -352 (the combined total is unchanged).
 MENU_HEAP_SIZE  .EQU 4256
 

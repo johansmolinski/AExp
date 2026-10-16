@@ -2416,18 +2416,21 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   main = 0.6.3, CORE_VERSION 0.6.4).** User request: a fourth machine profile
   A4000 (68040, AGA, 2 MB Chip, Zorro III RAM on; Slow RAM, Zorro II Fast RAM
   off; cartridge None) and the A600 default Chip RAM 1 MB -> 2 MB (A500 and
-  A1200 unchanged). Menu: the Line under the profile radio (13) became
-  " A4000 (AGA)" (`C_MENU_PROF_A4000` 13; the main view keeps its 34 lines,
-  the ceiling), the A4000 block is lines 76..93 in Profile Settings
-  (`C_MENU_PROF_BASE` + 3 x 18, groups `OPTM_G_P4*` 58..64, `OPTM_DEP` item
-  3 - the last item a dependency mask can name); everything from the old 76 on
-  moved by 18, OPTM_SIZE 229 -> 247 (the 256-bit osm_control leaves 9). The
+  A1200 unchanged). Menu: " A4000 (AGA)" is line 13 (`C_MENU_PROF_A4000`),
+  the separator under the radio moved to 14 (build a4000-a had the A4000 in
+  the separator's place because the OPTM_DY comment claims the main view is
+  at its 34-line ceiling; that is stale since the Settings submenu - the main
+  view is ~21 lines, the tallest view is Profile Settings with 27; the user
+  missed the separator), the A4000 block is lines 77..94 in Profile Settings
+  (`C_MENU_PROF_BASE` 23 + 3 x 18, groups `OPTM_G_P4*` 58..64, `OPTM_DEP`
+  item 3 - the last item a dependency mask can name); everything behind moved
+  by 19, OPTM_SIZE 229 -> 248 (the 256-bit osm_control leaves 8). The
   settings-file layout changed in the middle, so CORE_VERSION 0.6.4 (a new
   file name: an old file would load with the lines behind 76 shifted - the
   `_HLP_CA_OLD` path only handles growth at the end). Firmware: the profile
   index (boot in PREP_START, `_PR_CUR`) adds 3 x A4000, keys `a4000.hdf0`/
-  `.hdf1`/`.kick` (PROF_KEYTAB row 3). Menu heap: +269 characters, +4 x 18
-  array words: demand 4230, MENU_HEAP_SIZE 4256, headroom 26, release
+  `.hdf1`/`.kick` (PROF_KEYTAB row 3). Menu heap: +271 characters, +4 x 19
+  array words: demand 4236, MENU_HEAP_SIZE 4256, headroom 20, release
   HEAP_SIZE 14272 (combined total 18528 unchanged); Shell ROM 31338/32768.
   The settings text (CFGS_MAXC 511) now holds 12 profile paths: ~29
   characters per path on average, enough for the usual `SDx:/amiga/...`
@@ -2439,7 +2442,7 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   toggle and its line) shifted the menu but not these three subtypes (later
   edits kept the offset). Each range started at the submenu headline: Volume
   100% (the default) played at 90%, 5% and 0% did nothing; OSM Scaling and
-  Stereo Mix were two steps off. Fixed (+2 on top of the +18). The README's
+  Stereo Mix were two steps off. Fixed (+2 on top of the +19). The README's
   blind DVI steps (Mount SDCard was not counted either) now say 8 x down.
   Checks: a menu script (every `C_MENU_*` against the text of its line, the
   four blocks' defaults and OPTM_DEP items), ghdl analysis of config.vhd /
@@ -2448,7 +2451,13 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   the A1200's files, and the A1200 gets its own back): PASS; mutant
   "A4000 row = A1200 keys" fails 3 checks.
   Build `a4000-a` (Fedora, `REF=rel063`): first pass WNS +0.038 / WHS +0.007,
-  no re-roll, Shell ROM 31338/32768; not yet on the hardware.
+  no re-roll, Shell ROM 31338/32768. On the MEGA65 (user): the separator
+  under the profiles was missing, and "lots of empty space between Close Menu
+  and the status bar" - OPTM_DY was still 34 while the main view has 20..22
+  lines and the SD status is painted on the frame's bottom row. Fixed: the
+  separator is back (line 14) and OPTM_DY 34 -> 29 = the tallest view
+  (Settings, counted by hand: headlines/lines/submenu labels of Display,
+  Audio, Keyboard, Ports + Back = 29).
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
