@@ -2521,6 +2521,22 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     TG68K in 0.3.0), so the TG68K fetches every Kickstart instruction over the
     16-bit chip bus: scsi.device's word copy loop (in ROM) crawls, lide.device
     (RAM, MOVEM) does not, the 68040's caches hide it.
+  - TURBO KICKSTART for the TG68K (2026-10-16, the user: "Yes, implement turbo kick
+    for the 68020"): main.vhd cachecfg "110" (bit 1 turbo kick, bit 2 also data
+    reads); cpu_wrapper (Minimig dev-0.7.0 360284d): sel_kickram only for
+    $F80000-$FFFFFF (the $E00000 1 MB-ROM half stays on the chip bus),
+    turbokick_d also requires ~cpu040_sel (the AP68040 keeps its tested path).
+    The fetch goes through ramsel -> main.vhd fram_addr "00" & [22:1] -> bank 0
+    of sdram_ctrl, the same {bank,row,column} the chipset port uses for the
+    kick bank ([22:19] = 1111) - i.e. the words the Kickstart loader wrote;
+    sdram_ctrl's CPU cache snoops every chipset-port write (snoop_act =
+    chipWE), so a Kickstart reload leaves no stale lines. Turbo chip stays off.
+    Test `~/aexp-work/cpu060/e2e040/run_kick.sh` (prog_kick.S + kick.S at
+    $F80000; the ROM in the SDRAM model with one signature, on the chip bus
+    with another): TG68K + 110 -> SDRAM path, TG68K + 000 and AP68040 + 110 ->
+    chip bus, the loop checksum equal on all paths; 2000-iteration ROM loop:
+    290,668 cycles over the chip bus vs 20,572 with turbo kick and the
+    instruction cache on (CACR, as Kickstart sets it) = 14x; uncached 146,556.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

@@ -941,7 +941,10 @@ begin
 
          cpucfg          => cpu_cpucfg,          -- 68000 (fx68k) or 68020 (TG68K)
          fastramcfg      => cpu_fastramcfg,      -- 8 MB Zorro II Fast RAM or none
-         cachecfg        => "000",               -- no caches
+         -- Megamiga 0.7: bit 1 turbo Kickstart (+ bit 2: also data reads) for the TG68K:
+         -- Kickstart code through the SDRAM CPU port instead of the chip bus (cpu_wrapper)
+         --cachecfg        => "000",               -- no caches
+         cachecfg        => "110",
          bootrom         => '0',                 -- normal A500 memory map
          cart_ar3        => cart_ar3_i,
          cart_ovl        => cart_ovl,
