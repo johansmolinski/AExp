@@ -2497,7 +2497,9 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     both Gayle scenarios, after it 4/4 PASS. tb_ide_board's Gayle part moved to
     the latch semantics (status read clears INTRQ = $DA8000 bit 15, not the
     latch; 1 written to bit 15 changes nothing): PASS. mut_mult.sh + 3 latch
-    mutants (INT2 from INTRQ, acknowledge ignored, latch = level): killed.
+    mutants (INT2 from INTRQ, acknowledge ignored, latch = level): killed (14/14).
+    Build `dev070-d` (incremental from dev070-c): WNS +0.030, WHS +0.007;
+    `~/aexp-builds/Megamiga-dev070-d`. NOT hardware-tested yet.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
