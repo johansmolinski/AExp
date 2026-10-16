@@ -2537,6 +2537,8 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     chip bus, the loop checksum equal on all paths; 2000-iteration ROM loop:
     290,668 cycles over the chip bus vs 20,572 with turbo kick and the
     instruction cache on (CACR, as Kickstart sets it) = 14x; uncached 146,556.
+    Build `dev070-f` (incremental from dev070-e): WNS +0.029, WHS +0.007;
+    `~/aexp-builds/Megamiga-dev070-f`. NOT hardware-tested yet.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
