@@ -14,7 +14,7 @@ menu; version 0.6 adds a 68040 with MMU, FPU and caches at 42 MHz, and
 0.6.1 a shared folder (`SDCard:`), both SD card slots at once and hard disks
 served by the FPGA itself; 0.6.2 adds freezer cartridges (HRTmon built in, the
 Action Replay III with your own ROM), and 0.6.3 shows Picasso96 screens on
-HDMI in their own resolution. Megamiga needs a MEGA65 R4 or newer; the R3 has no
+HDMI in their own resolution; 0.6.4 adds an A4000 profile. Megamiga needs a MEGA65 R4 or newer; the R3 has no
 SDRAM. Everything
 else - and most of this README - is AExp; where the text says "AExp", it
 describes the core Megamiga is built on.
@@ -58,10 +58,12 @@ Credits
 Features
 --------
 
-* Three machine profiles on the main page of the menu (Megamiga 0.3):
-  **A500** (68000, OCS, 512 KB Chip + 512 KB Slow RAM), **A600** (68000, ECS,
-  1 MB Chip RAM) and **A1200** (68020, AGA, 2 MB Chip RAM), each with its own
-  Kickstart and hard disk, and each editable (see Machine profiles below)
+* Four machine profiles on the main page of the menu (Megamiga 0.3, the
+  A4000 since 0.6.4): **A500** (68000, OCS, 512 KB Chip + 512 KB Slow RAM),
+  **A600** (68000, ECS, 2 MB Chip RAM), **A1200** (68020, AGA, 2 MB Chip RAM)
+  and **A4000** (68040, AGA, 2 MB Chip RAM, 16 MB Zorro III RAM), each with
+  its own Kickstart and hard disks, and each editable (see Machine profiles
+  below)
 * OCS, ECS or AGA, PAL - AGA with the 68020 and an A1200 Kickstart 3.x makes
   an A1200-class machine (256 colours, HAM8, the AGA fetch modes,
   SuperHires; the 31 kHz modes are not displayed yet)
@@ -113,13 +115,21 @@ Features
 
 ### Machine profiles
 
-The main page of the menu (<kbd>Help</kbd>) offers three machines:
+The main page of the menu (<kbd>Help</kbd>) offers four machines:
 
-| Profile       | CPU   | Chipset | Chip RAM | Slow RAM |
-|---------------|-------|---------|----------|----------|
-| A500 (OCS)    | 68000 | OCS     | 512 KB   | 512 KB   |
-| A600 (ECS)    | 68000 | ECS     | 1 MB     | -        |
-| A1200 (AGA)   | 68020 | AGA     | 2 MB     | -        |
+| Profile       | CPU   | Chipset | Chip RAM | Slow RAM | Fast RAM            |
+|---------------|-------|---------|----------|----------|---------------------|
+| A500 (OCS)    | 68000 | OCS     | 512 KB   | 512 KB   | -                   |
+| A600 (ECS)    | 68000 | ECS     | 2 MB     | -        | -                   |
+| A1200 (AGA)   | 68020 | AGA     | 2 MB     | -        | -                   |
+| A4000 (AGA)   | 68040 | AGA     | 2 MB     | -        | 16 MB Zorro III     |
+
+The A4000 profile is the A1200's chipset with the 68040 and Zorro III RAM;
+the core has no A4000 mainboard chips (Ramsey, Fat Gary, the A4000 IDE port),
+so give it an A1200 Kickstart 3.x (an A4000 ROM is untested) and use the IDE
+board for hard disks as in the other profiles. The A600 profile has 2 MB Chip
+RAM since 0.6.4 (a real A600 has 1 MB; pick that in Profile Settings if a
+program needs it).
 
 Selecting a profile reconfigures the Amiga and restarts it (a cold boot): it
 loads the Kickstart you chose for that profile - `kick.rom` if you chose none
@@ -154,13 +164,13 @@ options are in **Settings**.
    |----------------------------|------------------------------------------------|
    | `/amiga/kick13.rom`        | A500: Kickstart 1.3 (34.5, A500/A2000)         |
    | `/amiga/kick31-a600.rom`   | A600: Kickstart 2.05 or 3.1 for the A600/A500  |
-   | `/amiga/kick31-a1200.rom`  | A1200: Kickstart 3.1 for the A1200 (40.68) - an A500/A600 3.1 ROM does not drive AGA |
+   | `/amiga/kick31-a1200.rom`  | A1200 and A4000: Kickstart 3.1 for the A1200 (40.68) - an A500/A600 3.1 ROM does not drive AGA |
 
    `/amiga/kick.rom` is optional: it is the Kickstart of every profile you
    have not given one. Kickstart 1.3 knows neither Zorro III RAM nor the AGA
-   chipset, so give the A1200 profile an A1200 3.x ROM.
+   chipset, so give the A1200 and A4000 profiles an A1200 3.x ROM.
 2. **Pick a profile.** Press <kbd>Help</kbd>, move to **A500 (OCS)**,
-   **A600 (ECS)** or **A1200 (AGA)** and press <kbd>Return</kbd>. The Amiga
+   **A600 (ECS)**, **A1200 (AGA)** or **A4000 (AGA)** and press <kbd>Return</kbd>. The Amiga
    restarts with that machine.
 3. **Give it its files.** Open **Profile Settings**, select **Kickstart** and
    pick the ROM in the file browser; then, if you want hard disks, **HDF 0**
@@ -763,11 +773,11 @@ soon as the core has started, press your menu key — <kbd>Help</kbd> unless
 you reassigned it in the Keyboard menu:
 
 1. <kbd>Help</kbd> — opens the menu, with the cursor on the topmost `dfN:`
-   disk-image line, or on **A500 (OCS)** if no drive is a disk image.
-2. Six times <kbd>&darr;</kbd> — past the three machine profiles,
-   **Profile Settings** and **Drive Settings**, onto **Settings**. That is
-   **one <kbd>&darr;</kbd> per drive you have set to Disk Image, plus five**
-   — six at the factory default. Moving the cursor over a profile does not
+   disk-image line, or on **Mount SDCard** if no drive is a disk image.
+2. Eight times <kbd>&darr;</kbd> — past **Mount SDCard**, the four machine
+   profiles, **Profile Settings** and **Drive Settings**, onto **Settings**.
+   That is **one <kbd>&darr;</kbd> per drive you have set to Disk Image, plus
+   seven** — eight at the factory default. Moving the cursor over a profile does not
    select it; only <kbd>Return</kbd> does.
 3. <kbd>Return</kbd> — opens Settings, cursor on the first `HDMI:` line.
 4. <kbd>Return</kbd> — opens the HDMI menu, cursor on **720p 50 Hz 16:9**.

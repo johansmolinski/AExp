@@ -134,6 +134,10 @@ Megamiga fork (johansmolinski):
   (~160 MB/s) caps 24 bit at 1024x768 and 32 bit at 800x600; ascal's 5-bit
   burst counter (31 x 128 bytes per line) is left as is because no wider line
   that needs it fits the bandwidth anyway (user decision for 0.6.3).
+- 0.6.4 (branch `a4000`, not released): A4000 profile (68040, AGA, 2 MB Chip,
+  Zorro III RAM; radio line 13, Profile Settings block 76..93, everything
+  after it +18, OPTM_SIZE 247, keys `a4000.*`), A600 default 2 MB Chip; fixes
+  the Volume/OSM Scaling/Stereo ranges (2 lines off since 0.6.1).
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and

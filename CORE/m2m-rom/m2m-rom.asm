@@ -717,7 +717,8 @@ _A3P_RET        MOVE    R4, R10
 ; ----------------------------------------------------------------------------
 ; PROFILE_APPLY: the Kickstart and the hard disks of a machine profile
 ;
-; Megamiga 0.3: the main menu selects a machine profile (A500 / A600 / A1200).
+; Megamiga 0.3: the main menu selects a machine profile (A500 / A600 / A1200;
+; A4000 since 0.6.4).
 ; The HDL applies its CPU, chipset and RAM settings (mega65.vhd prof_decode,
 ; a cold boot of the Amiga). Here the files of the profile are loaded.
 ;
@@ -738,7 +739,7 @@ _A3P_RET        MOVE    R4, R10
 ; kick.rom comes from the card of the settings file), the one the file browser
 ; uses too; the SD sector buffer of a card is tracked per device handle.
 ;
-; Input:  R8: profile 0..2, R9: 0 = boot, 1 = the user selected the profile
+; Input:  R8: profile 0..3, R9: 0 = boot, 1 = the user selected the profile
 ; Output: none, all registers preserved
 ; ----------------------------------------------------------------------------
 PROFILE_APPLY   SYSCALL(enter, 1)
@@ -1008,12 +1009,17 @@ PREP_START      INCRB
 
                 ; Megamiga 0.3: the Kickstart and the hard disk of the saved
                 ; machine profile (the HDL already runs its CPU/chipset/RAM)
-                XOR     R0, R0                  ; R0: profile 0..2
+                XOR     R0, R0                  ; R0: profile 0..3
                 MOVE    AEXP_OSM_PROF_A600, R8
                 RSUB    M2M$GET_SETTING, 1
                 ADD     R9, R0
                 MOVE    AEXP_OSM_PROF_A1200, R8
                 RSUB    M2M$GET_SETTING, 1
+                ADD     R9, R0
+                ADD     R9, R0
+                MOVE    AEXP_OSM_PROF_A4000, R8
+                RSUB    M2M$GET_SETTING, 1
+                ADD     R9, R0
                 ADD     R9, R0
                 ADD     R9, R0
                 MOVE    R0, R8
@@ -1070,7 +1076,7 @@ OSM_SEL_POST    INCRB
                 ; reset -- only the coefficient RAM content changes; the
                 ; Amiga keeps running. The user sees the new filter from the
                 ; next frame.
-                ; Megamiga 0.3: a machine profile was selected (R9 = 0..2):
+                ; Megamiga 0.3: a machine profile was selected (R9 = 0..3):
                 ; load its Kickstart and hard disk (the HDL cold-boots)
                 CMP     AEXP_OPTM_G_PROFILE, R8
                 RBRA    _OSM_SP_FLT, !Z
@@ -8170,6 +8176,7 @@ _SRN_E          MOVE    CFGS_PB, R9              ; the entry address
 PROF_KEYTAB     .DW     _PK_500H0, _PK_500H1, _PK_500K
                 .DW     _PK_600H0, _PK_600H1, _PK_600K
                 .DW     _PK_1200H0, _PK_1200H1, _PK_1200K
+                .DW     _PK_4000H0, _PK_4000H1, _PK_4000K
 _PK_500H0       .ASCII_W "a500.hdf0"
 _PK_500H1       .ASCII_W "a500.hdf1"
 _PK_500K        .ASCII_W "a500.kick"
@@ -8179,6 +8186,9 @@ _PK_600K        .ASCII_W "a600.kick"
 _PK_1200H0      .ASCII_W "a1200.hdf0"
 _PK_1200H1      .ASCII_W "a1200.hdf1"
 _PK_1200K       .ASCII_W "a1200.kick"
+_PK_4000H0      .ASCII_W "a4000.hdf0"
+_PK_4000H1      .ASCII_W "a4000.hdf1"
+_PK_4000K       .ASCII_W "a4000.kick"
 _PR_S_PART      .ASCII_W "partition:"           ; a value: an SD card partition
 _PR_S_PLEN      .EQU    10
 
@@ -8194,13 +8204,18 @@ _PR_KEY         INCRB
                 DECRB
                 RET
 
-; _PR_CUR: the profile that is selected in the menu -> R8 (0..2). R9 used.
+; _PR_CUR: the profile that is selected in the menu -> R8 (0..3). R9 used.
 _PR_CUR         MOVE    R10, @--SP
                 MOVE    AEXP_OSM_PROF_A600, R8
                 RSUB    M2M$GET_SETTING, 1
                 MOVE    R9, R10
                 MOVE    AEXP_OSM_PROF_A1200, R8
                 RSUB    M2M$GET_SETTING, 1
+                ADD     R9, R10
+                ADD     R9, R10
+                MOVE    AEXP_OSM_PROF_A4000, R8
+                RSUB    M2M$GET_SETTING, 1
+                ADD     R9, R10
                 ADD     R9, R10
                 ADD     R9, R10
                 MOVE    R10, R8
@@ -8843,7 +8858,12 @@ SHR_RNOBJ       .BLOCK 8                        ; RENAME: the object
 ; the HDMI submenu became the "RTG native resolution" toggle (+22 characters,
 ; 229 items): demand 3889, MENU_HEAP_SIZE 3904, headroom 15, release HEAP_SIZE
 ; -32 (the combined total is unchanged).
-MENU_HEAP_SIZE  .EQU 3904
+;MENU_HEAP_SIZE  .EQU 3904
+; Megamiga 0.6.4 A4000 profile: the line under the profile radio became
+; " A4000 (AGA)" and Profile Settings got the A4000 block (18 lines, +269
+; characters, 247 items): demand 4230, MENU_HEAP_SIZE 4256, headroom 26, release
+; HEAP_SIZE -352 (the combined total is unchanged).
+MENU_HEAP_SIZE  .EQU 4256
 
 #ifndef RELEASE
 
@@ -8899,7 +8919,8 @@ HEAP            .BLOCK 1
 ;HEAP_SIZE       .EQU 14944                      ; 18560 - 3616 = 14944
 ;HEAP_SIZE       .EQU 14912                      ; 18528 - 3616 = 14912
 ;HEAP_SIZE       .EQU 14656                      ; 18528 - 3872 = 14656
-HEAP_SIZE       .EQU 14624                      ; 18528 - 3904 = 14624
+;HEAP_SIZE       .EQU 14624                      ; 18528 - 3904 = 14624
+HEAP_SIZE       .EQU 14272                      ; 18528 - 4256 = 14272
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

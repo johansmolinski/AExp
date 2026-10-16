@@ -2412,6 +2412,42 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   (Minimig `cart` ec7b7f0, QNICE 75873a2). Package README.txt and notes063.md
   in `~/aexp-builds/release/`.
 
+- **A4000 profile, A600 with 2 MB Chip RAM (2026-10-16, branch `a4000` from
+  main = 0.6.3, CORE_VERSION 0.6.4).** User request: a fourth machine profile
+  A4000 (68040, AGA, 2 MB Chip, Zorro III RAM on; Slow RAM, Zorro II Fast RAM
+  off; cartridge None) and the A600 default Chip RAM 1 MB -> 2 MB (A500 and
+  A1200 unchanged). Menu: the Line under the profile radio (13) became
+  " A4000 (AGA)" (`C_MENU_PROF_A4000` 13; the main view keeps its 34 lines,
+  the ceiling), the A4000 block is lines 76..93 in Profile Settings
+  (`C_MENU_PROF_BASE` + 3 x 18, groups `OPTM_G_P4*` 58..64, `OPTM_DEP` item
+  3 - the last item a dependency mask can name); everything from the old 76 on
+  moved by 18, OPTM_SIZE 229 -> 247 (the 256-bit osm_control leaves 9). The
+  settings-file layout changed in the middle, so CORE_VERSION 0.6.4 (a new
+  file name: an old file would load with the lines behind 76 shifted - the
+  `_HLP_CA_OLD` path only handles growth at the end). Firmware: the profile
+  index (boot in PREP_START, `_PR_CUR`) adds 3 x A4000, keys `a4000.hdf0`/
+  `.hdf1`/`.kick` (PROF_KEYTAB row 3). Menu heap: +269 characters, +4 x 18
+  array words: demand 4230, MENU_HEAP_SIZE 4256, headroom 26, release
+  HEAP_SIZE 14272 (combined total 18528 unchanged); Shell ROM 31338/32768.
+  The settings text (CFGS_MAXC 511) now holds 12 profile paths: ~29
+  characters per path on average, enough for the usual `SDx:/amiga/...`
+  paths; when full, a choice is not remembered (CFGS_SET C=0), as before.
+  The A4000 is the A1200 chipset with the 68040: no Ramsey/Fat Gary/A4000 IDE,
+  so the README recommends an A1200 3.x Kickstart (A4000 ROM untested).
+  **Found on the way (since 0.6.1):** `C_MENU_OSM_SCALING`, `C_MENU_VOLUME`
+  and `C_MENU_STEREO` were 2 lines too low - a638be1 (the "SDCard: inserted"
+  toggle and its line) shifted the menu but not these three subtypes (later
+  edits kept the offset). Each range started at the submenu headline: Volume
+  100% (the default) played at 90%, 5% and 0% did nothing; OSM Scaling and
+  Stereo Mix were two steps off. Fixed (+2 on top of the +18). The README's
+  blind DVI steps (Mount SDCard was not counted either) now say 8 x down.
+  Checks: a menu script (every `C_MENU_*` against the text of its line, the
+  four blocks' defaults and OPTM_DEP items), ghdl analysis of config.vhd /
+  mega65.vhd, make_rom.sh; firmware TB `~/aexp-work/fw-a4000` (fw-prof2 +
+  A4000 steps 3b/3c: the A4000 loads its own Kickstart and master, none of
+  the A1200's files, and the A1200 gets its own back): PASS; mutant
+  "A4000 row = A1200 keys" fails 3 checks.
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).
