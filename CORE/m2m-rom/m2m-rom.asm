@@ -61,6 +61,11 @@
 ; (ide_engine.vhd). Firmware-only variants (CORE/patch_firmware.sh, no synthesis).
 #define SD_SPI_ONLY 0
 #define IDE_ENGINE 1
+; IDE_DIAG 1 (Megamiga 0.7, a diagnostics firmware): about once a second, while
+; data moves, one line of the IDE board's diagnostics counters on the UART
+; (115200 8N1, the MEGA65's debug UART): "IDE" and 12 x 8 hex digits, see
+; ide_board.vhd (0x134/0x140). Firmware only: patch_firmware.sh switches it.
+#define IDE_DIAG 1
 
 START_FIRMWARE
 #if SD_SPI_ONLY
@@ -1856,6 +1861,9 @@ _HCIO_FLK       MOVE    R5, @R4
                 ; framework RTC read once per minute so the Minimig $DC0000 clock
                 ; advances instead of freezing after the boot seed
 _HCIO_RTC       RSUB    IDE_STEP, 1             ; the IDE board (HDF image)
+#if IDE_DIAG
+                RSUB    IDE_DIAG_STEP, 1
+#endif
                 RSUB    SHARE_STEP, 1           ; the shared folder
                 RSUB    RTC_STEP, 1
 
@@ -3085,6 +3093,54 @@ IDE_SEL         INCRB
                 MOVE    0, @R0
                 DECRB
                 RET
+
+#if IDE_DIAG
+; IDE_DIAG_STEP: every 1024 x 65536 QNICE cycles (1.34 s), while the board moved
+; data since the last line: the snapshot of its diagnostics counters as one line
+; on the UART. Changes the RAMROM selection. Registers preserved.
+IDE_DIAG_STEP   INCRB
+                MOVE    IO$CYC_MID, R0
+                MOVE    @R0, R0                 ; R0: now, in 65536 cycles
+                MOVE    IDE_DLAST_T, R1
+                MOVE    R0, R2
+                SUB     @R1, R2                 ; R2: elapsed (mod 65536)
+                AND     0xFC00, R2              ; 1024 or more?
+                RBRA    _IDG_RET, Z
+                MOVE    R0, @R1
+                RSUB    IDE_SEL, 1
+                MOVE    IDE_DIAG_REQ, R2
+                MOVE    0, @R2                  ; snapshot request
+                MOVE    200, R3                 ; (the snapshot crosses over
+_IDG_W          SUB     1, R3                   ; in well under 10 us)
+                RBRA    _IDG_W, !Z
+                MOVE    IDE_DIAG_CNT, R2
+                ADD     2, R2                   ; counter 1 (data words), lo
+                MOVE    @R2, R4
+                MOVE    IDE_DLAST_W, R5
+                CMP     @R5, R4
+                RBRA    _IDG_RET, Z             ; nothing moved: no line
+                MOVE    R4, @R5
+                INCRB                           ; (the syscalls use R8..R12)
+                MOVE    IDE_DIAG_STR, R8
+                SYSCALL(puts, 1)
+                MOVE    IDE_DIAG_CNT, R0
+                MOVE    12, R1
+_IDG_L          MOVE    @R0++, R2               ; lo
+                MOVE    @R0++, R8               ; hi
+                SYSCALL(puthex, 1)
+                MOVE    R2, R8
+                SYSCALL(puthex, 1)
+                MOVE    IDE_DIAG_SP, R8
+                SYSCALL(puts, 1)
+                SUB     1, R1
+                RBRA    _IDG_L, !Z
+                SYSCALL(crlf, 1)
+                DECRB
+_IDG_RET        DECRB
+                RET
+IDE_DIAG_STR    .ASCII_W "IDE "
+IDE_DIAG_SP     .ASCII_W " "
+#endif
 
 ; IDE_MULT_REG: the multiple count of drive R8 into the board (READ/WRITE
 ; MULTIPLE: the sector engine takes them while it is not 0, the board groups
@@ -5412,6 +5468,8 @@ IDE_ENG_SECT    .EQU    1
 IDE_ENG_BASE    .EQU    3
 IDE_ENG_SHIFT   .EQU    5
 IDE_ENG_MULT    .EQU    6                   ; the multiple count (Megamiga 0.7)
+IDE_DIAG_REQ    .EQU    0x8134              ; diagnostics: snapshot request
+IDE_DIAG_CNT    .EQU    0x8140              ; ... 12 x 32-bit counters (lo, hi)
 IDE_ENG_OFF     .EQU    0                   ; modes: firmware (IDE_STEP)
 IDE_ENG_FILE    .EQU    1                   ; extent map of the file
 IDE_ENG_PART    .EQU    2                   ; partition of the card
@@ -8931,6 +8989,10 @@ IDE_LBA_HI      .BLOCK 1
 IDE_LEFT        .BLOCK 1                        ; sectors left in the command
 IDE_BSIZE       .BLOCK 1                        ; sectors per block (MULTIPLE)
 IDE_BPOS        .BLOCK 1                        ; sector within the block
+#if IDE_DIAG
+IDE_DLAST_T     .BLOCK 1                        ; diagnostics: time of the last
+IDE_DLAST_W     .BLOCK 1                        ; line, data words then (lo)
+#endif
 HDF_UNITS       .BLOCK 1                        ; mounted drives: bit 0 master
                                                 ; (unit 0), bit 1 slave (unit 1)
 HDF_ACTIVE      .BLOCK 1                        ; drive whose state is in the

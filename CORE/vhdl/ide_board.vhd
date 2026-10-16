@@ -58,6 +58,13 @@
 --   0x128-0x12E  R/W: the same for unit 1
 --   0x130        R: bit 0 SD card ready (sdhost), bit 1 engine busy
 --   0x131-0x133  R: engine statistics: commands taken, forwarded to the firmware, failed
+--   0x134        W: diagnostics snapshot request (any value; Megamiga 0.7): the core side copies
+--                   its free-running counters, readable a few us later at
+--   0x140-0x157  R: 12 x 32 bits (lo, hi): 0 commands, 1 data words, 2 interrupts latched,
+--                   3 acknowledged, 4 clocks latched, 5 clocks a data access was held,
+--                   6 clocks BSY, 7 clocks from an interrupt to the next data access or
+--                   command, 8 core clocks, 9 status reads, 10 alternate status reads,
+--                   11 last command (7..0), its count (15..8), MULTIPLE commands (31..16)
 --   window 1     W: the extent maps of the engine, unit u at u * 2048 (FAT32$FILE_MAP format)
 --
 -- Sector engine (Megamiga 0.6.1): READ SECTORS and WRITE SECTORS of a unit whose engine mode is
@@ -242,6 +249,13 @@ architecture synthesis of ide_board is
    signal nien        : std_logic := '0';      -- device control bit 1
    signal g_intena    : std_logic := '0';      -- $DAA000 bit 15
    signal g_irq       : std_logic := '0';      -- $DA9000 bit 15: the IDE interrupt latch
+   -- diagnostics (Megamiga 0.7): free-running counters, a snapshot for the firmware
+   type t_dcnt is array (0 to 11) of unsigned(31 downto 0);
+   signal dcnt, dsnap  : t_dcnt := (others => (others => '0'));
+   signal d_wait      : std_logic := '0';      -- an interrupt is waiting for its access
+   signal m_dreq_d, m_dreq_s, m_dreq_seen : std_logic := '0';
+   signal q_dreq      : std_logic := '0';
+   signal dsnap_v, q_dsnap_v : std_logic_vector(383 downto 0);
    signal intrq_d     : std_logic := '0';
    signal g_cs_mask   : std_logic_vector(5 downto 0) := (others => '0');
    signal g_cs        : std_logic_vector(1 downto 0) := (others => '0');
@@ -315,6 +329,7 @@ architecture synthesis of ide_board is
    signal wr_addr     : std_logic_vector(C_RING_LOG2 + 7 downto 0) := (others => '0');
 
    attribute async_reg : string;
+   attribute async_reg of m_dreq_d, m_dreq_s : signal is "true";
    attribute async_reg of m_acc_d, m_acc_s, m_accwr_d, m_accwr_s, m_rdy_d, m_rdy_s,
                           m_fin_d, m_fin_s, m_finerr_d, m_finerr_s : signal is "true";
 
@@ -381,6 +396,7 @@ begin
       variable va        : unsigned(C_RING_LOG2 downto 0);   -- e_avail of this clock
       variable e_sect    : boolean;                           -- the CPU finished a sector
       variable e_irq     : boolean;                           -- Gayle: INTRQ for the engine
+      variable ev_cmd, ev_word, ev_hold, ev_stat, ev_alt, ev_ack, ev_irq : boolean;  -- diagnostics
 
       procedure buffer_done is
       begin
@@ -407,6 +423,8 @@ begin
          wr_we  <= '0';
          e_sect := false;
          e_irq  := false;
+         ev_cmd := false; ev_word := false; ev_hold := false; ev_stat := false;
+         ev_alt := false; ev_ack := false; ev_irq := false;
 
          -- sector engine handshake (single-bit toggles from the QNICE domain)
          m_acc_d    <= q_acc;     m_acc_s    <= m_acc_d;
@@ -499,7 +517,7 @@ begin
                   -- Megamiga 0.7: READ/WRITE MULTIPLE - between two sectors of a block the
                   -- data access waits (no DTACK) until the next sector is there (see header)
                   if is_tf and reg = 0 and present and status(C_BSY) = '1' and blk_more = '1' then
-                     null;
+                     ev_hold := true;
                   elsif rw_i = '1' then
                      -------------------------------------------------------------- reads
                      if is_rom then
@@ -531,19 +549,21 @@ begin
                         end if;
                         if (is_tf or is_ctl) and present then
                            if is_ctl then
-                              if reg = 6 then rdata <= rd8(status); end if;   -- alternate status
+                              if reg = 6 then rdata <= rd8(status); ev_alt := true; end if;   -- alternate status
                            else
                               case reg is
                                  when 0 =>
                                     if status(C_DRQ) = '1' and phase_wr = '0' and e_mode = EM_READ then
                                        rdata <= rr_q;           -- the sector engine's ring
                                        ptr   <= ptr + 1;
+                                       ev_word := true;
                                        if ptr = 255 then
                                           e_sect := true;
                                        end if;
                                     elsif status(C_DRQ) = '1' and phase_wr = '0' then
                                        rdata <= rd_buf(to_integer(ptr));
                                        ptr   <= ptr + 1;
+                                       ev_word := true;
                                        if ptr = 255 then
                                           if last_blk = '1' then   -- the command ends here
                                              status  <= C_ST_READY;
@@ -563,6 +583,7 @@ begin
                                  when 6 => rdata <= rd8(tf_devh);
                                  when others =>
                                     rdata <= rd8(status);
+                                    ev_stat := true;
                                     intrq <= '0';            -- reading the status clears INTRQ
                               end case;
                            end if;
@@ -587,6 +608,7 @@ begin
                            -- Gayle: scsi.device / Linux write 0x7C), a 1 changes nothing
                            --when others => null;      -- $DA9000: writes ignored (gayle.v)
                            when others => if data_i(15) = '0' then
+                                             if g_irq = '1' then ev_ack := true; end if;
                                              g_irq <= '0';
                                           end if;
                         end case;
@@ -599,6 +621,7 @@ begin
                                  wb_addr <= ptr;
                                  wb_data <= data_i;
                                  ptr     <= ptr + 1;
+                                 ev_word := true;
                                  if e_mode = EM_WRITE then
                                     wr_we   <= '1';        -- the sector engine's ring
                                     wr_addr <= std_logic_vector(e_slot) & std_logic_vector(ptr);
@@ -614,6 +637,7 @@ begin
                            when 7 =>
                               if present and status(C_BSY) = '0' then
                                  tf_cmd  <= byte;
+                                 ev_cmd  := true;
                                  intrq   <= '0';
                                  blk_more <= '0';
                                  status  <= C_ST_BUSY;
@@ -796,6 +820,37 @@ begin
          intrq_d <= intrq;
          if intrq = '1' and intrq_d = '0' then
             g_irq <= '1';
+            ev_irq := true;
+         end if;
+
+         -- diagnostics: free-running counters (never reset), snapshot on request
+         dcnt(8) <= dcnt(8) + 1;
+         if ev_cmd then
+            dcnt(0) <= dcnt(0) + 1;
+            dcnt(11)(15 downto 0) <= unsigned(tf_scnt) & unsigned(byte);
+            if byte = x"C4" or byte = x"C5" then
+               dcnt(11)(31 downto 16) <= dcnt(11)(31 downto 16) + 1;
+            end if;
+         end if;
+         if ev_word then dcnt(1) <= dcnt(1) + 1; end if;
+         if ev_irq  then dcnt(2) <= dcnt(2) + 1; end if;
+         if ev_ack  then dcnt(3) <= dcnt(3) + 1; end if;
+         if g_irq = '1' then dcnt(4) <= dcnt(4) + 1; end if;
+         if ev_hold then dcnt(5) <= dcnt(5) + 1; end if;
+         if status(C_BSY) = '1' then dcnt(6) <= dcnt(6) + 1; end if;
+         if d_wait = '1' then dcnt(7) <= dcnt(7) + 1; end if;
+         if ev_stat then dcnt(9) <= dcnt(9) + 1; end if;
+         if ev_alt  then dcnt(10) <= dcnt(10) + 1; end if;
+         if ev_irq then
+            d_wait <= '1';
+         elsif ev_word or ev_cmd then
+            d_wait <= '0';
+         end if;
+         m_dreq_d <= q_dreq;
+         m_dreq_s <= m_dreq_d;
+         if m_dreq_s /= m_dreq_seen then
+            m_dreq_seen <= m_dreq_s;
+            dsnap       <= dcnt;
          end if;
 
          if rst_i = '1' then
@@ -893,6 +948,23 @@ begin
          dst_data_o(55 downto  0) => q_tf,
          dst_data_o(59 downto 56) => q_events
       ); -- i_cdc_to_qnice
+
+   -- diagnostics snapshot (changes only on a request: cdc_stable passes it)
+   dsnap_gen : for i in 0 to 11 generate
+      dsnap_v(32 * i + 31 downto 32 * i) <= std_logic_vector(dsnap(i));
+   end generate dsnap_gen;
+
+   i_cdc_diag : entity work.cdc_stable
+      generic map (
+         G_DATA_SIZE    => 384,
+         G_REGISTER_SRC => false
+      )
+      port map (
+         src_clk_i  => clk_i,
+         src_data_i => dsnap_v,
+         dst_clk_i  => qnice_clk_i,
+         dst_data_o => q_dsnap_v
+      ); -- i_cdc_diag
 
    ---------------------------------------------------------------------------------------
    -- Sector engine (QNICE clock) and its rings
@@ -1095,6 +1167,7 @@ begin
                   when x"17" => q_ndevh  <= qnice_data_i(7 downto 0);
                   when x"18" => q_ctrl   <= qnice_data_i(2 downto 0);
                   when x"1F" => q_commit <= not q_commit;
+                  when x"34" => q_dreq   <= not q_dreq;   -- diagnostics snapshot
                   when x"20" => q_mode0  <= qnice_data_i(2 downto 0);
                   when x"21" => q_sects0(15 downto 0)  <= qnice_data_i;
                   when x"22" => q_sects0(31 downto 16) <= qnice_data_i;
@@ -1184,6 +1257,11 @@ begin
                when x"31" => d := q_st_acc;
                when x"32" => d := q_st_fwd;
                when x"33" => d := q_st_err;
+               when x"40" | x"41" | x"42" | x"43" | x"44" | x"45" | x"46" | x"47" |
+                    x"48" | x"49" | x"4A" | x"4B" | x"4C" | x"4D" | x"4E" | x"4F" |
+                    x"50" | x"51" | x"52" | x"53" | x"54" | x"55" | x"56" | x"57" =>
+                  d := q_dsnap_v(16 * to_integer(unsigned(qnice_addr_i(4 downto 0))) + 15 downto
+                                 16 * to_integer(unsigned(qnice_addr_i(4 downto 0))));
                when others => null;
             end case;
          end if;
