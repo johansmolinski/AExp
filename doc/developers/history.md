@@ -2496,6 +2496,12 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   the swap clock). Proof: the quick bench on a copy whose read returns X when
   it hits the address written in the same clock (worst-case BRAM collision):
   9/9 PASS; mutant "write half = read half" on that copy: 9/9 FAIL.
+  Build `linedbl-d` (Fedora, `REF=a4000-b`): first pass missed, re-roll 2/16
+  (placement kept, route_design NoTimingRelaxation) WNS +0.050 / WHS +0.007,
+  0 routing errors, BRAM 110.5 (a4000-b 116), LUT as memory 2854 (2867),
+  Shell ROM 31338/32768. `linedbl-c` (LUTRAM, fresh placement) stopped after
+  2 failed re-rolls (best WNS -0.410). Loaded onto the MEGA65 over JTAG;
+  awaiting the field check (hires/SuperHires on analog VGA Standard).
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
