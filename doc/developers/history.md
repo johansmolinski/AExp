@@ -2594,6 +2594,26 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     KS 3.1 40.68: walk a list via (12,a2) until (54,sp), nodes in Z3 Fast RAM
     $4009E44C): a list in Fast RAM became circular = Fast RAM data corrupted
     earlier. Next: dev070-h2 (ROM data reads on the chip bus).
+    dev070-h2 hung too (same loop, the list walked into address 0): not the
+    data-read path. CAUSE (found in simulation, 2026-10-16): the CPU cache's
+    SNOOP in sdram_ctrl (cpu_cache_new: chipset writes update cached lines),
+    never exercised before turbo Kickstart because the cache only held Fast
+    RAM. sdram_ctrl set chipWE (= snoop_act) at every chip slot and cleared it
+    only on reset, so after a chipset write it stayed 1 through the following
+    non-chip slots, and the snoop used the LIVE chip bus (chipAddr, chipWR) -
+    whose address lines carry the CPU's current address when there is no DMA,
+    i.e. exactly the Kickstart address the CPU was fetching through the cache:
+    the snoop "updated" that cached code with bus junk (blitter-heavy
+    Workbench launches = many chipset writes). Upstream MiSTer has the same
+    code. tb020 `CHIPLOAD` drives the chip port like minimig_sram_bridge (a
+    chipset write every 5th 7 MHz cycle, a DMA read, else the CPU's banked
+    address with junk on the data bus): RED - the turbo ROM loop (I-cache on)
+    ran off the rails (result never written in 3M cycles), the chip-bus
+    reference passed. FIX (Minimig d7d29e2): chipWE is cleared at every slot
+    start and set only in a chipset write slot, and the snoop gets the
+    write's own address/data/byte selects captured with it (snoopAddr/WR/BS)
+    - each alone closes this path. GREEN: k1c 3dd07332 in 20,576 cycles
+    under load, k1 (uncached), k0c reference pass.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
