@@ -96,7 +96,9 @@
 --   $DA1000/$DA3000  CS2, the control block: +$18 = device control / alternate status
 --   $DA8000          card status: bit 15 = IDE interrupt (or cs_mask bit 5), then the
 --                    written cs_mask/cs bits as in gayle.v (no PCMCIA card, ever)
---   $DA9000          interrupt request: bit 15 = INTRQ (writes ignored, as in gayle.v)
+--   $DA9000          interrupt request: bit 15 = the IDE interrupt LATCH, set when INTRQ rises,
+--                    cleared by writing 0 to bit 15 (a real Gayle; gayle.v shows INTRQ itself,
+--                    which loses an INTRQ that a status read clears before the server ran)
 --   $DAA000          interrupt enable: bit 15
 --   $DAB000          config: bits 15..12, read back
 --   $DE1000          Gayle ID: bit 15 reads 1, 1, 0, 1 (a write restarts the sequence)
@@ -104,7 +106,8 @@
 -- device control bit 1, is set), and so do the sector engine's READ/WRITE SECTORS by the
 -- same rules (Megamiga 0.7 on 0.6.1: every block of a READ, every block after the first
 -- of a WRITE, the end of a WRITE, an error), reading the status register or writing the command
--- register clears it, and irq_o = INTRQ and the enable bit goes to INT2. In RIPPLE mode
+-- register clears it; its rising edge sets the $DA9000 latch, and irq_o = latch and the
+-- enable bit goes to INT2 (Megamiga 0.7, was INTRQ and the enable). In RIPPLE mode
 -- irq_o stays 0 (lide.device polls).
 --
 -- A commit is applied a few core clocks after its toggle crossed over (the payload was
@@ -238,6 +241,8 @@ architecture synthesis of ide_board is
    signal intrq       : std_logic := '0';      -- ATA INTRQ
    signal nien        : std_logic := '0';      -- device control bit 1
    signal g_intena    : std_logic := '0';      -- $DAA000 bit 15
+   signal g_irq       : std_logic := '0';      -- $DA9000 bit 15: the IDE interrupt latch
+   signal intrq_d     : std_logic := '0';
    signal g_cs_mask   : std_logic_vector(5 downto 0) := (others => '0');
    signal g_cs        : std_logic_vector(1 downto 0) := (others => '0');
    signal g_cfg       : std_logic_vector(3 downto 0) := (others => '0');
@@ -352,7 +357,9 @@ begin
    data_o      <= rdata;
    board_ena_o <= m_board_ena;
    activity_o  <= status(C_BSY) or status(C_DRQ);
-   irq_o       <= gayle_i and intrq and g_intena;
+   -- Megamiga 0.7: from the latch (real Gayle), not from INTRQ itself (gayle.v)
+   --irq_o       <= gayle_i and intrq and g_intena;
+   irq_o       <= gayle_i and g_irq and g_intena;
 
    rom_avm_read_o    <= rom_read;
    rom_avm_address_o <= std_logic_vector(resize(unsigned(G_ROM_BASE) + unsigned(lat_addr(15 downto 2)), 32));
@@ -516,7 +523,8 @@ begin
                            case a(13 downto 12) is
                               when "00"   => rdata <= (g_cs_mask(5) or intrq) & g_cs_mask(4 downto 0) &
                                                       g_cs & x"00";
-                              when "01"   => rdata(15) <= intrq;
+                              --when "01"   => rdata(15) <= intrq;
+                              when "01"   => rdata(15) <= g_irq;
                               when "10"   => rdata(15) <= g_intena;
                               when others => rdata(15 downto 12) <= g_cfg;
                            end case;
@@ -575,7 +583,12 @@ begin
                                           g_cs      <= data_i(9 downto 8);
                            when "10"   => g_intena  <= data_i(15);
                            when "11"   => g_cfg     <= data_i(15 downto 12);
-                           when others => null;      -- $DA9000: writes ignored (gayle.v)
+                           -- $DA9000: a 0 in bit 15 acknowledges the IDE interrupt (real
+                           -- Gayle: scsi.device / Linux write 0x7C), a 1 changes nothing
+                           --when others => null;      -- $DA9000: writes ignored (gayle.v)
+                           when others => if data_i(15) = '0' then
+                                             g_irq <= '0';
+                                          end if;
                         end case;
                      end if;
                      if is_tf then
@@ -776,6 +789,14 @@ begin
          if e_irq and nien = '0' then
             intrq <= '1';
          end if;
+         -- Gayle: INTRQ rising sets the interrupt latch (after the acknowledge above: a
+         -- new interrupt in the same clock wins); a status read clears only INTRQ, so an
+         -- INTRQ raised at once for the next block and cleared by the host's status read
+         -- before the interrupt server ran is not lost
+         intrq_d <= intrq;
+         if intrq = '1' and intrq_d = '0' then
+            g_irq <= '1';
+         end if;
 
          if rst_i = '1' then
             bus_state   <= B_IDLE;
@@ -786,6 +807,7 @@ begin
             srst        <= '0';
             nien        <= '0';
             g_intena    <= '0';
+            g_irq       <= '0';
             g_cs_mask   <= (others => '0');
             g_cs        <= (others => '0');
             g_cfg       <= (others => '0');

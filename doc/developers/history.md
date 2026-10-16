@@ -2480,6 +2480,24 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     then it's fine. Lide is still an option for most use cases"): lide.device
     (Gayle off) stays the fast choice for AmigaOS, Gayle is for the Kickstart's
     own scsi.device and Linux. lide.device with MULTIPLE not measured yet.
+  - HW (2026-10-16, dev070-c): 68020 + Z3 Fast RAM: Gayle 1 MB/s, lide.device
+    4.5 MB/s. 8 KB at 1 MB/s = ~8 ms per block: lost interrupts, recovered by
+    a timeout. Cause: `$DA9000` bit 15 followed INTRQ (as gayle.v), which a
+    status read clears; the engine raises the next block's INTRQ the moment a
+    block ends when the ring already holds it (the slower 68020 copy keeps the
+    ring full, the 68040 mostly empties it), and a status read before the
+    INT2 server ran lost it (the server then saw $DA9000 = 0: not mine). On
+    MiSTer the ARM side is slow enough that this never shows. FIX (as a real
+    Gayle, UAE, and what Linux's pata_gayle expects: it acknowledges with
+    0x7C): bit 15 of $DA9000 is a LATCH, set when INTRQ rises, cleared by
+    writing 0 to it (a 1 changes nothing) or a reset; INT2 = latch and
+    $DAA000. RED/GREEN: tb_ide_g's Gayle host now reads the status right after
+    every block and serves interrupts like pata_gayle (latch bit, status,
+    0x7C) - before the fix "file read 21+30 slow CPU" hangs (INTRQ timeout) in
+    both Gayle scenarios, after it 4/4 PASS. tb_ide_board's Gayle part moved to
+    the latch semantics (status read clears INTRQ = $DA8000 bit 15, not the
+    latch; 1 written to bit 15 changes nothing): PASS. mut_mult.sh + 3 latch
+    mutants (INT2 from INTRQ, acknowledge ignored, latch = level): killed.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
