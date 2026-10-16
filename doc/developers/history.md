@@ -2625,6 +2625,11 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     on an RTG screen: with Picasso96 restored everything works. So the
     remaining hang is PrismRTG's (see "PrismRTG driver"), not the core; the
     snoop bug above was real regardless (red/green in simulation).
+    KS 3.2 (dev070-i): 020 Gayle 1.9 / lide 4.6, 040 Gayle 2.8 / lide 4.6;
+    KS 3.1: 040 Gayle 2.2, lide 4.6. One 020+3.2+lide run gave 1.4 (the next
+    4.6, like the earlier one-off 2.1): the diagnostics show irq->access 93
+    instead of 31 us and the CPU sampled at Z3 $403DB0xx instead of the
+    board - something else ran on the CPU during that test.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
