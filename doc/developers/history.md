@@ -2404,6 +2404,34 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     and a new HDF was partitioned in HDToolBox (Save Changes to Drive works)
     and its partitions formatted; with Gayle off, the Zorro board with
     lide.device still works. Not yet tested: 68000/68020, A600 + KS 2.05.
+  - Rebased onto main 0.6.2 (2026-10-15, branch `dev-0.7.0`, old tip kept as
+    `dev-0.7.0-backup` 8c5bbe1; Minimig branch `dev-0.7.0` = the Gayle
+    cpu_wrapper commit on ec7b7f0). Merges: `ext_sel`/`chipreq` with
+    `sel_ide | sel_gayle | sel_eth | sel_shr`; the Gayle toggles on lines
+    28 / 46 / 64 (the blank line after each chipset radio, main's menu),
+    groups `OPTM_G_P1/P2/P3GAYLE` 57/58/59; main.vhd `eth_irq_i or
+    ide_irq_i` next to the cart ports; MENU_HEAP_SIZE 3936 (demand 3930),
+    release HEAP_SIZE 14592; HDF_BLK_WORDS 284 (main's FDH 15 + 12 + the
+    CHS geometry); the CHS default geometry is set after HDF_DSLOT/HDF_DGEN,
+    so partitions get it too. Firmware: ROM 31502/32768, banks 3850/3621/1477.
+  - NEW with the rebase: the sector engine (0.6.1) serves READ/WRITE SECTORS
+    in hardware, but only the firmware raised INTRQ, so in Gayle mode
+    scsi.device waited for an interrupt that never came. ide_board.vhd now
+    raises INTRQ for engine transfers (Gayle mode, unless nIEN) like a real
+    drive: per READ block (DRQ set), per WRITE block after the first, at the
+    WRITE end and on errors; none after the last READ block. RIPPLE mode is
+    unchanged (lide.device polls). CHS commands still go to the firmware
+    (the engine only takes LBA, DEVH bit 6). Tests: `~/aexp-work/ideng/run_g.sh`
+    (`tb_ide_g.vhd`, scsi.device-style: wait for INTRQ, read status, move
+    the block) PASS for both scenarios x GAYLE true/false; red check (engine
+    without INTRQ) fails; mutants "no per-block IRQ" and "no write-end IRQ"
+    killed. `~/aexp-work/ide/run_tb.sh R=<checkout>` IDE BOARD TB + GAYLE PASS.
+    `~/aexp-work/fw-ide4` (fw-ide3 + Gayle: CHS, GAYLE records, END/IRQ flags,
+    0x91, IDENTIFY 54..58): 6 cases PASS, 84/84 mutants killed.
+    e2e040 `run_gayle.sh` (W=worktree): all four PASS (32 / 38 board
+    accesses). tb020.sv had to tie the 0.6.2 inputs `cart_ar3`/`cart_ovl` to
+    0: left open, `cart_ar3` made the Zorro II RAM decode X and the TG68K
+    stalled in the Fast RAM fill (the AP68040 uses the fp_* port, so it passed).
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
