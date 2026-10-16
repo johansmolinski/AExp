@@ -2560,7 +2560,12 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     without geometry -> firmware: 4/4 PASS. mut_mult.sh: 9 CHS mutants
     killed (sector 0 at C0/H0 alone did not kill "no sector-0 check": LBA -1
     wraps and fails the range check - hence the C1/H1 case). Firmware ROM
-    31784/32768.
+    31784/32768. fw-ide4 (agent): the geometry register after every mount
+    (0xF03F), after 0x91 (the commanded drive, observed AT the commit, the
+    other drive unchanged), untouched by other commands, and with IDENTIFY;
+    geometries incl. 16/256 and 2/255; 6 cases PASS, 118/118 mutants killed
+    (8 new), no firmware bug. Build `dev070-g` (incremental from dev070-f):
+    WNS +0.056, WHS +0.007; `~/aexp-builds/Megamiga-dev070-g`.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
