@@ -2642,6 +2642,20 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     diagnostics (IDE_DIAG, UART) are still on.
     Build `main-merge-b` (incremental from dev070-i): WNS +0.101, WHS +0.007;
     `~/aexp-builds/Megamiga-main-merge-b`.
+  - **Where lide.device's time goes (2026-10-16, simulation).** The user asked
+    about DMA from the board into Z3 RAM. `~/aexp-work/cpu060/e2e040/meas_lide.sh`
+    runs lide 40.12's read copy (`$1BF6`: MOVEM.L 13 longs from the data
+    window, MOVEM.L into the buffer, 9 x 13 + 11 longs) for 8 sectors per
+    destination, board model with ide_board.vhd's latency, stack in Z2.
+    Sector into Z2/Z3: TG68K 96 us (5.3 MB/s), AP68040 with 68040.library's
+    copyback 99-100 us (5.1 MB/s), uncached 119 us; into Chip RAM 2.0-2.5 MB/s.
+    It matches the hardware's 4.6 MB/s on both CPUs (the rest is command and
+    IRQ overhead). Per sector (core clocks): TG68K 2732 = board reads 768
+    (3 clocks per word) + stores ~1450 (a 13-long MOVEM.L store ~145 clocks,
+    5.6 per word) + call overhead ~680; 68040 2800 = board reads ~1920 (a long
+    = 3 + 12 clocks, the 12 between longs) + stores ~700 (copyback) + ~400.
+    So the TG68K is bound by its Fast RAM stores, the 68040 by the board read
+    path. The SD bus (4-bit, 25 MHz) would allow ~10 MB/s.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
