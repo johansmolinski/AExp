@@ -2434,6 +2434,12 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     accesses). tb020.sv had to tie the 0.6.2 inputs `cart_ar3`/`cart_ovl` to
     0: left open, `cart_ar3` made the Zorro II RAM decode X and the TG68K
     stalled in the Fast RAM fill (the AP68040 uses the fp_* port, so it passed).
+  - R6 build `dev070-a` (on 0.6.2, no reference): WNS -0.335 (68040 core and
+    TG68K -> sdram_ctrl paths, none in the Gayle logic); 11 re-roll attempts
+    reached -0.155 at best, stopped after the 0.6.3 rebase. Build `dev070-b`
+    (on 0.6.3, incremental from `rel063`, IMPL_MARGIN flow): met timing on the
+    first pass, WNS +0.066, WHS +0.007, 115.0k LUTs, 116 BRAM tiles;
+    `~/aexp-builds/Megamiga-dev070-b`. NOT hardware-tested yet.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
