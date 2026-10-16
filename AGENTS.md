@@ -139,6 +139,11 @@ Megamiga fork (johansmolinski):
   77..94, everything after it +19, OPTM_SIZE 248, keys `a4000.*`), A600 default 2 MB Chip; fixes
   the Volume/OSM Scaling/Stereo ranges (2 lines off since 0.6.1).
 
+- `prism-rtg` (unreleased): `MEGAMIGA.driver` for PrismRTG, the open-source
+  Picasso96 replacement (`CORE/prism/`, host fixture + blitter model).
+  Works on the 68020, not on the 68040 (ScreenMode quits); paused 2026-10-16,
+  next steps in the history entry.
+
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
 mutant set.

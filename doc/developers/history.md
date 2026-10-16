@@ -2460,6 +2460,70 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   Audio, Keyboard, Ports + Back = 29).
   Build `a4000-b` (`REF=rel063`): first pass WNS +0.002 / WHS +0.007, Shell
   ROM 31338/32768; pushed with the 248-byte megamiga-0.6.4.cfg.
+- **PrismRTG driver (2026-10-16, branch `prism-rtg` from main, no HDL/firmware
+  change).** User: "an open source RTG host would serve us well" - PrismRTG
+  (github.com/lainejones/PrismRTG, GPL-3.0-only, 1.1 beta 9) replaces
+  Picasso96 with its own cybergraphics/Picasso96API libraries and loads board
+  drivers as modules (`LIBS:Prism/NAME.driver`, board ABI 3 / protocol 4,
+  frozen since beta 8). `CORE/prism/drv_megamiga.c` = `MEGAMIGA.driver`: found
+  by `driver_find(2011, 102)` (the Z3 RTG board, so 020/040 profiles only) +
+  ID `$4D01`; regs at board+$400100, palette +$400400, blitter +$400800 (ID
+  `$B11B` gates the ops); VRAM = board offset 0, 4 MB minus 128 KB (two 64 KB
+  template scratch halves at the top, as Megamiga.card does). Formats = the
+  four Megamiga.card has shown since 0.4 (CLUT8 3, RGB565LE 4+16, BGR24 5+16,
+  RGBA32 6; rtg.v keeps FORMAT[4:0], so Megamiga.card's +32 is dropped
+  anyway); STRIDE is its own register, so autoscroll (`pitchPixels`) works;
+  checkMode refuses modes bigger than VRAM. Ops fill/copy/expand (no 24-bit
+  fills/text: no 3-byte pattern), asynchronous with `waitBlit`, every wait
+  bounded (2M polls -> PR_FAILED / PBF_ACCEL_BROKEN). No sprite, vblank or
+  DPMS (the card has none). Built with bebbo gcc 6.5 in podman on fedora
+  (`sacredbanana/amiga-compiler:m68k-amigaos`, `CORE/prism/build.sh
+  CONTAINER=podman`), 9892 bytes (13688 with the probe diagnostics). Host fixture `CORE/prism/test_megamiga.c`
+  (`test.sh`, vamos from amitools git master in fedora:~/amitools-venv,
+  `-m 10240` - more RAM refuses with hw access): mode/palette/display-start
+  registers + a C model of rtg_blitter.vhd, 3000 random fills/copies/texts
+  byte-compared with the CPU: PASS; mutants (no bottom-up copy, 16-bit
+  pattern unshifted, JAM2 inverted, 565 swap bit, template stride, overlap
+  accepted) 6/6 killed. Test disk `CORE/prism/Megamiga_PrismRTG.adf`
+  (`make_adf.sh`: release drawer + our driver in its Drivers, PrismCheck kit
+  built from source). **Hardware, first try:** after install + reboot no RTG
+  screen and Prefs/ScreenMode quit silently (OS 3.1 and 3.2; P96 monitor was
+  parked correctly). The probe got diagnostics (board address, ID, blitter ID
+  printed once the ConfigDev is found). Then, after the user reloaded the
+  core, it worked - cause unknown (stale core/board state?). Watch for a
+  repeat; the probe line and `C:PrismD BOARD=MEGAMIGA LOG` are the first data
+  to get. Narrowed by the user: works on the 68020, NOT on the 68040 (where
+  Picasso96 + Megamiga.card works). Also explained: PrismRTG's boot failsafe
+  (`ENVARC:Prism.booting`, cleared after 3600 VBLs = 72 s) skips every boot
+  after one that was rebooted early or where PrismD quit. Ruled out in
+  simulation: MOVE16 to/from the RTG board (PrismD CopyMems VRAM a lot) -
+  `~/aexp-work/cpu060/e2e040m16` (e2e040 + MOVE16 Z2->board, board->Z2,
+  board->board, Z2->$02000000; RTL of dev-0.7.0, GAYLE=0): CPU40 PASS.
+  Last data (68040, `C:PrismD BOARD=MEGAMIGA LOG` from a LMB boot): PrismD
+  reaches "running" (driver found, modes built), but Prefs/ScreenMode still
+  quits silently and the log shows only five `ChangeExtSprite` lines (the
+  Intuition pointer) - no `FindDisplayInfo`/`GetDisplayInfoData` for any
+  Prism ID, so ScreenMode gives up BEFORE it asks PrismD about a Prism mode.
+  PrismD has no 68040-specific code (its trampolines are static `stubs.S`
+  code installed with SetFunction; only the ZZ9000/Z3660 drivers call
+  CacheClearU). **PAUSED here 2026-10-16 (user: "I don't feel like hunting
+  right now").** Next steps, in this order: (1) on the 68040, ScreenMode
+  with NO PrismD (LMB boot) - if it quits too, the fault is the 68040 setup,
+  not PrismRTG; (2) the trace build `PrismD.trace` (PrismRTG
+  `tools/mktrace.sh ALL`, whose source list is stale: add `src/cgxvideo.c`,
+  `src/arexx.c` and `-lm`; built on fedora with PATH
+  `/opt/m68k-amigaos/bin`) logs every graphics.library call as `g-<LVO>`:
+  `Run >RAM:trace.txt RAM:PrismD.trace BOARD=MEGAMIGA LOG`, start
+  ScreenMode, the last `g-` lines say where it stops; (3) only then the
+  unverified ideas: the 5 s monitor timeout / probe order, the driver's
+  CopyMem in expand (Megamiga.card uses a move.l loop), the board's MMU
+  mapping under 68040.library on real hardware (the sim used TTRs). Also
+  still to do: the PrismCheck tests (tmpltest, p96test, vramcheck,
+  PrismBench) and a "Use blitter" off check on the 68020; then perhaps an
+  upstream PR to PrismRTG (prismsetup.c/prismprobe.c board tables, build.sh,
+  mkpkg.sh, README). The working copy of PrismRTG is
+  fedora:~/prismbuild/PrismRTG (1.1 beta 9, `f44c4cc`). Status: works on
+  the 68020, NOT on the 68040; not for release.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
