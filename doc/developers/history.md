@@ -2566,6 +2566,11 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     geometries incl. 16/256 and 2/255; 6 cases PASS, 118/118 mutants killed
     (8 new), no firmware bug. Build `dev070-g` (incremental from dev070-f):
     WNS +0.056, WHS +0.007; `~/aexp-builds/Megamiga-dev070-g`.
+    HW (2026-10-16, SysInfo, 68020 + Z3 Fast RAM + Gayle): KS 3.1 0.5 -> 3.0
+    MB/s, KS 3.2 1.9 MB/s. Board side identical for both (READ MULTIPLE 128,
+    interrupt -> first data read ~150 us, BSY 1-1.5 %); 3.2's scsi.device
+    takes ~270 us per sector against 3.1's ~170 us - its own copy, nothing
+    the board can change.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
