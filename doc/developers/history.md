@@ -2587,6 +2587,13 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     1.34 s: `dev070-h` (cachecfg 110, WNS +0.040) and `dev070-h2` (010 =
     turbo kick for instruction fetches only, built from a copy,
     ~/aexp-work/build-src/dev070-h2, WNS 0.000).
+    dev070-h on HW (KS 3.1 + Gayle, SysInfo from the hard disk): hung again;
+    NOT a bus stall (waits <= 0.3 us, the CPU keeps running), the IDE board
+    idle and every interrupt acknowledged (the last command, WRITE SECTORS 1,
+    completed). The CPU loops in graphics.library 40.24 ($F98828-$F9889C of
+    KS 3.1 40.68: walk a list via (12,a2) until (54,sp), nodes in Z3 Fast RAM
+    $4009E44C): a list in Fast RAM became circular = Fast RAM data corrupted
+    earlier. Next: dev070-h2 (ROM data reads on the chip bus).
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
