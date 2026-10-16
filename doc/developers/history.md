@@ -2656,6 +2656,20 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     = 3 + 12 clocks, the 12 between longs) + stores ~700 (copyback) + ~400.
     So the TG68K is bound by its Fast RAM stores, the 68040 by the board read
     path. The SD bus (4-bit, 25 MHz) would allow ~10 MB/s.
+    Traced (tb020.sv `ISLTRACE`/`TGTRACE` probes): the TG68K run above had
+    its instruction cache off; with CACR = 1, as exec sets it (`s0cb`), a
+    sector into Z2/Z3 takes 75-76 us (6.8 MB/s, 2140 clocks), so instruction
+    fetches from Fast RAM (8-9 clocks per word uncached) were a quarter of it.
+    What is left on the TG68K: board reads 3 clocks per word, Fast RAM writes
+    4 clocks per word - sdram_ctrl serves one access per 7 MHz slot (16
+    states at 113.5 MHz = 4 core clocks), a 16-bit write takes a whole slot
+    and the write buffer holds one word. On the AP68040 one board long is 16
+    core clocks: the adapter's two 16-bit cycles 6 (3 per word, one of them
+    the idle between the words), the answer toggle 1, the CDC back to the
+    CPU ~1.3, the core from m_ack to its next m_req 4 CPU clocks (~2.7), the
+    queue write ~0.7, the CDC to the bus side ~2.3, entry load + adapter
+    start 2. No single wait; the island's own registers and the idle word
+    are ~3 of the 16, the two crossings ~3.6, the core ~2.7.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
