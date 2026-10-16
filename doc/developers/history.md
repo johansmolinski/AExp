@@ -2405,13 +2405,15 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     and its partitions formatted; with Gayle off, the Zorro board with
     lide.device still works. Not yet tested: 68000/68020, A600 + KS 2.05.
   - Rebased onto main 0.6.2 (2026-10-15, branch `dev-0.7.0`, old tip kept as
-    `dev-0.7.0-backup` 8c5bbe1; Minimig branch `dev-0.7.0` = the Gayle
+    `dev-0.7.0-backup` 8c5bbe1) and again onto 0.6.3 (2026-10-16, the 0.6.2
+    state kept as `dev-0.7.0-pre063`; Minimig branch `dev-0.7.0` = the Gayle
     cpu_wrapper commit on ec7b7f0). Merges: `ext_sel`/`chipreq` with
     `sel_ide | sel_gayle | sel_eth | sel_shr`; the Gayle toggles on lines
     28 / 46 / 64 (the blank line after each chipset radio, main's menu),
-    groups `OPTM_G_P1/P2/P3GAYLE` 57/58/59; main.vhd `eth_irq_i or
-    ide_irq_i` next to the cart ports; MENU_HEAP_SIZE 3936 (demand 3930),
-    release HEAP_SIZE 14592; HDF_BLK_WORDS 284 (main's FDH 15 + 12 + the
+    groups `OPTM_G_P1/P2/P3GAYLE` (57/58/59, 58/59/60 since 0.6.3 took 57
+    for RTG native resolution); main.vhd `eth_irq_i or ide_irq_i` next to the
+    cart ports; MENU_HEAP_SIZE 3936 (demand 3930), release HEAP_SIZE 14592
+    (on 0.6.3: demand 3889 + 63 = 3952, MENU_HEAP_SIZE 3968, HEAP_SIZE 14560); HDF_BLK_WORDS 284 (main's FDH 15 + 12 + the
     CHS geometry); the CHS default geometry is set after HDF_DSLOT/HDF_DGEN,
     so partitions get it too. Firmware: ROM 31502/32768, banks 3850/3621/1477.
   - NEW with the rebase: the sector engine (0.6.1) serves READ/WRITE SECTORS
