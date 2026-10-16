@@ -2458,6 +2458,8 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   separator is back (line 14) and OPTM_DY 34 -> 29 = the tallest view
   (Settings, counted by hand: headlines/lines/submenu labels of Display,
   Audio, Keyboard, Ports + Back = 29).
+  Build `a4000-b` (`REF=rel063`): first pass WNS +0.002 / WHS +0.007, Shell
+  ROM 31338/32768; pushed with the 248-byte megamiga-0.6.4.cfg.
 
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
