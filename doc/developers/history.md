@@ -2614,6 +2614,10 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     write's own address/data/byte selects captured with it (snoopAddr/WR/BS)
     - each alone closes this path. GREEN: k1c 3dd07332 in 20,576 cycles
     under load, k1 (uncached), k0c reference pass.
+    Also under load: the ROM stress routine (kick2.S) gives a142f3a0 with
+    and without turbo Kickstart; run_gayle.sh (no chip load) 4/4 PASS. Build
+    `dev070-i` (the fix + diagnostics, cachecfg 110; incremental from
+    dev070-h): WNS +0.039, WHS +0.007; `~/aexp-builds/Megamiga-dev070-i`.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
