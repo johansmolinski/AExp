@@ -63,7 +63,7 @@
 #define IDE_ENGINE 1
 ; IDE_DIAG 1 (Megamiga 0.7, a diagnostics firmware): about once a second, while
 ; data moves, one line of the IDE board's diagnostics counters on the UART
-; (115200 8N1, the MEGA65's debug UART): "IDE" and 12 x 8 hex digits, see
+; (115200 8N1, the MEGA65's debug UART): "IDE" and 14 x 8 hex digits, see
 ; ide_board.vhd (0x134/0x140). Firmware only: patch_firmware.sh switches it.
 #define IDE_DIAG 1
 
@@ -3095,9 +3095,9 @@ IDE_SEL         INCRB
                 RET
 
 #if IDE_DIAG
-; IDE_DIAG_STEP: every 1024 x 65536 QNICE cycles (1.34 s), while the board moved
-; data since the last line: the snapshot of its diagnostics counters as one line
-; on the UART. Changes the RAMROM selection. Registers preserved.
+; IDE_DIAG_STEP: every 1024 x 65536 QNICE cycles (1.34 s): the snapshot of the
+; board's diagnostics counters as one line on the UART, always (the CPU entries
+; 12/13 show a hung CPU too). Changes the RAMROM selection. Registers preserved.
 IDE_DIAG_STEP   INCRB
                 MOVE    IO$CYC_MID, R0
                 MOVE    @R0, R0                 ; R0: now, in 65536 cycles
@@ -3117,14 +3117,14 @@ _IDG_W          SUB     1, R3                   ; in well under 10 us)
                 ADD     2, R2                   ; counter 1 (data words), lo
                 MOVE    @R2, R4
                 MOVE    IDE_DLAST_W, R5
-                CMP     @R5, R4
-                RBRA    _IDG_RET, Z             ; nothing moved: no line
+                ;CMP     @R5, R4
+                ;RBRA    _IDG_RET, Z             ; nothing moved: no line
                 MOVE    R4, @R5
                 INCRB                           ; (the syscalls use R8..R12)
                 MOVE    IDE_DIAG_STR, R8
                 SYSCALL(puts, 1)
                 MOVE    IDE_DIAG_CNT, R0
-                MOVE    12, R1
+                MOVE    14, R1
 _IDG_L          MOVE    @R0++, R2               ; lo
                 MOVE    @R0++, R8               ; hi
                 SYSCALL(puthex, 1)

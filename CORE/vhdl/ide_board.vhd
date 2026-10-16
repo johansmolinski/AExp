@@ -62,11 +62,14 @@
 --   0x131-0x133  R: engine statistics: commands taken, forwarded to the firmware, failed
 --   0x134        W: diagnostics snapshot request (any value; Megamiga 0.7): the core side copies
 --                   its free-running counters, readable a few us later at
---   0x140-0x157  R: 12 x 32 bits (lo, hi): 0 commands, 1 data words, 2 interrupts latched,
+--   0x140-0x15B  R: 14 x 32 bits (lo, hi): 0 commands, 1 data words, 2 interrupts latched,
 --                   3 acknowledged, 4 clocks latched, 5 clocks a data access was held,
 --                   6 clocks BSY, 7 clocks from an interrupt to the next data access or
 --                   command, 8 core clocks, 9 status reads, 10 alternate status reads,
---                   11 last command (7..0), its count (15..8), MULTIPLE commands (31..16)
+--                   11 last command (7..0), its count (15..8), MULTIPLE commands (31..16),
+--                   12 the CPU's address, 13 its bus state (31..24: cpu_req, ramsel,
+--                   chipreq, ext_sel, fastchip_selack, cpu040_sel, cpustate) and the clocks
+--                   its current bus cycle has waited (23..0) - cpu_wrapper dbg_*
 --   window 1     W: the extent maps of the engine, unit u at u * 2048 (FAT32$FILE_MAP format)
 --
 -- Sector engine (Megamiga 0.6.1): READ SECTORS and WRITE SECTORS of a unit whose engine mode is
@@ -148,6 +151,9 @@ entity ide_board is
       uds_n_i                : in  std_logic;
       lds_n_i                : in  std_logic;
       gayle_i                : in  std_logic;        -- Gayle mode (see header), static
+      -- Megamiga 0.7 diagnostics: cpu_wrapper's address (63..32), bus state (31..24) and
+      -- stall clocks (23..0), sampled into the snapshot as entries 12 and 13
+      dbg_cpu_i              : in  std_logic_vector(63 downto 0) := (others => '0');
       addr_i                 : in  std_logic_vector(18 downto 1);  -- offset within the board
       data_i                 : in  std_logic_vector(15 downto 0);
       data_o                 : out std_logic_vector(15 downto 0);
@@ -252,12 +258,12 @@ architecture synthesis of ide_board is
    signal g_intena    : std_logic := '0';      -- $DAA000 bit 15
    signal g_irq       : std_logic := '0';      -- $DA9000 bit 15: the IDE interrupt latch
    -- diagnostics (Megamiga 0.7): free-running counters, a snapshot for the firmware
-   type t_dcnt is array (0 to 11) of unsigned(31 downto 0);
+   type t_dcnt is array (0 to 13) of unsigned(31 downto 0);
    signal dcnt, dsnap  : t_dcnt := (others => (others => '0'));
    signal d_wait      : std_logic := '0';      -- an interrupt is waiting for its access
    signal m_dreq_d, m_dreq_s, m_dreq_seen : std_logic := '0';
    signal q_dreq      : std_logic := '0';
-   signal dsnap_v, q_dsnap_v : std_logic_vector(383 downto 0);
+   signal dsnap_v, q_dsnap_v : std_logic_vector(447 downto 0);
    signal intrq_d     : std_logic := '0';
    signal g_cs_mask   : std_logic_vector(5 downto 0) := (others => '0');
    signal g_cs        : std_logic_vector(1 downto 0) := (others => '0');
@@ -844,6 +850,8 @@ begin
          if d_wait = '1' then dcnt(7) <= dcnt(7) + 1; end if;
          if ev_stat then dcnt(9) <= dcnt(9) + 1; end if;
          if ev_alt  then dcnt(10) <= dcnt(10) + 1; end if;
+         dcnt(12) <= unsigned(dbg_cpu_i(63 downto 32));
+         dcnt(13) <= unsigned(dbg_cpu_i(31 downto 0));
          if ev_irq then
             d_wait <= '1';
          elsif ev_word or ev_cmd then
@@ -953,13 +961,13 @@ begin
       ); -- i_cdc_to_qnice
 
    -- diagnostics snapshot (changes only on a request: cdc_stable passes it)
-   dsnap_gen : for i in 0 to 11 generate
+   dsnap_gen : for i in 0 to 13 generate
       dsnap_v(32 * i + 31 downto 32 * i) <= std_logic_vector(dsnap(i));
    end generate dsnap_gen;
 
    i_cdc_diag : entity work.cdc_stable
       generic map (
-         G_DATA_SIZE    => 384,
+         G_DATA_SIZE    => 448,
          G_REGISTER_SRC => false
       )
       port map (
@@ -1270,7 +1278,8 @@ begin
                when x"33" => d := q_st_err;
                when x"40" | x"41" | x"42" | x"43" | x"44" | x"45" | x"46" | x"47" |
                     x"48" | x"49" | x"4A" | x"4B" | x"4C" | x"4D" | x"4E" | x"4F" |
-                    x"50" | x"51" | x"52" | x"53" | x"54" | x"55" | x"56" | x"57" =>
+                    x"50" | x"51" | x"52" | x"53" | x"54" | x"55" | x"56" | x"57" |
+                    x"58" | x"59" | x"5A" | x"5B" =>
                   d := q_dsnap_v(16 * to_integer(unsigned(qnice_addr_i(4 downto 0))) + 15 downto
                                  16 * to_integer(unsigned(qnice_addr_i(4 downto 0))));
                when others => null;

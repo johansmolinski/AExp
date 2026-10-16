@@ -159,6 +159,10 @@ entity main is
       fram_ready_i            : in  std_logic;
       fram_state_o            : out std_logic_vector(1 downto 0);   -- cpustate (sdram cache)
       cpu_cacr_o              : out std_logic_vector(3 downto 0);   -- 68k cache control
+      -- Megamiga 0.7 diagnostics: the CPU's address, bus state, stall clocks (cpu_wrapper)
+      dbg_cpu_addr_o          : out std_logic_vector(31 downto 0);
+      dbg_cpu_state_o         : out std_logic_vector(7 downto 0);
+      dbg_cpu_stall_o         : out std_logic_vector(23 downto 0);
       -- Megamiga (cpu040): the AP68040's Fast RAM port into the SDRAM controller (core clock,
       -- toggle handshake; amiga_sdram.vhd fp_*)
       fp_req_o                : out std_logic;
@@ -569,6 +573,9 @@ architecture synthesis of main is
          snoop_addr     : in  std_logic_vector(20 downto 1);
          slowram_ena    : in  std_logic;
          cpu040_sel     : in  std_logic;
+         dbg_addr       : out std_logic_vector(31 downto 0);
+         dbg_state      : out std_logic_vector(7 downto 0);
+         dbg_stall      : out std_logic_vector(23 downto 0);
          fp_req         : out std_logic;
          fp_we          : out std_logic;
          fp_line        : out std_logic;
@@ -999,6 +1006,9 @@ begin
          snoop_addr      => ram_addr_o(20 downto 1),
          slowram_ena     => slow_ram_i,
          cpu040_sel      => cpu_040_i,
+         dbg_addr        => dbg_cpu_addr_o,
+         dbg_state       => dbg_cpu_state_o,
+         dbg_stall       => dbg_cpu_stall_o,
          fp_req          => fp_req_o,
          fp_we           => fp_we_o,
          fp_line         => fp_line_o,

@@ -339,6 +339,9 @@ signal main_clk4x             : std_logic;               -- 113.5 MHz, SDRAM con
 signal main_clkcpu            : std_logic;               -- Megamiga (cpu040): 42.04 MHz, the AP68040
 signal main_fram_state        : std_logic_vector(1 downto 0);
 signal main_cpu_cacr          : std_logic_vector(3 downto 0);
+signal main_dbg_cpu_addr      : std_logic_vector(31 downto 0);   -- Megamiga 0.7 diagnostics
+signal main_dbg_cpu_state     : std_logic_vector(7 downto 0);
+signal main_dbg_cpu_stall     : std_logic_vector(23 downto 0);
 -- Megamiga (cpu040): the AP68040's Fast RAM port, main.vhd -> amiga_sdram.vhd
 signal main_fp_req            : std_logic;
 signal main_fp_we             : std_logic;
@@ -1562,6 +1565,9 @@ begin
          fram_ready_i         => main_fram_ready,
          fram_state_o         => main_fram_state,
          cpu_cacr_o           => main_cpu_cacr,
+         dbg_cpu_addr_o       => main_dbg_cpu_addr,
+         dbg_cpu_state_o      => main_dbg_cpu_state,
+         dbg_cpu_stall_o      => main_dbg_cpu_stall,
          fp_req_o             => main_fp_req,
          fp_we_o              => main_fp_we,
          fp_line_o            => main_fp_line,
@@ -1907,6 +1913,7 @@ begin
          uds_n_i                 => main_fram_uds_n,
          lds_n_i                 => main_fram_lds_n,
          gayle_i                 => main_gayle,
+         dbg_cpu_i               => main_dbg_cpu_addr & main_dbg_cpu_state & main_dbg_cpu_stall,
          addr_i                  => main_fram_addr(18 downto 1),
          data_i                  => main_fram_wrdata,
          data_o                  => main_ide_rddata,
