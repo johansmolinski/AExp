@@ -2618,6 +2618,13 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     and without turbo Kickstart; run_gayle.sh (no chip load) 4/4 PASS. Build
     `dev070-i` (the fix + diagnostics, cachecfg 110; incremental from
     dev070-h): WNS +0.039, WHS +0.007; `~/aexp-builds/Megamiga-dev070-i`.
+    HW (dev070-i): KS 3.1 Gayle 3.0 MB/s, lide.device 4.6 MB/s. It still hung
+    once, in the same graphics.library list walk ($F98828-$F9889E, a
+    linked list (next at +12) that never reaches its end pointer), and the
+    user then saw that the hangs came with the experimental PrismRTG driver
+    on an RTG screen: with Picasso96 restored everything works. So the
+    remaining hang is PrismRTG's (see "PrismRTG driver"), not the core; the
+    snoop bug above was real regardless (red/green in simulation).
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
