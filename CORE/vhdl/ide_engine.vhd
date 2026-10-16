@@ -11,8 +11,10 @@
 -- start, and streams the blocks with multi-block commands through the engine port of the SD
 -- host controller (M2M/vhdl/QNICE/sdhost.vhd) into or out of a ring of sector buffers that the
 -- Amiga reads or writes at the same time. Everything else - IDENTIFY, errors, commands for a
--- unit the engine does not serve, CHS addressing, sectors outside the image - goes to the
--- firmware as before: the engine forwards the command event.
+-- unit the engine does not serve, sectors outside the image, CHS addresses that are invalid
+-- for the unit's geometry (or a unit without one) - goes to the firmware as before: the
+-- engine forwards the command event. CHS addressing (the scsi.device of Kickstart 3.1 and
+-- older; Megamiga 0.7) is converted to LBA with the geometry the firmware writes (cfg_geom).
 --
 -- Handshake with the core side of ide_board (single-bit toggles, synchronised by the board):
 --   acc   the engine took the command (acc_wr_o = direction, stable 4 clocks before)
@@ -59,6 +61,11 @@ entity ide_engine is
       -- MULTIPLE (0xC4/0xC5) are served too; the board groups the sectors into blocks
       cfg_mult0_i    : in  std_logic := '0';
       cfg_mult1_i    : in  std_logic := '0';
+      -- Megamiga 0.7: the unit's CHS geometry (INITIALIZE DEVICE PARAMETERS, the firmware's
+      -- HDF_HEADS/HDF_SPT): bits 15..12 heads - 1, bits 8..0 sectors per track (1..256);
+      -- 0 = none: CHS commands go to the firmware
+      cfg_geom0_i    : in  std_logic_vector(15 downto 0) := (others => '0');
+      cfg_geom1_i    : in  std_logic_vector(15 downto 0) := (others => '0');
       cfg_sects0_i   : in  std_logic_vector(31 downto 0);
       cfg_sects1_i   : in  std_logic_vector(31 downto 0);
       cfg_base0_i    : in  std_logic_vector(31 downto 0);
@@ -118,7 +125,7 @@ architecture synthesis of ide_engine is
    constant C_RING : natural := 2 ** G_RING_LOG2;
 
    type t_state is (
-      E_IDLE, E_DECIDE, E_ACC_WAIT, E_LOOK, E_LOOK_N, E_LOOK_EXT, E_LOOK_CMP, E_LOOK_C2,
+      E_IDLE, E_DECIDE, E_CHS1, E_CHS2, E_CHS3, E_ACC_WAIT, E_LOOK, E_LOOK_N, E_LOOK_EXT, E_LOOK_CMP, E_LOOK_C2,
       E_LOOK_C3, E_START, E_RUN,
       E_WAIT_DATA, E_FAIL, E_FAIL2, E_ABORT
    );
@@ -138,6 +145,14 @@ architecture synthesis of ide_engine is
    signal unit      : std_logic := '0';
    signal wr        : std_logic := '0';
    signal lba       : unsigned(31 downto 0) := (others => '0');   -- next sector to start
+   -- Megamiga 0.7: CHS -> LBA (E_CHS1..3): LBA = (cylinder x heads + head) x spt + sector - 1
+   signal ch_cyl    : unsigned(15 downto 0) := (others => '0');
+   signal ch_head   : unsigned(3 downto 0) := (others => '0');
+   signal ch_sec    : unsigned(7 downto 0) := (others => '0');
+   signal ch_heads  : unsigned(4 downto 0) := (others => '0');
+   signal ch_spt    : unsigned(8 downto 0) := (others => '0');
+   signal ch_p1     : unsigned(20 downto 0) := (others => '0');
+   signal ch_wr     : std_logic := '0';
    signal left      : unsigned(8 downto 0) := (others => '0');    -- sectors not yet started
    signal moved     : unsigned(15 downto 0) := (others => '0');   -- sectors done (produced/written)
    signal freed     : unsigned(15 downto 0) := (others => '0');   -- free toggles seen
@@ -234,6 +249,30 @@ begin
       variable endc  : unsigned(31 downto 0);
       variable ok    : boolean;
       variable c     : std_logic_vector(7 downto 0);
+      variable elig  : boolean;
+      variable g     : std_logic_vector(15 downto 0);
+      variable gh    : unsigned(4 downto 0);
+      variable gs    : unsigned(8 downto 0);
+
+      -- take the command (direction w) / leave it to the firmware
+      procedure take(w : std_logic) is
+      begin
+         wr      <= w;
+         acc_wr  <= w;
+         fin_err <= '0';
+         moved   <= (others => '0');
+         freed   <= (others => '0');
+         tbase   <= (others => '0');
+         n_acc   <= n_acc + 1;
+         waitc   <= 4;
+         st      <= E_ACC_WAIT;
+      end procedure;
+      procedure forward is
+      begin
+         fw_tgl <= not fw_tgl;            -- the firmware's
+         n_fwd  <= n_fwd + 1;
+         st     <= E_IDLE;
+      end procedure;
    begin
       if rising_edge(clk_i) then
          sd_start <= '0';
@@ -294,10 +333,11 @@ begin
                -- Megamiga 0.7: + READ/WRITE MULTIPLE while the unit has a multiple count
                --ok := tf_i(54) = '1' and sd_ready_i = '1' and
                --      (c = x"20" or c = x"21" or c = x"30" or c = x"31");
-               ok := tf_i(54) = '1' and sd_ready_i = '1' and
-                     (c = x"20" or c = x"21" or c = x"30" or c = x"31" or
-                      ((c = x"C4" or c = x"C5") and
-                       ((tf_i(52) = '0' and cfg_mult0_i = '1') or (tf_i(52) = '1' and cfg_mult1_i = '1'))));
+               elig := sd_ready_i = '1' and
+                       (c = x"20" or c = x"21" or c = x"30" or c = x"31" or
+                        ((c = x"C4" or c = x"C5") and
+                         ((tf_i(52) = '0' and cfg_mult0_i = '1') or (tf_i(52) = '1' and cfg_mult1_i = '1'))));
+               ok := tf_i(54) = '1' and elig;
                if tf_i(52) = '1' then
                   ok := ok and cfg_mode1_i /= "00" and
                         resize(unsigned(tf_i(51 downto 48)) & unsigned(tf_i(47 downto 24)), 33) +
@@ -307,22 +347,50 @@ begin
                         resize(unsigned(tf_i(51 downto 48)) & unsigned(tf_i(47 downto 24)), 33) +
                         resize(cnt, 33) <= resize(unsigned(cfg_sects0_i), 33);
                end if;
+               -- Megamiga 0.7: CHS (DEVH bit 6 clear) with a valid address for the unit's
+               -- geometry: converted in E_CHS1..3 (an invalid one stays with the firmware: IDNF)
+               if tf_i(52) = '1' then g := cfg_geom1_i; else g := cfg_geom0_i; end if;
+               gh := resize(unsigned(g(15 downto 12)), 5) + 1;
+               gs := unsigned(g(8 downto 0));
+               ch_cyl   <= unsigned(tf_i(47 downto 32));
+               ch_head  <= unsigned(tf_i(51 downto 48));
+               ch_sec   <= unsigned(tf_i(31 downto 24));
+               ch_heads <= gh;
+               ch_spt   <= gs;
+               ch_wr    <= c(4) or (c(7) and c(0));
                if ok then
                   --wr      <= c(4);                 -- 0x30/0x31
                   --acc_wr  <= c(4);
-                  wr      <= c(4) or (c(7) and c(0));   -- 0x30/0x31/0xC5
-                  acc_wr  <= c(4) or (c(7) and c(0));
-                  fin_err <= '0';
-                  moved   <= (others => '0');
-                  freed   <= (others => '0');
-                  tbase   <= (others => '0');
-                  n_acc   <= n_acc + 1;
-                  waitc   <= 4;
-                  st      <= E_ACC_WAIT;
+                  take(c(4) or (c(7) and c(0)));  -- 0x30/0x31/0xC5
+               elsif tf_i(54) = '0' and elig and gs /= 0 and
+                     resize(unsigned(tf_i(51 downto 48)), 5) < gh and
+                     unsigned(tf_i(31 downto 24)) /= 0 and
+                     resize(unsigned(tf_i(31 downto 24)), 9) <= gs then
+                  st <= E_CHS1;
                else
-                  fw_tgl <= not fw_tgl;            -- the firmware's
-                  n_fwd  <= n_fwd + 1;
-                  st     <= E_IDLE;
+                  forward;
+               end if;
+
+            when E_CHS1 =>                         -- cylinder x heads + head
+               ch_p1 <= ch_cyl * ch_heads + ch_head;
+               st    <= E_CHS2;
+
+            when E_CHS2 =>                         -- x sectors per track + sector - 1
+               lba <= resize(ch_p1 * ch_spt, 32) + ch_sec - 1;
+               st  <= E_CHS3;
+
+            when E_CHS3 =>                         -- the range check of E_DECIDE
+               if unit = '1' then
+                  ok := cfg_mode1_i /= "00" and
+                        resize(lba, 33) + resize(left, 33) <= resize(unsigned(cfg_sects1_i), 33);
+               else
+                  ok := cfg_mode0_i /= "00" and
+                        resize(lba, 33) + resize(left, 33) <= resize(unsigned(cfg_sects0_i), 33);
+               end if;
+               if ok then
+                  take(ch_wr);
+               else
+                  forward;
                end if;
 
             when E_ACC_WAIT =>                     -- acc_wr settles, then the toggle

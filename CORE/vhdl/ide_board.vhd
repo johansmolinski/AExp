@@ -55,7 +55,9 @@
 --                     the SD slot, 0 = bottom tray, 1 = back), sectors lo/hi,
 --                     base block lo/hi, log2(sectors per cluster) - see ide_engine.vhd
 --   0x126        R/W: unit 0: the multiple count (SET MULTIPLE MODE, 0 = off, Megamiga 0.7)
---   0x128-0x12E  R/W: the same for unit 1
+--   0x127        R/W: unit 0: the CHS geometry for the engine (Megamiga 0.7): bits 15..12
+--                     heads - 1, bits 8..0 sectors per track; 0 = CHS stays with the firmware
+--   0x128-0x12F  R/W: the same for unit 1
 --   0x130        R: bit 0 SD card ready (sdhost), bit 1 engine busy
 --   0x131-0x133  R: engine statistics: commands taken, forwarded to the firmware, failed
 --   0x134        W: diagnostics snapshot request (any value; Megamiga 0.7): the core side copies
@@ -347,6 +349,7 @@ architecture synthesis of ide_board is
    signal q_base0, q_base1   : std_logic_vector(31 downto 0) := (others => '0');
    signal q_shift0, q_shift1 : std_logic_vector(2 downto 0) := (others => '0');
    signal q_mult0, q_mult1   : std_logic_vector(7 downto 0) := (others => '0');
+   signal q_geom0, q_geom1   : std_logic_vector(15 downto 0) := (others => '0');
    signal q_mult0_nz, q_mult1_nz : std_logic;
    signal q_map_addr  : std_logic_vector(11 downto 0);
    signal q_map_q     : std_logic_vector(15 downto 0);
@@ -1061,6 +1064,8 @@ begin
          cfg_slot1_i  => q_mode1(2),
          cfg_mult0_i  => q_mult0_nz,
          cfg_mult1_i  => q_mult1_nz,
+         cfg_geom0_i  => q_geom0,
+         cfg_geom1_i  => q_geom1,
          cfg_sects0_i => q_sects0,
          cfg_sects1_i => q_sects1,
          cfg_base0_i  => q_base0,
@@ -1175,6 +1180,7 @@ begin
                   when x"24" => q_base0(31 downto 16)  <= qnice_data_i;
                   when x"25" => q_shift0 <= qnice_data_i(2 downto 0);
                   when x"26" => q_mult0  <= qnice_data_i(7 downto 0);
+                  when x"27" => q_geom0  <= qnice_data_i;
                   when x"28" => q_mode1  <= qnice_data_i(2 downto 0);
                   when x"29" => q_sects1(15 downto 0)  <= qnice_data_i;
                   when x"2A" => q_sects1(31 downto 16) <= qnice_data_i;
@@ -1182,6 +1188,7 @@ begin
                   when x"2C" => q_base1(31 downto 16)  <= qnice_data_i;
                   when x"2D" => q_shift1 <= qnice_data_i(2 downto 0);
                   when x"2E" => q_mult1  <= qnice_data_i(7 downto 0);
+                  when x"2F" => q_geom1  <= qnice_data_i;
                   when others => null;
                end case;
                if qnice_addr_i(7 downto 4) = x"2" then
@@ -1195,6 +1202,8 @@ begin
             q_mode1 <= "000";
             q_mult0 <= (others => '0');
             q_mult1 <= (others => '0');
+            q_geom0 <= (others => '0');
+            q_geom1 <= (others => '0');
          end if;
       end if;
    end process qnice_write_proc;
@@ -1246,6 +1255,7 @@ begin
                when x"24" => d := q_base0(31 downto 16);
                when x"25" => d(2 downto 0) := q_shift0;
                when x"26" => d(7 downto 0) := q_mult0;
+               when x"27" => d := q_geom0;
                when x"28" => d(2 downto 0) := q_mode1;
                when x"29" => d := q_sects1(15 downto 0);
                when x"2A" => d := q_sects1(31 downto 16);
@@ -1253,6 +1263,7 @@ begin
                when x"2C" => d := q_base1(31 downto 16);
                when x"2D" => d(2 downto 0) := q_shift1;
                when x"2E" => d(7 downto 0) := q_mult1;
+               when x"2F" => d := q_geom1;
                when x"30" => d(1 downto 0) := q_eng_busy & sd_ready_i;
                when x"31" => d := q_st_acc;
                when x"32" => d := q_st_fwd;

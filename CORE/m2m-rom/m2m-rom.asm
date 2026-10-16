@@ -3157,6 +3157,32 @@ _IMR_U          ADD     IDE_ENG_MULT, R0
                 DECRB
                 RET
 
+; IDE_GEOM_REG: the CHS geometry of drive R8 (HDF_HEADS / HDF_SPT of the active
+; disk state, which must be that drive's) into the board: (heads - 1) << 12 |
+; sectors per track. The sector engine converts CHS commands with it (Megamiga
+; 0.7, the scsi.device of Kickstart 3.1); invalid addresses still come here.
+; Input: R8: drive. Registers preserved. Selects the IDE device.
+IDE_GEOM_REG    INCRB
+                RSUB    IDE_SEL, 1
+                MOVE    IDE_ENG_U0, R0
+                CMP     0, R8
+                RBRA    _IGR_U, Z
+                MOVE    IDE_ENG_U1, R0
+_IGR_U          ADD     IDE_ENG_GEOM, R0
+                MOVE    HDF_HEADS, R1
+                MOVE    @R1, R1
+                SUB     1, R1
+                AND     0x000F, R1
+                AND     0xFFFD, SR              ; (X = 0: shift in zeros)
+                SHL     12, R1
+                MOVE    HDF_SPT, R2
+                MOVE    @R2, R2
+                AND     0x01FF, R2
+                OR      R2, R1
+                MOVE    R1, @R0
+                DECRB
+                RET
+
 ; IDE_INIT: called once from START_FIRMWARE. No disk, board out of the
 ; autoconfig chain, event shadow in sync with the hardware.
 IDE_INIT        INCRB
@@ -3472,6 +3498,8 @@ _HDFP_SKD       CMP     0, R9
                 MOVE    R6, R8                  ; the multiple count for the
                 MOVE    IDE_MULT_MAX, R9        ; board (engine, block size)
                 RSUB    IDE_MULT_REG, 1
+                MOVE    R6, R8                  ; and the CHS geometry (the
+                RSUB    IDE_GEOM_REG, 1         ; engine converts CHS itself)
 
                 ; drive present, board in the chain; restart the Amiga so that
                 ; Kickstart configures the board and boots from the disk
@@ -4114,6 +4142,9 @@ _ICS_IDP1       MOVE    HDF_SPT, R2
                 ADD     1, R1
                 MOVE    HDF_HEADS, R2
                 MOVE    R1, @R2
+                MOVE    HDF_ACTIVE, R8          ; the board's copy (before the
+                MOVE    @R8, R8                 ; commit: the engine converts
+                RSUB    IDE_GEOM_REG, 1         ; the next CHS command with it)
 
                 ; commands that need no data and nothing from us: OK
 _ICS_OKN        MOVE    IDE_CMD_OK_TAB, R1
@@ -5468,6 +5499,7 @@ IDE_ENG_SECT    .EQU    1
 IDE_ENG_BASE    .EQU    3
 IDE_ENG_SHIFT   .EQU    5
 IDE_ENG_MULT    .EQU    6                   ; the multiple count (Megamiga 0.7)
+IDE_ENG_GEOM    .EQU    7                   ; the CHS geometry (Megamiga 0.7)
 IDE_DIAG_REQ    .EQU    0x8134              ; diagnostics: snapshot request
 IDE_DIAG_CNT    .EQU    0x8140              ; ... 12 x 32-bit counters (lo, hi)
 IDE_ENG_OFF     .EQU    0                   ; modes: firmware (IDE_STEP)

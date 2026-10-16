@@ -2539,8 +2539,28 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     instruction cache on (CACR, as Kickstart sets it) = 14x; uncached 146,556.
     Build `dev070-f` (incremental from dev070-e): WNS +0.029, WHS +0.007;
     `~/aexp-builds/Megamiga-dev070-f`. e2e040 `run_gayle.sh` with cachecfg
-    110 (now its default): all four PASS (32 / 38 board accesses). NOT
-    hardware-tested yet.
+    110 (now its default): all four PASS (32 / 38 board accesses). HW
+    (dev070-f, SysInfo): 68020 + Gayle + KS 3.2 1.09 -> 1.9 MB/s (interrupt ->
+    first data read 230 -> ~150 us); KS 3.1 0.5 MB/s (first measurement):
+    READ MULTIPLE 128 sectors too, but BSY 79 % and ~220 status reads per
+    sector - its scsi.device addresses CHS, which the engine forwarded, so the
+    firmware fetched every sector (~870 us each).
+  - CHS IN THE ENGINE (2026-10-16, the user: "Yes, implement CHS in the
+    engine"): per-unit geometry register 0x127/0x12F ((heads - 1) << 12 |
+    sectors per track, 0 = none), written by the firmware (IDE_GEOM_REG) at
+    mount (16/63) and by INITIALIZE DEVICE PARAMETERS before its commit;
+    ide_engine.vhd E_CHS1..3: (cylinder x heads + head) x spt + sector - 1,
+    then the LBA range check; CHS invalid for the geometry (sector 0 or > spt,
+    head >= heads), past the end or without a geometry still goes to the
+    firmware (IDNF). The LBA path is unchanged (accept/forward became the
+    procedures take/forward). tb_ide_g: a CHS host mode (the LBA tests' data
+    checks, sent as CHS) - READ/WRITE MULTIPLE and SECTORS at 4/17, cylinder
+    300 at 1/1, served by the engine (the firmware sees nothing); sector 0
+    (also at C1/H1), head 4 of 4, sector 18 of 17, past the end, unit
+    without geometry -> firmware: 4/4 PASS. mut_mult.sh: 9 CHS mutants
+    killed (sector 0 at C0/H0 alone did not kill "no sector-0 check": LBA -1
+    wraps and fails the range check - hence the C1/H1 case). Firmware ROM
+    31784/32768.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
