@@ -215,6 +215,13 @@ entity main is
       ide_data_i              : in  std_logic_vector(15 downto 0);
       ide_ready_i             : in  std_logic;
       ide_rst_o               : out std_logic;
+      -- Megamiga 0.7: the IDE data stream between the board and the AP68040's island
+      -- (ide_board.vhd, ap040_island.v; core clock)
+      ids_rdy_o               : out std_logic;
+      ids_we_i                : in  std_logic;
+      ids_data_i              : in  std_logic_vector(15 downto 0);
+      ids_last_i              : in  std_logic;
+      ids_cons_o              : out std_logic_vector(1 downto 0);
 
       -- Network card (eth_card.vhd in mega65.vhd), the second board on cpu_wrapper's ext_*
       -- port: in the autoconfig chain after the IDE board while eth_ena_i is high (latched at
@@ -583,7 +590,12 @@ architecture synthesis of main is
          fp_be          : out std_logic_vector(3 downto 0);
          fp_wdata       : out std_logic_vector(31 downto 0);
          fp_rdata       : in  std_logic_vector(127 downto 0);
-         fp_ack         : in  std_logic
+         fp_ack         : in  std_logic;
+         ids_rdy        : out std_logic;
+         ids_we         : in  std_logic;
+         ids_data       : in  std_logic_vector(15 downto 0);
+         ids_last       : in  std_logic;
+         ids_cons       : out std_logic_vector(1 downto 0)
       );
    end component cpu_wrapper;
 
@@ -1016,7 +1028,12 @@ begin
          fp_be           => fp_be_o,
          fp_wdata        => fp_data_o,
          fp_rdata        => fp_data_i,
-         fp_ack          => fp_ack_i
+         fp_ack          => fp_ack_i,
+         ids_rdy         => ids_rdy_o,
+         ids_we          => ids_we_i,
+         ids_data        => ids_data_i,
+         ids_last        => ids_last_i,
+         ids_cons        => ids_cons_o
       ); -- i_cpu_wrapper
 
    ---------------------------------------------------------------------------

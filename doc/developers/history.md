@@ -2670,6 +2670,20 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     queue write ~0.7, the CDC to the bus side ~2.3, entry load + adapter
     start 2. No single wait; the island's own registers and the idle word
     are ~3 of the 16, the two crossings ~3.6, the core ~2.7.
+    **IDE data stream (branch `ide-stream`, 2026-10-17):** the board pushes
+    the sector's next words ahead into a 32-word FIFO in the island's CPU
+    clock domain (`ids_*` ports: `ide_board.vhd` -> mega65/main ->
+    cpu_wrapper -> `ap040_island.v`; `pf_off` = words sent beyond `ptr`, reset
+    by every other bus access to the board), and the 68040 takes data-register
+    reads (RIPPLE $1000-$11FF, Gayle $DA0000) from it as longs without a bus
+    cycle; a hit queues a consume entry so the board's `ptr` advances in
+    order with status reads and commands, words are tagged with a count of
+    board entries so stale ones are dropped. TG68K/fx68k: ports tied off.
+    Measured (meas_lide.sh `IDS=1`, sector into Fast RAM, routine in Z2):
+    68040 copyback 5.1 -> 11.9 MB/s (Z3) / 12.3 MB/s (Z2), uncached 7.7 MB/s;
+    TG68K unchanged 6.8 MB/s. TBs: `~/aexp-work/ideng` `STREAM=true` (real
+    `ide_board` + engine, scenarios 0/1 x Gayle, all PASS),
+    `~/aexp-work/cpu060/e2e040/run_ids.sh` (every word checked, 6 PASS).
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
