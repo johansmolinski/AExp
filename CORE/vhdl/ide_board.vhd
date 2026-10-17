@@ -182,6 +182,7 @@ entity ide_board is
       -- QNICE clock domain: the engine port of the SD host controller (sdhost.vhd)
       sd_slot_o              : out std_logic;     -- the controller: 0 = bottom tray, 1 = back
       sd_ready_i             : in  std_logic := '0';
+      sd_gnt_i               : in  std_logic := '1';   -- owns the shared engine port (sd_eng_arb)
       sd_start_o             : out std_logic;
       sd_write_o             : out std_logic;
       sd_addr_o              : out std_logic_vector(31 downto 0);
@@ -1100,6 +1101,7 @@ begin
          busy_o       => q_eng_busy,
          sd_slot_o    => sd_slot_o,
          sd_ready_i   => sd_ready_i,
+         sd_gnt_i     => sd_gnt_i,
          sd_start_o   => sd_start_o,
          sd_write_o   => sd_write_o,
          sd_addr_o    => sd_addr_o,

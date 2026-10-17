@@ -560,6 +560,21 @@ signal main_adf_tracks            : std_logic_vector(23 downto 0);  -- 3 x 8 bit
 signal main_adf_writable          : std_logic_vector(2 downto 0);
 signal main_adf_dirty             : std_logic_vector(2 downto 0);
 signal main_adf_any_dirty         : std_logic;
+-- Megamiga: the ADF images straight from the SD card (adf_sd.vhd): the track engine's read
+-- error flag, the dirty state of the track buffer, the QNICE side, the shared engine port
+signal main_adf_avm_rderr         : std_logic;
+signal main_adfsd_dirty           : std_logic;
+signal qnice_adfsd_ce             : std_logic;
+signal qnice_adfsd_map            : std_logic;
+signal qnice_adfsd_unit           : std_logic_vector(1 downto 0);
+signal qnice_adfsd_data           : std_logic_vector(15 downto 0);
+signal qnice_ide_c2q              : t_sd_c2q;
+signal qnice_ide_q2c              : t_sd_q2c;
+signal qnice_ide_gnt              : std_logic;
+signal qnice_adfsd_c2q            : t_sd_c2q;
+signal qnice_adfsd_q2c            : t_sd_q2c;
+signal qnice_adfsd_req            : std_logic;
+signal qnice_adfsd_gnt            : std_logic;
 signal main_adf_wr_track          : std_logic_vector(7 downto 0);
 signal main_adf_wr_req            : std_logic_vector(2 downto 0);
 signal main_adf_wr_ack            : std_logic_vector(2 downto 0);
@@ -1229,7 +1244,10 @@ begin
 
    -- "unflushed writes exist" is the OR across all simulated drives: the LED
    -- must stay yellow until the last drive is clean
-   main_adf_any_dirty   <= '1' when main_adf_dirty /= "000" else '0';
+   -- Megamiga: the images live on the SD card; "unsaved" = the track buffer holds sectors that
+   -- are not on the card yet (adf_sd.vhd; the write-back bitmaps of the wrappers are unused)
+   --main_adf_any_dirty   <= '1' when main_adf_dirty /= "000" else '0';
+   main_adf_any_dirty   <= main_adfsd_dirty;
 
    -- OSM-open key selection (issue #8): decode the "OSM: %s" radio into m2m_keyb's
    -- selected-key inputs. main_osm_control_i is static in the core clock domain
@@ -1537,6 +1555,7 @@ begin
          adf_avm_readdata_i   => main_adf_avm_readdata,
          adf_avm_readdatavalid_i => main_adf_avm_readdatavalid,
          adf_avm_waitrequest_i   => main_adf_avm_waitrequest,
+         adf_avm_rderr_i         => main_adf_avm_rderr,
 
          -- M2M Keyboard interface
          kb_key_num_i         => main_kb_key_num_i,
@@ -1874,16 +1893,19 @@ begin
          cart_aga_i     => main_chipset(1),                -- "10" = AGA
          cart_chip_i    => main_chip_size,
          cart_busy_o    => main_cart_busy,
+         -- Megamiga: the floppy port is unused - the ADF images are read from the SD card
+         -- (adf_sd.vhd) and the IDE boot ROM is in block RAM (flp_bram.vhd), so its half of
+         -- SDRAM bank 0 (column bit 9 = 1) is free
          flp_rst_i               => main_rst,
-         flp_avm_write_i         => mem_avm_write,
-         flp_avm_read_i          => mem_avm_read,
-         flp_avm_address_i       => mem_avm_address,
-         flp_avm_writedata_i     => mem_avm_writedata,
-         flp_avm_byteenable_i    => mem_avm_byteenable,
-         flp_avm_burstcount_i    => mem_avm_burstcount,
-         flp_avm_readdata_o      => mem_avm_readdata,
-         flp_avm_readdatavalid_o => mem_avm_readdatavalid,
-         flp_avm_waitrequest_o   => mem_avm_waitrequest,
+         flp_avm_write_i         => '0',
+         flp_avm_read_i          => '0',
+         flp_avm_address_i       => (others => '0'),
+         flp_avm_writedata_i     => (others => '0'),
+         flp_avm_byteenable_i    => "11",
+         flp_avm_burstcount_i    => x"01",
+         flp_avm_readdata_o      => open,
+         flp_avm_readdatavalid_o => open,
+         flp_avm_waitrequest_o   => open,
 
          sdram_clk_o    => sdram_clk_o,
          sdram_cke_o    => sdram_cke_o,
@@ -1943,27 +1965,101 @@ begin
          qnice_data_o            => qnice_ide_data,
          qnice_wait_o            => qnice_ide_wait,
 
-         -- the sector engine on the SD host controller's engine port
-         sd_slot_o               => sd_eng_o(C2Q_SLOT),
-         sd_ready_i              => sd_eng_i(Q2C_READY),
-         sd_start_o              => sd_eng_o(C2Q_START),
-         sd_write_o              => sd_eng_o(C2Q_WRITE),
-         sd_addr_o               => sd_eng_o(C2Q_ADDR),
-         sd_count_o              => sd_eng_o(C2Q_COUNT),
-         sd_limit_o              => sd_eng_o(C2Q_LIMIT),
-         sd_abort_o              => sd_eng_o(C2Q_ABORT),
-         sd_busy_i               => sd_eng_i(Q2C_BUSY),
-         sd_done_i               => sd_eng_i(Q2C_DONE),
-         sd_error_i              => sd_eng_i(Q2C_ERROR),
-         sd_blk_i                => sd_eng_i(Q2C_BLK),
-         sd_rd_we_i              => sd_eng_i(Q2C_RDWE),
-         sd_rd_blk_i             => sd_eng_i(Q2C_RDBLK),
-         sd_rd_idx_i             => sd_eng_i(Q2C_RDIDX),
-         sd_rd_data_i            => sd_eng_i(Q2C_RDDATA),
-         sd_wr_blk_i             => sd_eng_i(Q2C_WRBLK),
-         sd_wr_idx_i             => sd_eng_i(Q2C_WRIDX),
-         sd_wr_data_o            => sd_eng_o(C2Q_WRDATA)
+         -- the sector engine on the SD host controller's engine port (Megamiga: shared with
+         -- the ADF track buffer through sd_eng_arb below)
+         sd_slot_o               => qnice_ide_c2q(C2Q_SLOT),
+         sd_ready_i              => qnice_ide_q2c(Q2C_READY),
+         sd_gnt_i                => qnice_ide_gnt,
+         sd_start_o              => qnice_ide_c2q(C2Q_START),
+         sd_write_o              => qnice_ide_c2q(C2Q_WRITE),
+         sd_addr_o               => qnice_ide_c2q(C2Q_ADDR),
+         sd_count_o              => qnice_ide_c2q(C2Q_COUNT),
+         sd_limit_o              => qnice_ide_c2q(C2Q_LIMIT),
+         sd_abort_o              => qnice_ide_c2q(C2Q_ABORT),
+         sd_busy_i               => qnice_ide_q2c(Q2C_BUSY),
+         sd_done_i               => qnice_ide_q2c(Q2C_DONE),
+         sd_error_i              => qnice_ide_q2c(Q2C_ERROR),
+         sd_blk_i                => qnice_ide_q2c(Q2C_BLK),
+         sd_rd_we_i              => qnice_ide_q2c(Q2C_RDWE),
+         sd_rd_blk_i             => qnice_ide_q2c(Q2C_RDBLK),
+         sd_rd_idx_i             => qnice_ide_q2c(Q2C_RDIDX),
+         sd_rd_data_i            => qnice_ide_q2c(Q2C_RDDATA),
+         sd_wr_blk_i             => qnice_ide_q2c(Q2C_WRBLK),
+         sd_wr_idx_i             => qnice_ide_q2c(Q2C_WRIDX),
+         sd_wr_data_o            => qnice_ide_c2q(C2Q_WRDATA)
       ); -- i_ide_board
+
+   ---------------------------------------------------------------------------------------------
+   -- Megamiga: the ADF disk images straight from the SD card. adf_sd serves the track
+   -- engine's memory port from a one-track buffer that it fills from and writes back to the
+   -- file on the card (extent map from the firmware, windows 0xFFFC/0xFFFD of the ADF
+   -- devices); it shares the SD host controller's engine port with the IDE sector engine.
+   ---------------------------------------------------------------------------------------------
+
+   i_adf_sd : entity work.adf_sd
+      generic map (
+         G_BASE_DF0          => C_HMAP_ADF_DF0(9 downto 0) & x"000",
+         G_BASE_DF1          => C_HMAP_ADF_DF1(9 downto 0) & x"000",
+         G_BASE_DF2          => C_HMAP_ADF_DF2(9 downto 0) & x"000"
+      )
+      port map (
+         clk_main_i          => main_clk,
+         rst_main_i          => main_rst,
+         avm_write_i         => main_adf_avm_write,
+         avm_read_i          => main_adf_avm_read,
+         avm_address_i       => main_adf_avm_address,
+         avm_writedata_i     => main_adf_avm_writedata,
+         avm_readdata_o      => main_adf_avm_readdata,
+         avm_readdatavalid_o => main_adf_avm_readdatavalid,
+         avm_rderr_o         => main_adf_avm_rderr,
+         avm_waitrequest_o   => main_adf_avm_waitrequest,
+         dirty_main_o        => main_adfsd_dirty,
+         clk_i               => qnice_clk_i,
+         rst_i               => qnice_rst_i,
+         qnice_ce_i          => qnice_adfsd_ce,
+         qnice_we_i          => qnice_dev_we_i,
+         qnice_unit_i        => qnice_adfsd_unit,
+         qnice_map_i         => qnice_adfsd_map,
+         qnice_addr_i        => qnice_dev_addr_i(11 downto 0),
+         qnice_data_i        => qnice_dev_data_i,
+         qnice_data_o        => qnice_adfsd_data,
+         sd_req_o            => qnice_adfsd_req,
+         sd_gnt_i            => qnice_adfsd_gnt,
+         sd_slot_o           => qnice_adfsd_c2q(C2Q_SLOT),
+         sd_ready_i          => qnice_adfsd_q2c(Q2C_READY),
+         sd_start_o          => qnice_adfsd_c2q(C2Q_START),
+         sd_write_o          => qnice_adfsd_c2q(C2Q_WRITE),
+         sd_addr_o           => qnice_adfsd_c2q(C2Q_ADDR),
+         sd_count_o          => qnice_adfsd_c2q(C2Q_COUNT),
+         sd_limit_o          => qnice_adfsd_c2q(C2Q_LIMIT),
+         sd_abort_o          => qnice_adfsd_c2q(C2Q_ABORT),
+         sd_busy_i           => qnice_adfsd_q2c(Q2C_BUSY),
+         sd_done_i           => qnice_adfsd_q2c(Q2C_DONE),
+         sd_error_i          => qnice_adfsd_q2c(Q2C_ERROR),
+         sd_blk_i            => qnice_adfsd_q2c(Q2C_BLK),
+         sd_rd_we_i          => qnice_adfsd_q2c(Q2C_RDWE),
+         sd_rd_blk_i         => qnice_adfsd_q2c(Q2C_RDBLK),
+         sd_rd_idx_i         => qnice_adfsd_q2c(Q2C_RDIDX),
+         sd_rd_data_i        => qnice_adfsd_q2c(Q2C_RDDATA),
+         sd_wr_blk_i         => qnice_adfsd_q2c(Q2C_WRBLK),
+         sd_wr_idx_i         => qnice_adfsd_q2c(Q2C_WRIDX),
+         sd_wr_data_o        => qnice_adfsd_c2q(C2Q_WRDATA)
+      ); -- i_adf_sd
+
+   i_sd_eng_arb : entity work.sd_eng_arb
+      port map (
+         clk_i     => qnice_clk_i,
+         rst_i     => qnice_rst_i,
+         a_c2q_i   => qnice_ide_c2q,
+         a_q2c_o   => qnice_ide_q2c,
+         gnt_a_o   => qnice_ide_gnt,
+         b_c2q_i   => qnice_adfsd_c2q,
+         b_q2c_o   => qnice_adfsd_q2c,
+         req_b_i   => qnice_adfsd_req,
+         gnt_b_o   => qnice_adfsd_gnt,
+         c2q_o     => sd_eng_o,
+         q2c_i     => sd_eng_i
+      ); -- i_sd_eng_arb
 
    ---------------------------------------------------------------------------------------------
    -- Amiga memory decode (main_clk domain)
@@ -2320,6 +2416,9 @@ begin
       qnice_kick_ce    <= '0';
       qnice_ar3_ce     <= '0';
       qnice_adf_ce     <= "000";
+      qnice_adfsd_ce   <= '0';
+      qnice_adfsd_unit <= "00";
+      qnice_adfsd_map  <= '0';
       qnice_ide_ce     <= '0';
       qnice_ide1_ce    <= '0';
       qnice_iderom_ce  <= '0';
@@ -2353,20 +2452,47 @@ begin
                qnice_dev_data_o <= x"0000";
             end if;
 
+         -- Megamiga: windows 0xFFFC (extent map) and 0xFFFD (registers) of this drive go to
+         -- the ADF track buffer (adf_sd), everything else to the mount wrapper (CSR, WBC)
          when C_DEV_AMIGA_ADF0 =>
-            qnice_adf_ce(0)  <= qnice_dev_ce_i;
-            qnice_dev_data_o <= qnice_adf_data(0);
-            qnice_dev_wait_o <= qnice_adf_wait(0);
+            if qnice_dev_addr_i(27 downto 13) = "111111111111110" then
+               qnice_adfsd_ce   <= qnice_dev_ce_i;
+               qnice_adfsd_unit <= "00";
+               qnice_adfsd_map  <= not qnice_dev_addr_i(12);
+               qnice_dev_data_o <= qnice_adfsd_data;
+            else
+               qnice_adf_ce(0)  <= qnice_dev_ce_i;
+               qnice_dev_data_o <= qnice_adf_data(0);
+               qnice_dev_wait_o <= qnice_adf_wait(0);
+            end if;
 
+         -- Megamiga: windows 0xFFFC (extent map) and 0xFFFD (registers) of this drive go to
+         -- the ADF track buffer (adf_sd), everything else to the mount wrapper (CSR, WBC)
          when C_DEV_AMIGA_ADF1 =>
-            qnice_adf_ce(1)  <= qnice_dev_ce_i;
-            qnice_dev_data_o <= qnice_adf_data(1);
-            qnice_dev_wait_o <= qnice_adf_wait(1);
+            if qnice_dev_addr_i(27 downto 13) = "111111111111110" then
+               qnice_adfsd_ce   <= qnice_dev_ce_i;
+               qnice_adfsd_unit <= "01";
+               qnice_adfsd_map  <= not qnice_dev_addr_i(12);
+               qnice_dev_data_o <= qnice_adfsd_data;
+            else
+               qnice_adf_ce(1)  <= qnice_dev_ce_i;
+               qnice_dev_data_o <= qnice_adf_data(1);
+               qnice_dev_wait_o <= qnice_adf_wait(1);
+            end if;
 
+         -- Megamiga: windows 0xFFFC (extent map) and 0xFFFD (registers) of this drive go to
+         -- the ADF track buffer (adf_sd), everything else to the mount wrapper (CSR, WBC)
          when C_DEV_AMIGA_ADF2 =>
-            qnice_adf_ce(2)  <= qnice_dev_ce_i;
-            qnice_dev_data_o <= qnice_adf_data(2);
-            qnice_dev_wait_o <= qnice_adf_wait(2);
+            if qnice_dev_addr_i(27 downto 13) = "111111111111110" then
+               qnice_adfsd_ce   <= qnice_dev_ce_i;
+               qnice_adfsd_unit <= "10";
+               qnice_adfsd_map  <= not qnice_dev_addr_i(12);
+               qnice_dev_data_o <= qnice_adfsd_data;
+            else
+               qnice_adf_ce(2)  <= qnice_dev_ce_i;
+               qnice_dev_data_o <= qnice_adf_data(2);
+               qnice_dev_wait_o <= qnice_adf_wait(2);
+            end if;
 
          -- IDE board: registered readout (falling edge), zero wait states
          when C_DEV_AMIGA_IDE =>
@@ -3042,6 +3168,28 @@ begin
       report "HyperRAM: the drive pools are not ordered and guarded"
       severity failure;
 
+   -- Megamiga: the arbiter tree below ends in flp_bram instead of the SDRAM floppy port. Of
+   -- its masters only the IDE ROM loader and the IDE ROM reads still move data; flp_bram keeps
+   -- the ROM window in block RAM and answers every other address with 0.
+   i_flp_bram : entity work.flp_bram
+      generic map (
+         G_BASE              => C_HMAP_IDE_ROM(9 downto 0) & x"000",
+         G_ADDR_WIDTH        => 14                       -- the 4 windows of C_HMAP_IDE_ROM
+      )
+      port map (
+         clk_i               => main_clk,
+         rst_i               => main_rst,
+         avm_write_i         => mem_avm_write,
+         avm_read_i          => mem_avm_read,
+         avm_address_i       => mem_avm_address,
+         avm_writedata_i     => mem_avm_writedata,
+         avm_byteenable_i    => mem_avm_byteenable,
+         avm_burstcount_i    => mem_avm_burstcount,
+         avm_readdata_o      => mem_avm_readdata,
+         avm_readdatavalid_o => mem_avm_readdatavalid,
+         avm_waitrequest_o   => mem_avm_waitrequest
+      ); -- i_flp_bram
+
    gen_adf_wrapper : for u in 0 to 2 generate
       constant C_POOL : std_logic_vector(15 downto 0) := C_HMAP_ADF_POOLS(u);
    begin
@@ -3220,15 +3368,23 @@ begin
 
    -- The track engine and the IDE board's ROM reads already run on the core clock, like the
    -- arbiters and the SDRAM floppy port, so they connect directly (no CDC FIFO any more).
-   mem_flp_avm_write          <= main_adf_avm_write;
-   mem_flp_avm_read           <= main_adf_avm_read;
-   mem_flp_avm_address        <= main_adf_avm_address;
-   mem_flp_avm_writedata      <= main_adf_avm_writedata;
-   mem_flp_avm_byteenable     <= main_adf_avm_byteenable;
-   mem_flp_avm_burstcount     <= main_adf_avm_burstcount;
-   main_adf_avm_readdata      <= mem_flp_avm_readdata;
-   main_adf_avm_readdatavalid <= mem_flp_avm_readdatavalid;
-   main_adf_avm_waitrequest   <= mem_flp_avm_waitrequest;
+   -- Megamiga: the track engine is served by adf_sd (the ADF images are on the SD card), so
+   -- this arbiter slave is idle; the pools in the SDRAM floppy area are unused
+   --mem_flp_avm_write          <= main_adf_avm_write;
+   --mem_flp_avm_read           <= main_adf_avm_read;
+   --mem_flp_avm_address        <= main_adf_avm_address;
+   --mem_flp_avm_writedata      <= main_adf_avm_writedata;
+   --mem_flp_avm_byteenable     <= main_adf_avm_byteenable;
+   --mem_flp_avm_burstcount     <= main_adf_avm_burstcount;
+   --main_adf_avm_readdata      <= mem_flp_avm_readdata;
+   --main_adf_avm_readdatavalid <= mem_flp_avm_readdatavalid;
+   --main_adf_avm_waitrequest   <= mem_flp_avm_waitrequest;
+   mem_flp_avm_write          <= '0';
+   mem_flp_avm_read           <= '0';
+   mem_flp_avm_address        <= (others => '0');
+   mem_flp_avm_writedata      <= (others => '0');
+   mem_flp_avm_byteenable     <= "11";
+   mem_flp_avm_burstcount     <= x"01";
 
    mem_rom_avm_write             <= '0';
    mem_rom_avm_read              <= main_iderom_avm_read;

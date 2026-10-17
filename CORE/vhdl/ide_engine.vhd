@@ -100,6 +100,7 @@ entity ide_engine is
       -- SD host engine port
       sd_slot_o      : out std_logic;             -- the controller (stable while busy)
       sd_ready_i     : in  std_logic;             -- of the controller sd_slot_o names
+      sd_gnt_i       : in  std_logic := '1';      -- Megamiga: owns the shared port (sd_eng_arb)
       sd_start_o     : out std_logic;
       sd_write_o     : out std_logic;
       sd_addr_o      : out std_logic_vector(31 downto 0);
@@ -319,7 +320,10 @@ begin
                   st       <= E_DECIDE;
                end if;
 
+            -- Megamiga: the port is shared with the ADF track buffer (sd_eng_arb.vhd); sd_ready_i
+            -- belongs to the owner's slot, so a new command waits until this engine owns it
             when E_DECIDE =>
+               if sd_gnt_i = '1' then
                -- tf: 7..0 cmd, 23..16 count, 31..24 lba0, 39..32 lba1, 47..40 lba2, 55..48 devh
                c    := tf_i(7 downto 0);
                unit <= tf_i(52);
@@ -369,6 +373,7 @@ begin
                   st <= E_CHS1;
                else
                   forward;
+               end if;
                end if;
 
             when E_CHS1 =>                         -- cylinder x heads + head

@@ -32,10 +32,13 @@ WRN_ADF_BUSY    .ASCII_P "\n\nUnsaved changes on the current disk\n"
 
 ; Warning: the same image file is already mounted in another drive
 WRN_ADF_DUP     .ASCII_P "\n\nThis disk image is already in another\n"
-                .ASCII_P "drive. One file cannot serve two drives\n"
-                .ASCII_P "at once: each drive collects its own\n"
-                .ASCII_P "changes and would save them over the\n"
-                .ASCII_W "changes of the other one.\n"
+                .ASCII_W "drive. One file cannot be in two drives.\n"
+
+; Warning: the file has more pieces on the SD card than the track buffer's
+; extent map holds (adf_sd.vhd: 511)
+WRN_ADF_FRAG    .ASCII_P "\n\nThis ADF file is too fragmented on the\n"
+                .ASCII_P "SD card (more than 511 pieces). Copy it\n"
+                .ASCII_W "to a new file and mount the copy.\n"
 
 ; Warning: the image could not be read from the SD card (FAST_LOAD)
 WRN_ADF_FAT     .ASCII_P "\n\nThe ADF file cannot be read from\n"
@@ -95,7 +98,6 @@ SD_OSM_SPI12    .ASCII_W "SPI 12 "
 ; screen adjustment (LOAD_SCREEN_OFFSETS)
 SCR_FILE_NAME   .ASCII_W "/amiga/aexp_screen.cfg"
 SCR_LOADING_STR .ASCII_W "<Loading Screen Config>"
-ERR_ADF_FLUSH   .ASCII_W "ADF write-back: writing to the SD card failed.\n"
 
 ; serial-terminal (UART) log strings, MiSTer-style "new mode detected" trace
 MSG_SCR_PFX       .ASCII_W "Screen: Amiga mode "

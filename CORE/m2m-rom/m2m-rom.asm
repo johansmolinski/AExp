@@ -241,32 +241,26 @@ _PREP_LI_NAR3   MOVE    R8, R5                  ; R5: keep the new file handle
 _PREP_LI_ADF    MOVE    R9, R6                  ; R6: the drive 0..2 behind the
                 MOVE    R5, R8                  ; group id; restore the handle
 
-                ; Every gate below is PER DRIVE. The flush and the disarm act
-                ; on the drive that is being (re)loaded, the size gate keeps an
-                ; oversized file from streaming past the HyperRAM pool of that
-                ; drive, and the duplicate gate keeps the same file out of two
-                ; drives at once.
+                ; Every gate below is PER DRIVE. The write-back and the disarm
+                ; act on the drive that is being (re)loaded, the size gate keeps
+                ; a file out that is no ADF, and the duplicate gate keeps the
+                ; same file out of two drives at once.
                 ;
-                ; BEFORE anything else, force-flush all unsaved writes of the
-                ; disk currently in THIS drive - the streaming that follows
-                ; overwrites its HyperRAM image, and the Shell has already
-                ; re-opened HNDL_RM_FILES[drive] for the NEW file (which is
-                ; exactly why the flush works from the own FDH snapshot of that
-                ; drive, see FLUSH_ADF_STEP). Bounded to >4 full disks of
-                ; chunks so an Amiga that re-dirties tracks forever cannot
-                ; starve the OSM; in that case we bail out with a friendly,
-                ; non-fatal message (the Shell re-opens the file browser).
+                ; Megamiga: the images are no longer copied anywhere - the track
+                ; buffer (adf_sd.vhd) reads and writes the file on the SD card.
+                ; BEFORE the drive gets its new file, every sector of the old
+                ; disk that is still in the track buffer goes to the old file
+                ; (ADF_TB_SYNC: the buffer still has the old extent map), then
+                ; the drive is switched off in the buffer. The Shell has already
+                ; unmounted the drive (ST_LDNG), so the Amiga cannot write to it
+                ; any more and this ends within milliseconds; only a card that
+                ; does not answer any more makes it time out.
                 MOVE    R8, R3                  ; R3: handle of the new file
-                MOVE    8192, R4                ; R4: chunk budget
-_PREP_LI_FL     MOVE    1, R8                   ; forced step (ignore the
-                MOVE    R6, R9                  ; anti-thrashing gate)
-                RSUB    FLUSH_ADF_STEP, 1
-                CMP     ADF_FL_IDLE, R8         ; clean and idle?
+                MOVE    R6, R8
+                RSUB    ADF_TB_SYNC, 1          ; R9: 0 = all written
+                CMP     0, R9
                 RBRA    _PREP_LI_FLD, Z
-                SUB     1, R4
-                RBRA    _PREP_LI_FL, !Z
-                MOVE    1, R8                   ; budget exhausted: bail out
-                MOVE    WRN_ADF_BUSY, R8
+                MOVE    WRN_ADF_BUSY, R8        ; timed out: bail out
                 RSUB    RODATA_STR, 1           ; (text in the read-only data
                 MOVE    R8, R9                  ; device: copy it to RAM)
                 MOVE    1, R8
@@ -278,9 +272,9 @@ _PREP_LI_FL     MOVE    1, R8                   ; forced step (ignore the
                 ; re-arm it with a fresh handle snapshot. HANDLE_CORE_IO alone
                 ; cannot do that: the whole load runs without HANDLE_IO
                 ; polling, so the READY -> LOADING -> READY transient of a
-                ; re-mount is invisible to it - without this disarm, flushes
-                ; after a disk swap would write the new disk into the OLD file.
+                ; re-mount is invisible to it.
 _PREP_LI_FLD    MOVE    R6, R8
+                RSUB    ADF_TB_OFF, 1           ; the old file is done with
                 RSUB    ADF_DISARM, 1           ; WR_EN := 0 until the new
                 MOVE    R3, R8                  ; mount is complete; restore
                                                 ; the file handle
@@ -310,27 +304,27 @@ _PREP_LI_MAX    CMP     R1, ADF_MAX_SIZE_HI     ; file > maximum: too big
                 CMP     R0, ADF_MAX_SIZE_LO     ; equal high word: compare low
                 RBRA    _PREP_LI_BAD, N
 
-                ; The same image file may not sit in two drives at once. Each
-                ; drive holds its OWN copy of the image in HyperRAM, so both
-                ; would collect their own writes and the drive that flushes
-                ; last would silently overwrite what the other one saved. We
-                ; refuse the second mount rather than let that happen: the
-                ; drive simply stays empty (the Shell has already unmounted it
-                ; with ST_LDNG) and the user gets the file browser back.
+                ; The same image file may not sit in two drives at once (the
+                ; Amiga would see two disks with the same volume and could not
+                ; tell them apart; before Megamiga 0.6.5 each drive also held
+                ; its own copy, and the drive that flushed last overwrote the
+                ; other's changes). The drive simply stays empty (the Shell has
+                ; already unmounted it with ST_LDNG) and the user gets the file
+                ; browser back.
 _PREP_LI_DUP    MOVE    R6, R9
                 RSUB    ADF_DUP_CHECK, 1        ; (branch on C before anything
                 RBRA    _PREP_LI_DUPE, C        ; else can touch the flags)
 
-                ; Load the image ourselves, a whole SD sector at a time, instead
-                ; of letting the Shell copy it byte by byte through the FAT32
-                ; byte API. FAST_LOAD leaves the handle at the end of the file,
-                ; so the Shell then reads EOF at once and goes on with the CSR
-                ; handshake (file size, STATUS=OK) as usual.
-                MOVE    ADF_DEV_TAB, R9         ; R9: the device of this drive
-                ADD     R6, R9
-                MOVE    @R9, R9
-                RSUB    FAST_LOAD, 1
-                CMP     0, R9
+                ; Megamiga: nothing is loaded. The track buffer gets the extent
+                ; map of the file and reads its sectors from the SD card when
+                ; the Amiga asks for them (ADF_TB_SETUP). The handle is left at
+                ; the end of the file, so the Shell reads EOF at once and goes
+                ; on with the CSR handshake (file size, STATUS=OK) as usual.
+                MOVE    R6, R9                  ; R8: the handle, R9: the drive
+                RSUB    ADF_TB_SETUP, 1         ; R8: 0, 1 = too fragmented,
+                CMP     1, R8                   ; 2 = FAT32 error
+                RBRA    _PREP_LI_FRAG, Z
+                CMP     0, R8
                 RBRA    _PREP_LI_FATE, !Z
 
 _PREP_LI_OK     XOR     R8, R8                  ; no errors
@@ -350,6 +344,13 @@ _PREP_LI_DUPE   MOVE    1, R8                   ; error: already in a drive
                 MOVE    WRN_ADF_DUP, R8
                 RSUB    RODATA_STR, 1           ; (text in the read-only data
                 MOVE    R8, R9                  ; device: copy it to RAM)
+                MOVE    1, R8
+                DECRB
+                RET
+
+_PREP_LI_FRAG   MOVE    WRN_ADF_FRAG, R8        ; error: more extents than the
+                RSUB    RODATA_STR, 1           ; track buffer's map holds
+                MOVE    R8, R9
                 MOVE    1, R8
                 DECRB
                 RET
@@ -1742,6 +1743,14 @@ _HCIO_SDD       MOVE    ADF_FDH_VALID, R7
                 CMP     @R7, R8                 ; the same card as at arm time?
                 RBRA    _HCIO_SDN, Z            ; yes: this drive stays armed
 _HCIO_SDK       MOVE    R5, R8                  ; the retained handle is dead:
+                RSUB    ADF_TB_OFF, 1           ; Megamiga: the file is gone,
+                MOVE    ADF_DEV_TAB, R8         ; so is the disk - switch the
+                ADD     R5, R8                  ; drive off in the track buffer
+                MOVE    @R8, R8                 ; (its dirty sectors cannot be
+                MOVE    CRTROM_CSR_STATUS, R9   ; written anywhere) and eject
+                MOVE    CRTROM_CSR_ST_IDLE, R10 ; it (STATUS := ST_IDLE, as
+                RSUB    CRTROM_CSR_W, 1         ; ADF_UNMOUNT does)
+                MOVE    R5, R8
                 RSUB    ADF_WIPE_DIRTY, 1       ; the dirty tracks can no
                 RSUB    ADF_DISARM, 1           ; longer be written anywhere
                 MOVE    ADF_MOUNT_SEEN, R7      ; 1: BLOCK re-arming from the
@@ -1819,49 +1828,10 @@ _HCIO_MN        ADD     1, R5
                 CMP     ADF_DRIVES, R5
                 RBRA    _HCIO_MD, !Z
 
-                ; --- 3. one background flush step, round-robin over the
-                ;        drives. At most ONE drive does I/O per poll, so three
-                ;        armed drives cost the main loop exactly what one did,
-                ;        and handing the next slice to the next drive keeps a
-                ;        continuously re-dirtied drive from starving the others.
-                ;        A drive that is idle or sitting behind its
-                ;        anti-thrashing gate does not consume the slice - the
-                ;        scan simply moves on to the next one.
-                MOVE    ADF_FL_RR, R4
-                MOVE    @R4, R5                 ; R5: drive to try first
-                MOVE    ADF_DRIVES, R6          ; R6: drives left to try
-_HCIO_FL        XOR     R8, R8                  ; 0 = respect anti-thrashing
-                MOVE    R5, R9
-                RSUB    FLUSH_ADF_STEP, 1
-                MOVE    R5, R7                  ; R7: the drive after this one
-                ADD     1, R7
-                CMP     ADF_DRIVES, R7
-                RBRA    _HCIO_FLR, !Z
-                XOR     R7, R7
-_HCIO_FLR       CMP     ADF_FL_DID, R8          ; slice consumed?
-                RBRA    _HCIO_FLD, Z
-                MOVE    R7, R5                  ; no: try the next drive within
-                SUB     1, R6                   ; this same poll
-                RBRA    _HCIO_FL, !Z
-                RBRA    _HCIO_RTC, 1            ; nothing to flush at all
-
-                ; The drive that was served keeps the slice until its TRACK is
-                ; finished, and only then does the rotation move on. Rotating
-                ; after every chunk would flip the owner of the one shared FAT32
-                ; sector buffer on every poll, and FAT32$READ_FDH answers an
-                ; owner change with a full 512-byte READ of the sector it is
-                ; about to overwrite completely - a wasted SD read per chunk.
-                ; Per track instead of per chunk makes that at most one per 11.
-                ; Fairness stays bounded: a drive can hold the slice for one
-                ; track at most, and its anti-thrashing gate applies again at
-                ; the next session start.
-_HCIO_FLD       MOVE    ADF_FL_STATE, R6
-                ADD     R5, R6
-                CMP     0, @R6                  ; session still open?
-                RBRA    _HCIO_FLK, !Z           ; yes: this drive keeps it
-                MOVE    R7, @R4                 ; no: hand it to the next drive
-                RBRA    _HCIO_RTC, 1
-_HCIO_FLK       MOVE    R5, @R4
+                ; --- 3. Megamiga: no background flush any more. The track
+                ;        buffer (adf_sd.vhd) writes dirty sectors to the SD card
+                ;        itself, 20 ms after the last one; the dirty-track bitmaps
+                ;        of the WBC are not used.
 
                 ; keep the Amiga battery clock live (issue #13): re-issue the
                 ; framework RTC read once per minute so the Minimig $DC0000 clock
@@ -1884,255 +1854,183 @@ _HCIO_RET       MOVE    R1, @R0                 ; restore RAMROM selection
                 SYSCALL(leave, 1)
                 RET
 
-; FLUSH_ADF_STEP: one resumable step of the ADF write-back
+; ----------------------------------------------------------------------------
+; The ADF track buffer (Megamiga, CORE/vhdl/adf_sd.vhd)
 ;
-; Cooperative multitasking, mirroring the vdrives FLUSH_CACHE discipline
-; (M2M/rom/shell.asm): one call does at most one of
-;   * idle, dirty tracks pending, gate open (or forced): pick the LOWEST
-;     dirty track, clear its bit FIRST (write-1-to-clear; a concurrent
-;     re-write by the Amiga re-sets it, so the track is re-flushed - torn
-;     reads self-heal) and open a session at track * 5632
-;   * active session: seek the retained handle to the next chunk (which
-;     reads that SD sector into the buffer), copy ADF_FLUSH_CHUNK bytes from
-;     the ADF byte window straight into the buffer and f32_fflush it - one
-;     sector write, no byte API (Megamiga 0.2); at track end close the session
-;
-; The chunk is 512 bytes and every track start is 512-aligned, so chunks
-; never cross a 4k device window and cover exactly one FAT32 sector - and
-; each chunk is EXPLICITLY flushed before returning: the SD controller has a
-; single hardware sector buffer shared with every other SD user (the OSM
-; settings save runs from the very wait loops that also poll us!), so no
-; dirty buffered sector may ever survive across time slices. The explicit
-; flush costs nothing: the sector is written exactly once either way.
-; With three drives that same per-chunk flush is what makes INTERLEAVED
-; sessions safe: drive 0 and drive 1 can each have an open track session, and
-; the poll that serves one of them always finds the shared sector buffer clean.
-; FAT32 errors are fatal - the C64MEGA65 FLUSH_CACHE policy; SD removal is
-; pre-guarded by the SD-change check in HANDLE_CORE_IO.
-;
-; Expects the caller to tolerate a changed RAMROM device selection.
-;
-; Input:
-;   R8: 0=respect the anti-thrashing gate (background), 1=force (flush now)
-;   R9: drive 0..2
-; Output:
-;   R8: ADF_FL_IDLE  = clean and idle, nothing left to do
-;       ADF_FL_DID   = work remains AND this call consumed a time slice
-;       ADF_FL_GATED = work remains but the anti-thrashing gate is closed,
-;                      so nothing was done (cannot happen when forced)
-;   R9: clobbered; R10..R12 preserved
-FLUSH_ADF_STEP  INCRB
-                MOVE    R10, R1                 ; preserve R10..R12
-                MOVE    R11, R2
-                MOVE    R12, R3
-                MOVE    R8, R4                  ; R4: force flag
-                MOVE    R9, R0                  ; R0: drive, live to the end
+; The disk images are no longer copied into memory. The track engine reads and
+; writes them through a one-track buffer in block RAM that the hardware fills
+; from the file on the SD card and writes back to it, on its own: it reads the
+; sectors through the SD host controller's engine port (shared with the IDE
+; sector engine) and writes dirty sectors back 20 ms after the last write or
+; before it needs the buffer for another track. The firmware only hands it
+; the file - the extent map (FAT32$FILE_MAP, up to 511 extents), the block of
+; cluster 0, the cluster size, the number of sectors and the card - and makes
+; it write everything back before a drive gets another file or is ejected.
+; Registers: window ADF_TB_REGWIN of the drive's device, the map: window
+; ADF_TB_MAPWIN (constants at the end of this file).
+; ----------------------------------------------------------------------------
 
-                MOVE    R0, R8                  ; select the WBC window of
-                RSUB    ADF_SEL_WBC, 1          ; THIS drive
-
-                MOVE    ADF_FL_STATE, R8        ; session active?
-                ADD     R0, R8
-                CMP     1, @R8
-                RBRA    _FADF_CHUNK, Z
-
-                MOVE    ADF_WBC_STAT, R8        ; idle: any dirty tracks?
-                MOVE    @R8, R8
-                AND     1, R8
-                RBRA    _FADF_RET0, Z           ; clean and idle: done
-
-                MOVE    ADF_FDH_VALID, R8       ; without a handle we can
-                ADD     R0, R8                  ; never flush: discard (only
-                CMP     1, @R8                  ; reachable defensively)
-                RBRA    _FADF_DISCARD, !Z
-
-                CMP     1, R4                   ; forced?
-                RBRA    _FADF_PICK, Z
-                MOVE    ADF_WBC_STAT, R8        ; anti-thrashing gate: only
-                MOVE    @R8, R8                 ; start a track after the
-                AND     2, R8                   ; hardware countdown expired
-                RBRA    _FADF_RET2, Z           ; gated: work remains, but this
-                                                ; call did nothing
-
-                ; pick the lowest dirty track: first non-zero bitmap word,
-                ; then its lowest set bit
-_FADF_PICK      MOVE    ADF_WBC_DIRTY0, R5      ; R5: bitmap word address
-                XOR     R6, R6                  ; R6: word index 0..10
-_FADF_FWORD     CMP     0, @R5
-                RBRA    _FADF_FBIT, !Z
-                ADD     1, R5
-                ADD     1, R6
-                CMP     ADF_WBC_DIRTY_W, R6
-                RBRA    _FADF_FWORD, !Z
-                RBRA    _FADF_RET0, 1           ; raced to clean: done
-
-_FADF_FBIT      MOVE    @R5, R7                 ; R7: bitmap word value
-                MOVE    1, R8                   ; R8: bit mask
-                XOR     R9, R9                  ; R9: bit index
-_FADF_FBIT1     MOVE    R7, R10
-                AND     R8, R10
-                RBRA    _FADF_FOUND, !Z
-                AND     0xFFFD, SR              ; clear X: shift in zeros
-                SHL     1, R8
-                ADD     1, R9
-                RBRA    _FADF_FBIT1, 1
-
-_FADF_FOUND     MOVE    R8, @R5                 ; W1C the bit FIRST
-                MOVE    R6, R10                 ; track = word * 16 + bit
-                AND     0xFFFD, SR
-                SHL     4, R10
-                ADD     R9, R10                 ; R10: track number
-
-                XOR     R11, R11                ; byte addr = track * 5632
-                XOR     R12, R12                ; (32 bit, iterative add -
-                CMP     0, R10                  ; QNICE has no multiplier;
-                RBRA    _FADF_SEEK, Z           ; <= 165 iterations)
-_FADF_MUL       ADD     ADF_TRACK_BYTES, R11
-                ADDC    0, R12
-                SUB     1, R10
-                RBRA    _FADF_MUL, !Z
-
-_FADF_SEEK      MOVE    ADF_FL_BADDR_LO, R8     ; open the session
-                ADD     R0, R8
-                MOVE    R11, @R8
-                MOVE    ADF_FL_BADDR_HI, R8
-                ADD     R0, R8
-                MOVE    R12, @R8
-                MOVE    ADF_FL_REMAIN, R8
-                ADD     R0, R8
-                MOVE    ADF_TRACK_BYTES, @R8
-                MOVE    ADF_FL_STATE, R8        ; (every chunk seeks itself)
-                ADD     R0, R8
-                MOVE    1, @R8
-                RBRA    _FADF_RET1, 1           ; chunks stream on later calls
-
-                ; active session: write one chunk = one SD sector. Seeking the
-                ; FDH of THIS drive to the chunk reads that sector into the SD
-                ; sector buffer and makes this FDH its owner (file offset =
-                ; image offset); the 512 bytes are then copied from the ADF
-                ; byte window straight into the buffer, and FAT32$FLUSH writes
-                ; it back - instead of 512 f32_fwrite calls. Sequential seeks
-                ; are cheap (the fast seek walks forward from the current
-                ; cluster). The seek may use the RAMROM selection, so the
-                ; device is selected again afterwards.
-_FADF_CHUNK     MOVE    ADF_FDH_TAB, R8         ; R8: the FDH of THIS drive
-                ADD     R0, R8
-                MOVE    @R8, R8
-                MOVE    ADF_FL_BADDR_LO, R9
-                ADD     R0, R9
-                MOVE    @R9, R9
-                MOVE    ADF_FL_BADDR_HI, R10
-                ADD     R0, R10
-                MOVE    @R10, R10
-                SYSCALL(f32_fseek, 1)
-                CMP     0, R9
-                RBRA    _FADF_FATAL, !Z
-                MOVE    R0, R8                  ; the device of this drive again
-                RSUB    ADF_SEL_WBC, 1          ; (the window is set below)
-
-                ; window = byte addr >> 12, offset = byte addr & 0xFFF (one
-                ; file byte per window word)
-                MOVE    ADF_FL_BADDR_HI, R8
-                ADD     R0, R8
-                MOVE    @R8, R5
-                AND     0xFFFD, SR              ; clear X: shift in zeros
-                SHL     4, R5
-                MOVE    ADF_FL_BADDR_LO, R8
-                ADD     R0, R8
-                MOVE    @R8, R6                 ; R6: byte addr, low word
-                MOVE    R6, R7
-                AND     0xFFFB, SR              ; clear C: shift in zeros
-                SHR     12, R7
-                OR      R7, R5                  ; R5: 4k window number
-                MOVE    M2M$RAMROM_4KWIN, R8    ; (device already selected)
-                MOVE    R5, @R8
-                MOVE    R6, R7
-                AND     0x0FFF, R7
-                ADD     M2M$RAMROM_DATA, R7     ; R7: source pointer
-                MOVE    ADF_FDH_TAB, R6         ; R6: the FDH of THIS drive
-                ADD     R0, R6
-                MOVE    @R6, R6
-                MOVE    @R6, R8                 ; the SD controller of its card
-                RSUB    SDC$SELDEV, 1           ; (M2M-UPSTREAM sd-host)
-                MOVE    IO$SD_DATA_POS, R8
-                MOVE    IO$SD_DATA, R9
-                XOR     R10, R10                ; R10: byte in the sector
-                MOVE    ADF_FLUSH_CHUNK, R5     ; R5: byte countdown
-_FADF_WLOOP     MOVE    R10, @R8
-                MOVE    @R7++, @R9              ; one file byte per word
-                ADD     1, R10
-                SUB     1, R5
-                RBRA    _FADF_WLOOP, !Z
-                MOVE    R6, R8                  ; the buffer now holds new data
-                ADD     FAT32$FDH_FLAGS, R8     ; of the sector of this FDH
-                OR      FAT32$FDHF_DIRTY, @R8
-
-                ; persist the chunk NOW: the FAT32 hardware sector buffer is
-                ; shared with every other SD user (e.g. the OSM settings
-                ; save, and the track session of another drive) - a dirty
-                ; buffered sector left across time slices would be clobbered
-                ; by them. This costs nothing: the chunk is exactly one
-                ; sector, which gets written exactly once either way - just
-                ; earlier.
-                MOVE    R6, R8
-                SYSCALL(f32_fflush, 1)
-                CMP     0, R9
-                RBRA    _FADF_FATAL, !Z
-
-                ; Advance the 32-bit byte address. Both variable addresses are
-                ; resolved FIRST: the per-drive indexing is itself an ADD, and
-                ; an ADD between the low-word addition and the ADDC that
-                ; consumes its carry would overwrite that carry - the high word
-                ; would then never increment and every chunk past a 64 KB
-                ; boundary would be written 64 KB too low in the file.
-                MOVE    ADF_FL_BADDR_HI, R7
-                ADD     R0, R7
-                MOVE    ADF_FL_BADDR_LO, R8
-                ADD     R0, R8
-                ADD     ADF_FLUSH_CHUNK, @R8
-                ADDC    0, @R7
-                MOVE    ADF_FL_REMAIN, R8
-                ADD     R0, R8
-                SUB     ADF_FLUSH_CHUNK, @R8
-                RBRA    _FADF_RET1, !Z          ; track not finished yet
-
-                ; Track done: close the session and report that this call DID
-                ; consume its time slice - it just wrote and flushed a full
-                ; 512-byte sector. Reporting "clean and idle" here instead
-                ; would be read by the round-robin scan of HANDLE_CORE_IO as
-                ; "this drive did nothing", and it would hand the same poll to
-                ; the next drive, so a poll could do three chunk writes instead
-                ; of one. Whether anything is left to do is answered for free
-                ; by the next call, from the top of this routine, at no I/O
-                ; cost. The forced-flush loops of PREP_LOAD_IMAGE and
-                ; ADF_UNMOUNT spin until ADF_FL_IDLE and simply take one more
-                ; cheap iteration.
-                MOVE    ADF_FL_STATE, R8
-                ADD     R0, R8
-                MOVE    0, @R8
-                RBRA    _FADF_RET1, 1
-
-_FADF_DISCARD   MOVE    ADF_WBC_DIRTY0, R5      ; drop unflushable dirty bits
-                MOVE    ADF_WBC_DIRTY_W, R6
-_FADF_DISC1     MOVE    0xFFFF, @R5++
-                SUB     1, R6
-                RBRA    _FADF_DISC1, !Z
-                RBRA    _FADF_RET0, 1
-
-_FADF_RET0      MOVE    ADF_FL_IDLE, R8
-                RBRA    _FADF_RET, 1
-_FADF_RET2      MOVE    ADF_FL_GATED, R8
-                RBRA    _FADF_RET, 1
-_FADF_RET1      MOVE    ADF_FL_DID, R8
-_FADF_RET       MOVE    R1, R10                 ; restore R10..R12
-                MOVE    R2, R11
-                MOVE    R3, R12
+; ADF_TB_SEL: point the RAMROM window at the track buffer of one drive
+; Input: R8: drive 0..2, R9: window (ADF_TB_REGWIN or ADF_TB_MAPWIN)
+; Output: none; all registers preserved
+ADF_TB_SEL      INCRB
+                MOVE    ADF_DEV_TAB, R0
+                ADD     R8, R0
+                MOVE    M2M$RAMROM_DEV, R1
+                MOVE    @R0, @R1
+                MOVE    M2M$RAMROM_4KWIN, R1
+                MOVE    R9, @R1
                 DECRB
                 RET
 
-_FADF_FATAL     MOVE    ERR_ADF_FLUSH, R8       ; R9 holds the FAT32 error
-                RSUB    RODATA_STR, 1           ; (read-only data; keeps R9)
-                RBRA    FATAL, 1
+; ADF_TB_OFF: switch one drive off in the track buffer (sectors of it that are
+; still in the buffer are dropped: call ADF_TB_SYNC first)
+; Input: R8: drive 0..2
+; Output: none; all registers preserved (the RAMROM selection is changed)
+ADF_TB_OFF      INCRB
+                MOVE    R9, R0
+                MOVE    ADF_TB_REGWIN, R9
+                RSUB    ADF_TB_SEL, 1
+                MOVE    ADF_TB_MODE, R1
+                MOVE    0, @R1
+                MOVE    R0, R9
+                DECRB
+                RET
+
+; ADF_TB_SYNC: write the sectors of one drive that are in the track buffer to
+; the SD card now, and wait until they are (bounded: about a second)
+; Input: R8: drive 0..2
+; Output: R9: 0 = done, 1 = timed out; R8 preserved (the RAMROM selection is
+;         changed)
+ADF_TB_SYNC     INCRB
+                MOVE    ADF_TB_REGWIN, R9
+                RSUB    ADF_TB_SEL, 1
+                MOVE    ADF_TB_FLUSH, R0
+                MOVE    1, @R0
+                MOVE    ADF_TB_STAT, R0
+                MOVE    64, R2                  ; 64 x 65536 polls
+_ATS_O          XOR     R1, R1
+_ATS_L          MOVE    @R0, R3
+                AND     ADF_TB_WAIT, R3         ; dirty or still pending?
+                RBRA    _ATS_OK, Z
+                SUB     1, R1
+                RBRA    _ATS_L, !Z
+                SUB     1, R2
+                RBRA    _ATS_O, !Z
+                MOVE    1, R9
+                RBRA    _ATS_RET, 1
+_ATS_OK         XOR     R9, R9
+_ATS_RET        DECRB
+                RET
+
+; ADF_TB_SETUP: give one drive its file in the track buffer
+;
+; The extent map of the file goes into the drive's map window, then the block
+; of cluster 0 (DEV_CLUSTER - (2 << shift), as for the IDE sector engine), the
+; cluster size, the number of 512-byte sectors and the card; the mode goes
+; last. Finally the handle is moved to the end of the file, so that the Shell
+; reads EOF at once.
+;
+; Input:  R8: file handle, R9: drive 0..2
+; Output: R8: 0 = OK, 1 = more extents than the map holds (the drive stays
+;         off), 2 = FAT32 error; R9 clobbered, R10..R12 preserved (the RAMROM
+;         selection is changed)
+ADF_TB_SETUP    MOVE    R10, @--SP
+                MOVE    R11, @--SP
+                MOVE    R12, @--SP
+                INCRB
+                MOVE    R8, R0                  ; R0: handle
+                MOVE    R9, R1                  ; R1: drive
+
+                MOVE    R1, R8                  ; off while it changes
+                RSUB    ADF_TB_OFF, 1
+
+                MOVE    ADF_TB_MAPWIN, R9       ; the extent map
+                RSUB    ADF_TB_SEL, 1
+                MOVE    R0, R8
+                MOVE    ADF_TB_MAP, R9
+                MOVE    ADF_TB_MAPW, R10
+                RSUB    FAT32$FILE_MAP, 1       ; (not in the M2M syscall table)
+                MOVE    1, R7                   ; R7: the result
+                CMP     FAT32$ERR_MAPSIZE, R9
+                RBRA    _ATSU_RET, Z
+                MOVE    2, R7
+                CMP     0, R9
+                RBRA    _ATSU_RET, !Z
+
+                MOVE    R1, R8                  ; the registers
+                MOVE    ADF_TB_REGWIN, R9
+                RSUB    ADF_TB_SEL, 1
+
+                MOVE    R0, R2                  ; sectors = size >> 9
+                ADD     FAT32$FDH_SIZE_LO, R2
+                MOVE    @R2, R2                 ; R2: size lo
+                MOVE    R0, R3
+                ADD     FAT32$FDH_SIZE_HI, R3
+                MOVE    @R3, R3                 ; R3: size hi
+                AND     0xFFFB, SR              ; (C = 0: shift in zeros)
+                SHR     9, R2
+                MOVE    R3, R4
+                AND     0xFFFD, SR              ; (X = 0: shift in zeros)
+                SHL     7, R4
+                OR      R4, R2                  ; R2: sectors lo
+                AND     0xFFFB, SR
+                SHR     9, R3                   ; R3: sectors hi
+                MOVE    ADF_TB_SECT, R4
+                MOVE    R2, @R4++
+                MOVE    R3, @R4++               ; R4: ADF_TB_BASE
+
+                MOVE    @R0, R2                 ; R2: device handle
+                MOVE    R2, R3                  ; (FAT32$FDH_DEVICE = 0)
+                ADD     FAT32$DEV_SECT_PER_CLUS, R3
+                MOVE    @R3, R3                 ; R3: sectors per cluster
+                XOR     R5, R5                  ; R5: shift
+_ATSU_SH        CMP     R3, 1
+                RBRA    _ATSU_SHD, !N           ; R3 <= 1: done
+                AND     0xFFFB, SR
+                SHR     1, R3
+                ADD     1, R5
+                RBRA    _ATSU_SH, 1
+_ATSU_SHD       MOVE    2, R6                   ; base = DEV_CLUSTER - (2 << shift)
+                AND     0xFFFD, SR              ; (X = 0: shift in zeros)
+                SHL     R5, R6
+                MOVE    R2, R3
+                ADD     FAT32$DEV_CLUSTER_LO, R3
+                MOVE    @R3++, R11              ; R12:R11: DEV_CLUSTER
+                MOVE    @R3, R12                ; (FAT32$DEV_CLUSTER_HI)
+                SUB     R6, R11
+                SUBC    0, R12
+                MOVE    R11, @R4++              ; base lo, hi, shift
+                MOVE    R12, @R4++
+                MOVE    R5, @R4
+
+                MOVE    R2, R8                  ; the card (M2M-UPSTREAM sd-host:
+                RSUB    SDC$SLOT, 1             ; the engine port's controller)
+                MOVE    ADF_TB_ON, R6
+                CMP     0, R8
+                RBRA    _ATSU_S0, Z
+                OR      ADF_TB_SLOT1, R6
+_ATSU_S0        MOVE    ADF_TB_MODE, R3         ; mode last
+                MOVE    R6, @R3
+
+                MOVE    R0, R8                  ; the handle to the end
+                MOVE    R0, R9
+                ADD     FAT32$FDH_SIZE_LO, R9
+                MOVE    @R9, R9
+                MOVE    R0, R10
+                ADD     FAT32$FDH_SIZE_HI, R10
+                MOVE    @R10, R10
+                SYSCALL(f32_fseek, 1)           ; R9: 0 or the error
+                MOVE    2, R7
+                CMP     0, R9
+                RBRA    _ATSU_RET, !Z
+                XOR     R7, R7
+_ATSU_RET       MOVE    R7, R8
+                DECRB
+                MOVE    @SP++, R12
+                MOVE    @SP++, R11
+                MOVE    @SP++, R10
+                RET
 
 ; ----------------------------------------------------------------------------
 ; ADF unmount with SPACE (issue #16)
@@ -2311,28 +2209,19 @@ ADF_UNMOUNT     INCRB
                 MOVE    CRTROM_CSR_ST_IDLE, R10
                 RSUB    CRTROM_CSR_W, 1
 
-                ; 2. force-flush all dirty tracks of that drive (bounded,
-                ;    ignore the anti-thrashing gate). FLUSH_ADF_STEP streams
-                ;    from the own FDH snapshot of the drive and does not depend
-                ;    on disk_mounted, so it still works after the eject. On a
-                ;    clean/unarmed disk (the common read-only case) the first
-                ;    step returns idle at once. On budget exhaustion we leave
-                ;    armed and let the background flush finish later (benign:
-                ;    the drive already shows empty).
-                ;
-                ; First apply the SAME card-change guard that the SD guard of
-                ; HANDLE_CORE_IO uses (a new generation of the drive's card,
-                ; M2M-UPSTREAM sd-host): a swapped/pulled card makes the retained FDH
-                ; stale, and flushing to it would write the old disk into the
-                ; new card (the ROSM_INTEGRITY rule) - and the FAT32 errors of
-                ; FLUSH_ADF_STEP are FATAL. We run BEFORE that SD guard (RSUB-ed
-                ; first in HANDLE_CORE_IO), so an eject in the card-change
-                ; window would otherwise crash. On a change, DISCARD the dirty
-                ; bitmap (mirrors _HCIO_SDK) instead of flushing, then disarm.
+                ; 2. write the sectors of this drive that are still in the
+                ;    track buffer to the file (Megamiga: adf_sd.vhd; it still
+                ;    has the extent map of the file), then switch the drive off
+                ;    there. First apply the SAME card-change guard that the SD
+                ;    guard of HANDLE_CORE_IO uses (a new generation of the
+                ;    drive's card, M2M-UPSTREAM sd-host): on a swapped/pulled
+                ;    card the map points into whatever lives at those blocks
+                ;    now, so the buffer is dropped instead (we run BEFORE that
+                ;    SD guard, RSUB-ed first in HANDLE_CORE_IO).
                 MOVE    ADF_FDH_VALID, R0       ; card check only when armed
                 ADD     R2, R0
                 CMP     1, @R0
-                RBRA    _ADF_UM_FLUSH, !Z       ; not armed -> flush is a no-op
+                RBRA    _ADF_UM_FLUSH, !Z       ; not armed: nothing was written
                 MOVE    ADF_SD_SLOT, R1
                 ADD     R2, R1
                 MOVE    @R1, R8
@@ -2340,22 +2229,17 @@ ADF_UNMOUNT     INCRB
                 MOVE    ADF_SD_GEN, R1
                 ADD     R2, R1
                 CMP     @R1, R8
-                RBRA    _ADF_UM_FLUSH, Z        ; same card -> safe to flush
+                RBRA    _ADF_UM_FLUSH, Z        ; same card -> safe to write
 
 _ADF_UM_DROP    MOVE    R2, R8                  ; card changed: drop the dirty
-                RSUB    ADF_WIPE_DIRTY, 1       ; bitmap so a later mount cannot
-                RBRA    _ADF_UM_DIS, 1          ; flush stale tracks into the
-                                                ; new file, then disarm
+                RSUB    ADF_WIPE_DIRTY, 1       ; bitmap and the buffer
+                RBRA    _ADF_UM_OFF, 1
 
-_ADF_UM_FLUSH   MOVE    8192, R0                ; chunk budget (> 4 full disks)
-_ADF_UM_FL      MOVE    1, R8                   ; forced step
-                MOVE    R2, R9
-                RSUB    FLUSH_ADF_STEP, 1
-                CMP     ADF_FL_IDLE, R8         ; clean and idle?
-                RBRA    _ADF_UM_DIS, Z
-                SUB     1, R0
-                RBRA    _ADF_UM_FL, !Z
-                RBRA    _ADF_UM_RET, 1          ; budget gone: leave armed
+_ADF_UM_FLUSH   MOVE    R2, R8                  ; (a time-out leaves the
+                RSUB    ADF_TB_SYNC, 1          ; sectors unwritten - the card
+                                                ; does not answer any more)
+_ADF_UM_OFF     MOVE    R2, R8
+                RSUB    ADF_TB_OFF, 1
 
                 ; 3. disarm the write-back (mirrors PREP_LOAD_IMAGE): the
                 ; PARSEST=READY of a later genuine mount re-arms it with a fresh
@@ -2365,7 +2249,7 @@ _ADF_UM_FL      MOVE    1, R8                   ; forced step
 _ADF_UM_DIS     MOVE    R2, R8
                 RSUB    ADF_DISARM, 1
 
-_ADF_UM_RET     DECRB
+                DECRB
                 RET
 
 
@@ -5632,10 +5516,21 @@ PROF_PN_LEN     .EQU    21                      ; a name in PROF_PNAME (+ zero)
 KICK_256K_HI    .EQU    0x0004
 KICK_512K_HI    .EQU    0x0008
 
-; Return codes of FLUSH_ADF_STEP
-ADF_FL_IDLE     .EQU    0                   ; clean and idle, nothing left
-ADF_FL_DID      .EQU    1                   ; work remains, slice consumed
-ADF_FL_GATED    .EQU    2                   ; work remains, anti-thrash gate shut
+; The ADF track buffer (CORE/vhdl/adf_sd.vhd - keep in sync!): behind the device
+; of each drive, window ADF_TB_REGWIN holds the registers of that drive and
+; window ADF_TB_MAPWIN the extent map of its file.
+ADF_TB_REGWIN   .EQU    0xFFFD
+ADF_TB_MAPWIN   .EQU    0xFFFC
+ADF_TB_MODE     .EQU    0x8000              ; bit 0: on, bit 1: the card in slot 1
+ADF_TB_SECT     .EQU    0x8001              ; 512-byte sectors of the file lo, hi
+ADF_TB_BASE     .EQU    0x8003              ; block of cluster 0 lo, hi; +2: shift
+ADF_TB_STAT     .EQU    0x8008              ; bit 0 dirty, 1 busy, 2 FAULT, 3 pending
+ADF_TB_FLUSH    .EQU    0x8009              ; write: write the dirty sectors now
+ADF_TB_MAP      .EQU    0x8000              ; the extent map (FAT32$FILE_MAP)
+ADF_TB_MAPW     .EQU    2048                ; map words per drive: 511 extents
+ADF_TB_ON       .EQU    1                   ; modes
+ADF_TB_SLOT1    .EQU    2
+ADF_TB_WAIT     .EQU    9                   ; STAT: dirty or pending
 
 ; Per-drive tables, indexed by the drive 0..2. The only place in the firmware
 ; that knows how a drive maps to a QNICE device, to its own retained file

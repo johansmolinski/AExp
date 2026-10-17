@@ -139,6 +139,12 @@ Megamiga fork (johansmolinski):
   77..94, everything after it +19, OPTM_SIZE 248, keys `a4000.*`), A600 default 2 MB Chip; fixes
   the Volume/OSM Scaling/Stereo ranges (2 lines off since 0.6.1).
 
+- `floppy-direct` (merged into main 2026-10-17, HW-confirmed): ADF images straight from the SD card
+  (`adf_sd.vhd`: one-track block RAM buffer, extent map from the firmware, write-back
+  20 ms after the last write; mounting is instant), the SD engine port shared with the
+  IDE engine (`sd_eng_arb.vhd`), IDE boot ROM in block RAM (`flp_bram.vhd`): the SDRAM
+  floppy half bank (bank 0, column bit 9 = 1) is free. TBs `~/aexp-work/adfsd`,
+  `fw-adfsd`, `flpbram`.
 - `prism-rtg` (unreleased): `MEGAMIGA.driver` for PrismRTG, the open-source
   Picasso96 replacement (`CORE/prism/`, host fixture + blitter model).
   Works on the 68020, not on the 68040 (ScreenMode quits); paused 2026-10-16,
@@ -171,11 +177,13 @@ mutant set.
 - **Memory**: all Amiga memory in the board SDRAM (R4/R5/R6 only), Minimig's
   `sdram_ctrl.v` at 113.5 MHz = 4x the 28.375 MHz core clock (native MMCM;
   the HDMI flicker-free fast twin is disabled in this mode). Bank 0 chip/
-  slow/kick + the 8 MB floppy area (column bit 9 = 1), bank 1 Z2, banks 2/3
-  Z3. HyperRAM: ascal framebuffer + RTG VRAM (byte `$400000`, 4 MB).
+  slow/kick + the 8 MB floppy area (column bit 9 = 1; free since
+  `floppy-direct`), bank 1 Z2, banks 2/3 Z3. HyperRAM: ascal framebuffer +
+  RTG VRAM (byte `$400000`, 4 MB).
 - **PAL only.** Video CE never 28 MHz (SuperHires pixel pairs averaged).
-- **Floppy**: df0..df2, each Disk Image (ADF r/w, buffered in SDRAM,
-  written back to SD in the background via `HANDLE_CORE_IO`) or the
+- **Floppy**: df0..df2, each Disk Image (ADF r/w; until `floppy-direct`
+  buffered in SDRAM and written back by `HANDLE_CORE_IO`, since then read and
+  written on the SD card through `adf_sd.vhd`'s one-track buffer) or the
   Hardware Floppy (read + write, at most one unit). Default: one drive.
 - **IDE**: RIPPLE-compatible Zorro II board, master + slave HDF,
   `/amiga/lide.rom` boot ROM; READ/WRITE SECTORS by the sector engine

@@ -238,7 +238,11 @@ entity adf_track_engine is
       avm_burstcount_o    : out std_logic_vector( 7 downto 0);
       avm_readdata_i      : in  std_logic_vector(15 downto 0);
       avm_readdatavalid_i : in  std_logic;
-      avm_waitrequest_i   : in  std_logic
+      avm_waitrequest_i   : in  std_logic;
+      -- Megamiga: with avm_readdatavalid_i, the word belongs to a sector that could not be
+      -- read from the SD card (adf_sd.vhd): the sector goes out with a wrong data checksum,
+      -- so the Amiga sees a read error instead of silently wrong data
+      avm_rderr_i         : in  std_logic := '0'
    );
 end entity adf_track_engine;
 
@@ -452,6 +456,7 @@ architecture synthesis of adf_track_engine is
 
    -- data checksum lanes (accumulated during fetch)
    signal dc0, dc1, dc2, dc3 : std_logic_vector(7 downto 0);
+   signal fetch_bad          : std_logic := '0';   -- Megamiga: avm_rderr_i seen in this sector
 
    -- MFM write decoder (bit-exact minimig_fdd.cpp FindSync/GetHeader/GetData).
    -- MiSTer parity: the write path syncs on the LITERAL 0x4489 - the read
@@ -674,7 +679,12 @@ begin
             when 26     => w := x"00" & (hc1 and x"55");                  -- hc0 = 0 always
             when 27     => w := (hc2 and x"55") & (hc3 and x"55");
             when 28 | 29  => w := x"0000";                                -- data cksum odd half (0)
-            when 30     => w := (dc0 and x"55") & (dc1 and x"55");        -- dc* carry
+            when 30     =>                                                -- dc* carry
+               if fetch_bad = '1' then                                    -- Megamiga: a bad
+                  w := ((not dc0) and x"55") & (dc1 and x"55");           -- sector
+               else
+                  w := (dc0 and x"55") & (dc1 and x"55");
+               end if;
             when 31     => w := (dc2 and x"55") & (dc3 and x"55");        -- junk above 0x55
             when 32 to 287 =>                                             -- data odd bits
                w := f_mfm_odd(bw(15 downto 8)) & f_mfm_odd(bw(7 downto 0));
@@ -1541,6 +1551,7 @@ begin
                dc1 <= (others => '0');
                dc2 <= (others => '0');
                dc3 <= (others => '0');
+               fetch_bad <= '0';
                state <= ST_FETCH_ISSUE;
 
             -- fetch the sector into the buffer, one word at a time (avm_cache
@@ -1559,6 +1570,9 @@ begin
 
             when ST_FETCH_WAIT =>
                if avm_readdatavalid_i = '1' then
+                  if avm_rderr_i = '1' then
+                     fetch_bad <= '1';
+                  end if;
                   -- HyperRAM word: even file byte in bits 7:0 - swap to 68k order
                   v_byte_hi := avm_readdata_i( 7 downto 0);
                   v_byte_lo := avm_readdata_i(15 downto 8);

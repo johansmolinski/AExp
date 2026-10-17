@@ -2896,6 +2896,114 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   fedora:~/prismbuild/PrismRTG (1.1 beta 9, `f44c4cc`). Status: works on
   the 68020, NOT on the 68040; not for release.
 
+- **ADF images straight from the SD card (2026-10-17, branch `floppy-direct` from main
+  `4dc1fdd`, night pass).** User: "with better SD card speed, would it be possible to use
+  unbuffered diskdrive emulation?"; reasons: the AExp upstream (no SDRAM) could one day
+  drop its HyperRAM pools, and the floppy half of SDRAM bank 0 (column bit 9 = 1, 8 MB)
+  becomes free for more Zorro III RAM. No upstreaming effort now ("something to keep in
+  mind"). Design (one-track buffer, not strictly unbuffered: trackdisk reads a track,
+  re-reads are common, and an SD card can stall for 100+ ms):
+  - `CORE/vhdl/adf_sd.vhd` answers the track engine's UNCHANGED Avalon port
+    (`pool base + track x 2816 + sector x 256 + word`; the drive from address bits
+    21:19, the sector = bits 18:8) from a 4K x 16 dual-clock block RAM holding the
+    eleven sectors of one track of one drive (tag drive/track, valid + dirty per sector).
+    The engine side (core clock) asks the QNICE side per sector with a toggle request
+    (PREP_RD / PREP_WR / COMMIT; payload stable while the toggle crosses, CORE.xdc's
+    qnice<->main max_delay covers it). PREP_RD of an invalid sector loads every invalid
+    sector of the track, usually one CMD18; PREP_WR of a dirty sector writes the dirty
+    sectors back first (an engine that aborts mid-sector must not lose a committed
+    sector - found while planning the TB), then invalidates the sector; COMMIT marks it
+    valid + dirty. Write-back: before the buffer changes tags, 20 ms after the last
+    commit (a trackdisk track write leaves as one CMD25), or on the firmware's FLUSH.
+    Translation: the FAT32$FILE_MAP extent map (firmware, up to 511 extents per drive,
+    8K x 16 block RAM for three drives) + base/shift/sectors/slot registers, the lookup
+    copied from ide_engine (E_LOOK..C3). Preemption by QNICE commands: the rest of a run
+    is looked up and started again. Errors: G_RETRIES = 2 retries 1 ms apart; a
+    controller that is not ready (sdhost re-initialises the card after a failed transfer
+    in the other bus mode, or no card) is waited for up to 500 ms of WALL time from the
+    first "not ready", the port released meanwhile, without using a retry - the long TB
+    found loads that failed three times in a row while the controller recovered from an
+    injected CRC error, and then (seed 777, no tray card) a FLUSH that never ended because
+    the first version counted the wait in retries, each of which also waited for the busy
+    IDE client. A sector that cannot be
+    read is served with `avm_rderr` -> `adf_track_engine` sends it with a wrong data
+    checksum (new input `avm_rderr_i`, default '0'; the only engine change), so the
+    Amiga gets a read error, never silently wrong data; a write that fails for good is
+    dropped and sets the drive's FAULT bit. QNICE registers in windows 0xFFFD (MODE,
+    SECTS, BASE, SHIFT, STATUS, FLUSH, statistics 0x10..0x15) and 0xFFFC (map) of each
+    ADF device (C_DEV_AMIGA_ADF0/1/2); the mount wrapper keeps 0xFFFF (CSR, size
+    validator -> mounted/tracks) and 0xFFFE (WR_EN; its dirty bitmaps are unused).
+  - `CORE/vhdl/sd_eng_arb.vhd`: the SD host controller's single engine port shared by
+    the IDE sector engine (owner by default) and adf_sd (asks with req, holds it per
+    operation). Lock from a start pulse to done; hand-over to adf_sd in two steps (one
+    clock with the IDE side frozen) because a client decides on busy in one clock and
+    pulses start in the next - the first TB run showed the lost start. `ide_engine.vhd`
+    got `sd_gnt_i` (default '1'): E_DECIDE waits for the port, because sd_ready_i
+    belongs to the owner's slot.
+  - main.vhd: no avm_cache (and no cache flush) any more - adf_sd checks drive and
+    sector on every access. mega65.vhd: adf_sd + arbiter, the ADF devices' windows
+    0xFFFC/0xFFFD decoded to adf_sd, the drive LED's "unsaved" (green) = adf_sd dirty.
+  - Firmware: `ADF_TB_SETUP` (map via FAT32$FILE_MAP into window 0xFFFC, base =
+    DEV_CLUSTER - (2 << shift), sectors = size >> 9, slot, mode last, handle to EOF so
+    the Shell reads EOF at once - mounting is instant now), `ADF_TB_SYNC` (FLUSH + wait,
+    ~1 s bound), `ADF_TB_OFF`. PREP_LOAD_IMAGE: SYNC + OFF of the old file instead of the
+    FLUSH_ADF_STEP loop, ADF_TB_SETUP instead of FAST_LOAD (FAST_LOAD stays for the
+    Kickstart); new text WRN_ADF_FRAG (> 511 extents); WRN_ADF_DUP shortened.
+    ADF_UNMOUNT: SYNC (or drop on a card change) + OFF. HANDLE_CORE_IO: a new generation
+    of a drive's card now also switches the drive off and EJECTS it (the image is gone
+    with the card); the background flush (step 3) and FLUSH_ADF_STEP are gone,
+    ERR_ADF_FLUSH removed. Shell ROM 31694/32768 words.
+  - IDE boot ROM: `CORE/vhdl/flp_bram.vhd`, the old arbiter tree now ends in a block
+    RAM slave (16K words at C_HMAP_IDE_ROM, byte enables, bursts; other addresses read
+    0) instead of amiga_sdram's floppy port, which is tied off. Nothing uses the SDRAM
+    floppy half any more. BRAM: was 116/365 tiles.
+  - Tests: `~/aexp-work/adfsd` (tb_adfsd: engine BFM with the engine's exact access
+    pattern -> adf_sd -> sd_eng_arb -> sdslots with two real sdhost -> two card models;
+    an IDE-engine stand-in on the shared port; a firmware stand-in preempting with
+    QNICE reads, mounting, FLUSH/STATUS; three drives: 160 tracks fragmented on the back
+    card (4 KB clusters), 40 tracks with ~100 extents on the tray card (512-byte
+    clusters), 30 tracks + 5 sectors; every read compared with a reference, every card
+    block compared at the end; SCEN 0 with injected read/write CRC errors, SCEN 1 no
+    tray card; ops: track reads in rotation order, aborted reads/commits, track writes,
+    write + aborted rewrite + read back, timed write-back, FLUSH, eject/remount, another
+    file into a drive, Amiga reset, the same sector through two drives; `run.sh`,
+    `multi.sh` seeds, `mut.py`); `~/aexp-work/fw-adfsd` (QNICE emulator: ADF_TB_SETUP on
+    generated FAT32 images, 1/8 and 64/4 sectors per cluster, contiguous, 7 and 150
+    extents, 600 extents refused; hostcheck translates every sector through the
+    map/registers the firmware wrote and compares the image block; SYNC/OFF;
+    `mut.py` 9/9 killed); `~/aexp-work/flpbram` (20000 random ops, mutants 3/4 - the
+    survivor, waitrequest never raised, needs a master that pipelines into a burst).
+    tb_adfsd mutants (`mut.py`, 14): killed - no write-back before a tag change, PREP_WR
+    keeps the sector valid, no write-back of a dirty sector before PREP_WR, COMMIT not
+    dirty, byte swap, no read error flag, run past the extent end, preemption restarts
+    the whole run (hangs), no backoff, no arbiter lock, no invalidation on a
+    configuration write (needed the "another file into a drive" op), arbiter without
+    the freeze (needed a hostile IDE stand-in that decides in exactly the clock adf_sd
+    raises its request, plus an end-of-test check that the stand-in is not stuck in a
+    transfer). Equivalent, survive: the byte select of the SD write data unregistered
+    (sdhost holds each write address two clocks, so it reads the same byte), word 0 of a
+    sector always asking again (only protects against configuration changes, which the
+    generation toggle already covers). Regressions 600 ops x 2 scenarios: 3 seeds pass
+    before the hostile TB; on the final TB seeds 44/55 pass scenario 0, seed 66 failed:
+    after enough injected CRC errors sdhost has used up its fallbacks (native -> SPI 25 ->
+    SPI 12.5 MHz, one per error) and stays in error until QNICE resets it - documented
+    sdhost behaviour (`~/aexp-work/sdhost` SCEN 0), and the firmware resets a controller
+    only when it mounts a card, so on hardware three SD errors since power-up leave the
+    card dead for the IDE engine and the floppy alike until it is re-inserted (an open
+    firmware item, not new here). The TB now injects at most two errors per run: seeds
+    66 and 77 then PASS scenario 0 (600 ops); seeds 44/55 PASS both scenarios.
+    **Open firmware item:** reset a controller whose error bit (register 5 bit 14) is set
+    while its card is present.
+  - Builds (fedora, R6, REF = main-merge-b): **fd-a** = the floppy part (with the first,
+    retry-counted ready wait), first pass WNS -0.073 (the known TG68K -> sdram_ctrl
+    paths), re-roll 1/16 PASS WNS +0.011 WHS +0.007, BRAM 122/365 (+6). **fd-b** = final
+    (time-bounded ready wait + IDE ROM in flp_bram), REF = fd-a, WNS +0.009 WHS +0.007
+    first pass, BRAM 130/365. Bit + .cor (coretool, version "0.6.4-fd-x") in
+    `~/aexp-builds/Megamiga-fd-{a,b}`. HW-confirmed by the user 2026-10-17 (fd-b over JTAG; "Everything tested and seems to
+    be working fine"), merged into main.
+  - Next: Zorro III RAM 16 -> 48 MB from the four free upper column halves, survey in
+    `doc/developers/z3-48mb-plan.md`.
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).

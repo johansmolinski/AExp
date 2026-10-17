@@ -106,7 +106,8 @@ entity main is
       adf_wr_ack_i            : in  std_logic_vector(2 downto 0);
 
       -- ADF floppy image read/write port: Avalon-MM master in the clk_main
-      -- domain (post avm_cache; mega65.vhd crosses it to the HyperRAM clock)
+      -- domain. Megamiga: straight from the track engine (no avm_cache any more)
+      -- to adf_sd.vhd in mega65.vhd, which serves it from its one-track buffer
       adf_avm_write_o         : out std_logic;
       adf_avm_read_o          : out std_logic;
       adf_avm_address_o       : out std_logic_vector(31 downto 0);
@@ -116,6 +117,7 @@ entity main is
       adf_avm_readdata_i      : in  std_logic_vector(15 downto 0);
       adf_avm_readdatavalid_i : in  std_logic;
       adf_avm_waitrequest_i   : in  std_logic;
+      adf_avm_rderr_i         : in  std_logic := '0';   -- the sector is unreadable
 
       -- M2M Keyboard interface
       kb_key_num_i            : in  integer range 0 to 79;    -- cycles through all MEGA65 keys
@@ -686,22 +688,9 @@ architecture synthesis of main is
    signal flp_avm_readdatavalid : std_logic;
    signal flp_avm_waitrequest   : std_logic;
 
-   -- cache held in reset while nothing is mounted or the Amiga resets:
-   -- in-flight HyperRAM responses from an aborted fetch are discarded (the C64
-   -- REU precedent). Note amiga_rst can be as short as ~64 cycles (keyboard
-   -- warm boot) - shorter than a worst-case in-flight burst - so the guarantee
-   -- is NOT the reset duration: it is that (a) avm_cache ignores readdatavalid
-   -- outside its refill state, and (b) the engine cannot issue new reads until
-   -- bus grant + poll delay (>> 1 ms), long after any residue has drained.
-   signal adf_cache_rst    : std_logic;
    signal adf_avm_busy     : std_logic;
    signal adf_avm_write_int : std_logic;
    signal adf_avm_read_int  : std_logic;
-   signal adf_mounted_q    : std_logic_vector(2 downto 0) := (others => '0');
-   signal adf_flush_req    : std_logic := '1';   -- flush once after power-up
-   constant C_ADF_QUIET    : natural := 15;      -- quiet clocks before a flush
-   signal adf_quiet        : natural range 0 to C_ADF_QUIET := 0;
-   signal adf_quiet_s      : std_logic;
 
    -- keyboard
    signal kbd_mouse_data   : std_logic_vector(7 downto 0);
@@ -1168,7 +1157,8 @@ begin
          avm_burstcount_o    => flp_avm_burstcount,
          avm_readdata_i      => flp_avm_readdata,
          avm_readdatavalid_i => flp_avm_readdatavalid,
-         avm_waitrequest_i   => flp_avm_waitrequest
+         avm_waitrequest_i   => flp_avm_waitrequest,
+         avm_rderr_i         => adf_avm_rderr_i
       ); -- i_adf_track_engine
 
    -- DSKBYTR observation surface (Copylock): drive the engine's pop strobe
@@ -1200,82 +1190,21 @@ begin
       end if;
    end process p_hwf_obs;
 
-   -- single-line cache: turns the engine's sequential single-word reads into
-   -- 8-word HyperRAM bursts (the proven C64 REU value). The engine's sector
-   -- commits pass through as single-word writes (write-through; a write hit
-   -- updates the cache line, so read-back after write stays coherent)
-   --
-   -- The cache is SHARED by all three simulated drives, so it must be
-   -- invalidated whenever the Shell has streamed a new image into any drive's
-   -- pool - the stale line would otherwise serve up to eight words of the
-   -- previous image. A mount transition is exactly the observable event
-   -- (disk_mounted drops while the wrapper loads and returns when it is
-   -- validated), so any change of the mount vector arms a flush.
-   --
-   -- The flush must NOT happen while anything is in flight. Two things can be:
-   --   * the engine, which avm_cache would leave waiting forever for a burst
-   --     response that the reset threw away - avm_busy_o covers that, and it
-   --     rises one state before the first read/write is issued, which also
-   --     closes the race against an engine that starts fetching in the same
-   --     cycle the flush is decided;
-   --   * the cache itself, whose master-side write of the LAST word of a
-   --     committed sector may still be waiting for waitrequest to drop. The
-   --     reset clears m_avm_write_o, so that word would be silently dropped
-   --     and the .adf would end up with a torn sector. adf_quiet therefore
-   --     only counts up while the master side is idle as well, and the flush
-   --     waits for a run of quiet cycles.
-   p_adf_cache_flush : process (clk_main_i)
-   begin
-      if rising_edge(clk_main_i) then
-         adf_mounted_q <= adf_mounted_i;
-         if adf_mounted_i /= adf_mounted_q then
-            adf_flush_req <= '1';
-         elsif adf_flush_req = '1' and adf_quiet = C_ADF_QUIET then
-            adf_flush_req <= '0';                 -- the reset below is asserted
-         end if;                                  -- during exactly this cycle
-
-         if adf_avm_busy = '1' or adf_avm_write_int = '1' or adf_avm_read_int = '1' then
-            adf_quiet <= 0;
-         elsif adf_quiet /= C_ADF_QUIET then
-            adf_quiet <= adf_quiet + 1;
-         end if;
-      end if;
-   end process p_adf_cache_flush;
-
-   adf_cache_rst <= amiga_rst or (adf_flush_req and adf_quiet_s);
-   adf_quiet_s   <= '1' when adf_quiet = C_ADF_QUIET else '0';
-
-   i_avm_cache : entity work.avm_cache
-      generic map (
-         G_CACHE_SIZE   => 8,
-         G_ADDRESS_SIZE => 32,
-         G_DATA_SIZE    => 16
-      )
-      port map (
-         clk_i                 => clk_main_i,
-         rst_i                 => adf_cache_rst,
-         s_avm_waitrequest_o   => flp_avm_waitrequest,
-         s_avm_write_i         => flp_avm_write,
-         s_avm_read_i          => flp_avm_read,
-         s_avm_address_i       => flp_avm_address,
-         s_avm_writedata_i     => flp_avm_writedata,
-         s_avm_byteenable_i    => flp_avm_byteenable,
-         s_avm_burstcount_i    => flp_avm_burstcount,
-         s_avm_readdata_o      => flp_avm_readdata,
-         s_avm_readdatavalid_o => flp_avm_readdatavalid,
-         m_avm_waitrequest_i   => adf_avm_waitrequest_i,
-         m_avm_write_o         => adf_avm_write_int,
-         m_avm_read_o          => adf_avm_read_int,
-         m_avm_address_o       => adf_avm_address_o,
-         m_avm_writedata_o     => adf_avm_writedata_o,
-         m_avm_byteenable_o    => adf_avm_byteenable_o,
-         m_avm_burstcount_o    => adf_avm_burstcount_o,
-         m_avm_readdata_i      => adf_avm_readdata_i,
-         m_avm_readdatavalid_i => adf_avm_readdatavalid_i
-      ); -- i_avm_cache
-
-   adf_avm_write_o <= adf_avm_write_int;
-   adf_avm_read_o  <= adf_avm_read_int;
+   -- Megamiga: the engine's port goes straight out. The single-line avm_cache that turned its
+   -- single-word reads into 8-word bursts (and its flush on every mount change) served the
+   -- images in HyperRAM/SDRAM; adf_sd.vhd answers single words from block RAM and checks the
+   -- drive and the sector of every access itself, so there is nothing to cache or flush.
+   adf_avm_write_int     <= flp_avm_write;
+   adf_avm_read_int      <= flp_avm_read;
+   adf_avm_address_o     <= flp_avm_address;
+   adf_avm_writedata_o   <= flp_avm_writedata;
+   adf_avm_byteenable_o  <= flp_avm_byteenable;
+   adf_avm_burstcount_o  <= flp_avm_burstcount;
+   flp_avm_readdata      <= adf_avm_readdata_i;
+   flp_avm_readdatavalid <= adf_avm_readdatavalid_i;
+   flp_avm_waitrequest   <= adf_avm_waitrequest_i;
+   adf_avm_write_o       <= adf_avm_write_int;
+   adf_avm_read_o        <= adf_avm_read_int;
 
    ---------------------------------------------------------------------------
    -- Keyboard: MEGA65 keys -> raw Amiga scancode events

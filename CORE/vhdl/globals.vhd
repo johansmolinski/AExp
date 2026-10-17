@@ -112,6 +112,12 @@ constant VRAM_ADDR_WIDTH      : natural := f_log2(CHAR_MEM_SIZE);
 -- doctrine below are kept unchanged; windows 0x000..0x1FF are simply unused in the SDRAM. The
 -- hyperram_errata note below no longer applies (the SDRAM port writes exactly the words asked
 -- for); the avm_cache overreach still does.
+--
+-- Megamiga (branch floppy-direct): NOTHING of this map is in memory any more. The ADF images are
+-- read from and written to the SD card (adf_sd.vhd, a one-track buffer in block RAM); the pool
+-- addresses below survive only as the address windows in which the track engine names a drive
+-- and a sector (adf_sd.vhd decodes them; there is no avm_cache any more). The IDE boot ROM
+-- window is block RAM (flp_bram.vhd). The SDRAM floppy area (bank 0, column bit 9 = 1) is free.
 
 -- GUARD DOCTRINE, adopted from C64MEGA65 (its globals.vhd; research issue #218 is still
 -- open, the theory lives in C64MEGA65/doc/issue_214_simreu_hyperram.md): every region is
