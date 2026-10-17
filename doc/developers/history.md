@@ -2684,6 +2684,8 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     TG68K unchanged 6.8 MB/s. TBs: `~/aexp-work/ideng` `STREAM=true` (real
     `ide_board` + engine, scenarios 0/1 x Gayle, all PASS),
     `~/aexp-work/cpu060/e2e040/run_ids.sh` (every word checked, 6 PASS).
+    Build `ide-stream-a` (R6, REF main-merge-b): WNS +0.119 ns, WHS +0.007 ns,
+    0 routing errors; not yet on hardware.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
