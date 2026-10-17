@@ -496,6 +496,12 @@ signal main_ide_rddata        : std_logic_vector(15 downto 0);
 signal main_ide_ready         : std_logic;
 signal main_ide_rst           : std_logic;
 signal main_ide_activity      : std_logic;                -- IDE command running
+-- Megamiga 0.7: the IDE data stream between the board and the AP68040's island
+signal main_ids_rdy           : std_logic;
+signal main_ids_we            : std_logic;
+signal main_ids_data          : std_logic_vector(15 downto 0);
+signal main_ids_last          : std_logic;
+signal main_ids_cons          : std_logic_vector(1 downto 0);
 signal main_hd_led            : std_logic := '0';         -- stretched for the drive LED
 signal main_hd_led_cnt        : unsigned(20 downto 0) := (others => '0');
 constant C_HD_LED_HOLD        : natural := CORE_CLK_SPEED / 20;  -- 50 ms
@@ -1625,6 +1631,11 @@ begin
          ide_data_i           => main_ide_rddata,
          ide_ready_i          => main_ide_ready,
          ide_rst_o            => main_ide_rst,
+         ids_rdy_o            => main_ids_rdy,
+         ids_we_i             => main_ids_we,
+         ids_data_i           => main_ids_data,
+         ids_last_i           => main_ids_last,
+         ids_cons_o           => main_ids_cons,
          eth_ena_i            => '1',              -- the network card is always there
          eth_sel_o            => main_eth_sel,
          eth_data_i           => main_eth_rddata,
@@ -1949,6 +1960,11 @@ begin
          board_ena_o             => main_ide_ena,
          activity_o              => main_ide_activity,
          irq_o                   => main_ide_irq,
+         ids_rdy_i               => main_ids_rdy,
+         ids_we_o                => main_ids_we,
+         ids_data_o              => main_ids_data,
+         ids_last_o              => main_ids_last,
+         ids_cons_i              => main_ids_cons,
 
          rom_avm_read_o          => main_iderom_avm_read,
          rom_avm_address_o       => main_iderom_avm_address,

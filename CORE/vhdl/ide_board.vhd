@@ -129,6 +129,16 @@
 -- the firmware sees them. Resets (Amiga reset, 68000 RESET instruction, SRST) raise the
 -- reset event, so the firmware can abandon a transfer in progress.
 --
+-- IDE data stream (Megamiga 0.7, ids_*, core clock; the AP68040's ap040_island.v): while the
+-- sector engine serves a READ (DRQ, EM_READ), the words of the current sector from the read
+-- pointer on are sent ahead, one per clock while ids_rdy_i, without counting them as read
+-- (pf_off = words sent beyond ptr). The island answers data register reads from them and
+-- reports what the CPU took with ids_cons_i, in order with its other accesses; that counts
+-- like data register reads on the bus. Every bus cycle of the board starts the read-ahead
+-- again at ptr (the island drops the words sent before it, and holds ids_rdy_i low while
+-- such a cycle runs), so does everything that moves ptr to another sector or phase. With
+-- ids_rdy_i low (TG68K, fx68k) the board is exactly as before.
+--
 -- Done in 2026 (AExp fork, WIP-V2-A11-JS-01) and licensed under GPL v3.
 ---------------------------------------------------------------------------------------------------------
 
@@ -161,6 +171,12 @@ entity ide_board is
       board_ena_o            : out std_logic;        -- -> cpu_wrapper ide_ena
       activity_o             : out std_logic;        -- a command runs (BSY or DRQ): drive LED
       irq_o                  : out std_logic;        -- Gayle mode: the IDE interrupt (INT2)
+      -- Megamiga 0.7: the IDE data stream to the AP68040's island (see above)
+      ids_rdy_i              : in  std_logic := '0';
+      ids_we_o               : out std_logic;
+      ids_data_o             : out std_logic_vector(15 downto 0);
+      ids_last_o             : out std_logic;
+      ids_cons_i             : in  std_logic_vector(1 downto 0) := "00";
 
       -- core clock domain: reading lide.rom from HyperRAM (via avm_fifo)
       rom_avm_read_o         : out std_logic;
@@ -252,6 +268,10 @@ architecture synthesis of ide_board is
    signal last_blk    : std_logic := '0';      -- the data phase ends the command (flag bit 3)
    signal blk_more    : std_logic := '0';      -- another sector of the block follows: hold
                                                -- data accesses while BSY (READ/WRITE MULTIPLE)
+   -- the IDE data stream (Megamiga 0.7, see the header)
+   signal pf_off      : unsigned(8 downto 0) := (others => '0');  -- words sent beyond ptr
+   signal ids_we      : std_logic := '0';
+   signal ids_last    : std_logic := '0';
 
    -- Gayle mode
    signal intrq       : std_logic := '0';      -- ATA INTRQ
@@ -407,6 +427,10 @@ begin
       variable e_sect    : boolean;                           -- the CPU finished a sector
       variable e_irq     : boolean;                           -- Gayle: INTRQ for the engine
       variable ev_cmd, ev_word, ev_hold, ev_stat, ev_alt, ev_ack, ev_irq : boolean;  -- diagnostics
+      variable ev_words  : unsigned(1 downto 0);                  -- data words this clock
+      variable pf_clr    : boolean;                               -- restart the read-ahead
+      variable pf_push   : boolean;                               -- send a word ahead
+      variable n_cons    : unsigned(8 downto 0);
 
       procedure buffer_done is
       begin
@@ -423,6 +447,7 @@ begin
          error    <= x"01";                   -- diagnostic code: no error
          tf_devh  <= x"A0";
          ptr      <= (others => '0');
+         pf_off   <= (others => '0');
          phase_wr <= '0';
          dly_rst  <= C_EVT_DELAY;
          e_mode   <= EM_NONE;
@@ -435,6 +460,22 @@ begin
          e_irq  := false;
          ev_cmd := false; ev_word := false; ev_hold := false; ev_stat := false;
          ev_alt := false; ev_ack := false; ev_irq := false;
+         ev_words := "00";
+         pf_clr := false;
+         n_cons := resize(unsigned(ids_cons_i), 9);
+         -- the IDE data stream: the word at ptr + pf_off (rr_addr) goes out in the next
+         -- clock, from the ring's registered output
+         pf_push := ids_rdy_i = '1' and status(C_DRQ) = '1' and phase_wr = '0' and
+                    e_mode = EM_READ and ('0' & ptr) + pf_off <= 255;
+         ids_we   <= '0';
+         if pf_push then
+            ids_we   <= '1';
+            if ('0' & ptr) + pf_off = 255 then
+               ids_last <= '1';
+            else
+               ids_last <= '0';
+            end if;
+         end if;
 
          -- sector engine handshake (single-bit toggles from the QNICE domain)
          m_acc_d    <= q_acc;     m_acc_s    <= m_acc_d;
@@ -484,6 +525,7 @@ begin
                   end if;
                   if m_nstat(C_DRQ) = '1' then
                      ptr      <= (others => '0');
+                     pf_clr   := true;
                      phase_wr <= m_nflags(0);
                      last_blk <= m_nflags(3);
                      blk_more <= m_nflags(4);    -- Megamiga 0.7: MULTIPLE, see the header
@@ -503,6 +545,7 @@ begin
                ready <= '0';
                -- a write starts once a data strobe is valid (the data is valid then)
                if sel_i = '1' and (rw_i = '1' or uds_n_i = '0' or lds_n_i = '0') then
+                  pf_clr   := true;                  -- the island dropped what was sent
                   a        := addr_i;
                   lat_addr <= addr_i;
                   ack_rw   <= rw_i;
@@ -706,6 +749,18 @@ begin
                end if;
          end case;
 
+         -- the IDE data stream: words the CPU took from what was sent ahead count as data
+         -- register reads (the island never sends this together with a bus cycle; a sector
+         -- end only after its last word, which the island does not pair with another)
+         if n_cons /= 0 and status(C_DRQ) = '1' and phase_wr = '0' and e_mode = EM_READ then
+            ptr      <= ptr + n_cons(7 downto 0);
+            ev_word  := true;
+            ev_words := n_cons(1 downto 0);
+            if ('0' & ptr) + n_cons >= 256 then
+               e_sect := true;
+            end if;
+         end if;
+
          ---------------------------------------------------------------------------------
          -- sector engine: command taken, sectors, completion
          ---------------------------------------------------------------------------------
@@ -719,6 +774,7 @@ begin
                end if;
                e_slot     <= (others => '0');
                ptr        <= (others => '0');
+               pf_clr     := true;
                e_err_pend <= '0';
                -- Megamiga 0.7: READ/WRITE MULTIPLE in blocks of the unit's multiple count
                -- (the engine takes them only for a unit with a count), else blocks of 1
@@ -802,6 +858,7 @@ begin
             elsif va /= 0 then
                status   <= C_ST_DRQ;
                ptr      <= (others => '0');
+               pf_clr   := true;
                phase_wr <= '0';
                --e_irq    := true;                -- a block for the CPU
                e_irq    := blk_more = '0';        -- a block for the CPU (not within one)
@@ -809,11 +866,20 @@ begin
          elsif e_mode = EM_WRITE and status(C_BSY) = '1' and e_left /= 0 and va /= 0 then
             status   <= C_ST_DRQ;
             ptr      <= (others => '0');
+            pf_clr   := true;
             phase_wr <= '1';
             --e_irq    := true;                   -- room for the next block
             e_irq    := blk_more = '0';           -- room for the next block (not within one)
          end if;
          e_avail <= va;
+         -- the read-ahead: words sent beyond ptr (a consume moves ptr, not what was sent)
+         if pf_clr then
+            pf_off <= (others => '0');
+         elsif pf_push then
+            pf_off <= pf_off + 1 - n_cons;
+         else
+            pf_off <= pf_off - n_cons;
+         end if;
          -- Gayle mode: the engine's commands raise INTRQ like the firmware's commits (the
          -- rules of ide.cpp): each block for the CPU of a READ, each further block of a WRITE
          -- (not its first DRQ, set when the engine took the command), the end of a WRITE
@@ -842,7 +908,12 @@ begin
                dcnt(11)(31 downto 16) <= dcnt(11)(31 downto 16) + 1;
             end if;
          end if;
-         if ev_word then dcnt(1) <= dcnt(1) + 1; end if;
+         --if ev_word then dcnt(1) <= dcnt(1) + 1; end if;
+         if ev_words /= 0 then
+            dcnt(1) <= dcnt(1) + ev_words;           -- words the island took
+         elsif ev_word then
+            dcnt(1) <= dcnt(1) + 1;
+         end if;
          if ev_irq  then dcnt(2) <= dcnt(2) + 1; end if;
          if ev_ack  then dcnt(3) <= dcnt(3) + 1; end if;
          if g_irq = '1' then dcnt(4) <= dcnt(4) + 1; end if;
@@ -983,7 +1054,14 @@ begin
    ---------------------------------------------------------------------------------------
 
    -- read ring: the engine writes (QNICE clock), the CPU reads (core clock)
-   rr_addr <= std_logic_vector(e_slot) & std_logic_vector(ptr);
+   --rr_addr <= std_logic_vector(e_slot) & std_logic_vector(ptr);
+   -- Megamiga 0.7: the IDE data stream reads ahead while ids_rdy_i; a bus cycle of the board
+   -- comes at least two clocks after ids_rdy_i went low, so it reads the word at ptr
+   rr_addr <= std_logic_vector(e_slot) & std_logic_vector(ptr + pf_off(7 downto 0)) when ids_rdy_i = '1' else
+              std_logic_vector(e_slot) & std_logic_vector(ptr);
+   ids_we_o   <= ids_we;
+   ids_data_o <= rr_q;
+   ids_last_o <= ids_last;
 
    q_mult0_nz <= '1' when q_mult0 /= x"00" else '0';
    q_mult1_nz <= '1' when q_mult1 /= x"00" else '0';

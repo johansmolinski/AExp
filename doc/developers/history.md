@@ -2670,6 +2670,33 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     queue write ~0.7, the CDC to the bus side ~2.3, entry load + adapter
     start 2. No single wait; the island's own registers and the idle word
     are ~3 of the 16, the two crossings ~3.6, the core ~2.7.
+    **IDE data stream (branch `ide-stream`, 2026-10-17):** the board pushes
+    the sector's next words ahead into a 32-word FIFO in the island's CPU
+    clock domain (`ids_*` ports: `ide_board.vhd` -> mega65/main ->
+    cpu_wrapper -> `ap040_island.v`; `pf_off` = words sent beyond `ptr`, reset
+    by every other bus access to the board), and the 68040 takes data-register
+    reads (RIPPLE $1000-$11FF, Gayle $DA0000) from it as longs without a bus
+    cycle; a hit queues a consume entry so the board's `ptr` advances in
+    order with status reads and commands, words are tagged with a count of
+    board entries so stale ones are dropped. TG68K/fx68k: ports tied off.
+    Measured (meas_lide.sh `IDS=1`, sector into Fast RAM, routine in Z2):
+    68040 copyback 5.1 -> 11.9 MB/s (Z3) / 12.3 MB/s (Z2), uncached 7.7 MB/s;
+    TG68K unchanged 6.8 MB/s. TBs: `~/aexp-work/ideng` `STREAM=true` (real
+    `ide_board` + engine, scenarios 0/1 x Gayle, all PASS),
+    `~/aexp-work/cpu060/e2e040/run_ids.sh` (every word checked, 6 PASS).
+    Build `ide-stream-a` (R6, REF main-merge-b): WNS +0.119 ns, WHS +0.007 ns,
+    0 routing errors. Hardware (2026-10-17, 3.1, lide, 68040, Z3): SysInfo
+    **10.5 MB/s** from the tray card in native 4-bit mode (before: ~4.8);
+    2.84 MB/s from a card in SPI mode, where the board diagnostics show BSY
+    72% / held 64% = the 68040 waits for the card.
+    Gayle (same build, 68040): 3.1's scsi.device 2.7 MB/s on 4-bit and SPI alike
+    (move.w loop, ~113 status polls per sector inside READ MULTIPLE blocks, BSY
+    39%), 3.2's scsi.device 6 MB/s on 4-bit - left as a driver limit. The slave
+    on the Gayle: 3.1's scsi.device probes only the master at init (no master =
+    no device, as on a real A1200) and stops the unit scan when the master's RDB
+    has rdb_Flags bit 0 (RDBFF_LAST, HDToolBox "Last disk"; amitools rdbtool
+    writes 7); lide.device ignores it. Clearing it on the master HDF made the
+    slave mount (user, 2026-10-17).
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
