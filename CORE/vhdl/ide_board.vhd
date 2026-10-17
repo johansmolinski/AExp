@@ -139,6 +139,26 @@
 -- such a cycle runs), so does everything that moves ptr to another sector or phase. With
 -- ids_rdy_i low (TG68K, fx68k) the board is exactly as before.
 --
+-- IDE DMA (Megamiga 0.7, RIPPLE mode only; registers at board offset $A000, which
+-- lide.device never touches - its channels are $1000/$2000 and +$4000): the board moves the
+-- data of the current command between its buffers and Amiga Fast RAM itself, as if the CPU
+-- read or wrote the data register (the same code: ptr, sector and block ends, DRQ/BSY behave
+-- exactly so), through the second client of sdram_ctrl's fp_* slots (dm_*). Registers (words):
+--   $A000 R: $444D ('DM'), $A002 R: version 1
+--   $A004 R/W: address A31..A16, $A006 R/W: A15..A0 (long-aligned; written while idle)
+--   $A008 W: bit 15 direction (0 = card -> memory, a READ; 1 = memory -> card, a WRITE),
+--            bit 14 = abort, bits 8..0 sectors (1..256, 0 = 256): starts the transfer.
+--         R: bit 15 busy, bit 14 error (the address range is not Fast RAM, or the command
+--            ended or failed before the last word), bits 8..0 sectors still to move
+--   $A00A R: words still to move (bits 15..0)
+-- The range must lie in Zorro II Fast RAM ($200000-$9FFFFF, $200000-$3FFFFF with the Action
+-- Replay) or in the Zorro III board (fmap_*, the same decode and SDRAM mapping as
+-- cpu_wrapper.v / ap040_island.v). The transfer waits for DRQ by itself, so one start can
+-- cover a whole command; the driver polls $A008 and must not touch the data register
+-- meanwhile (ignored: reads give 0). Reads are spaced two clocks apart (the ring's
+-- registered output), one long per SDRAM slot; the IDE data stream pauses meanwhile. Caches:
+-- the driver's (CachePreDMA/CachePostDMA); sdram_ctrl snoops the TG68K's cache.
+--
 -- Done in 2026 (AExp fork, WIP-V2-A11-JS-01) and licensed under GPL v3.
 ---------------------------------------------------------------------------------------------------------
 
@@ -177,6 +197,20 @@ entity ide_board is
       ids_data_o             : out std_logic_vector(15 downto 0);
       ids_last_o             : out std_logic;
       ids_cons_i             : in  std_logic_vector(1 downto 0) := "00";
+      -- Megamiga 0.7: IDE DMA (see above): the Fast RAM map (cpu_wrapper, core clock; it
+      -- changes only at autoconfig) and the second client of sdram_ctrl's fp_* slots
+      fmap_z2_i              : in  std_logic := '0';   -- Zorro II Fast RAM on
+      fmap_ar3_i             : in  std_logic := '0';   -- ... $200000-$3FFFFF only (AR3)
+      fmap_z3_i              : in  std_logic := '0';   -- the Zorro III board is configured
+      fmap_z3base_i          : in  std_logic_vector(7 downto 0) := (others => '0');  -- A31..A24
+      dm_req_o               : out std_logic;
+      dm_we_o                : out std_logic;
+      dm_line_o              : out std_logic;
+      dm_addr_o              : out std_logic_vector(24 downto 2);
+      dm_be_o                : out std_logic_vector(3 downto 0);
+      dm_data_o              : out std_logic_vector(31 downto 0);
+      dm_rdata_i             : in  std_logic_vector(127 downto 0) := (others => '0');
+      dm_ack_i               : in  std_logic := '0';
 
       -- core clock domain: reading lide.rom from HyperRAM (via avm_fifo)
       rom_avm_read_o         : out std_logic;
@@ -390,6 +424,43 @@ architecture synthesis of ide_board is
    signal q_st_acc, q_st_fwd, q_st_err : std_logic_vector(15 downto 0);
    signal q_eng_busy  : std_logic;
 
+   -- IDE DMA (Megamiga 0.7, see the header)
+   type t_dmst is (DM_IDLE, DM_CHECK, DM_RUN);
+   signal dm_st       : t_dmst := DM_IDLE;
+   signal dm_dir      : std_logic := '0';      -- '0' card -> memory, '1' memory -> card
+   signal dm_err      : std_logic := '0';
+   signal dm_ahi, dm_alo : std_logic_vector(15 downto 0) := (others => '0');  -- Amiga address
+   signal dm_cnt      : unsigned(8 downto 0) := (others => '0');   -- sectors (1..256)
+   signal dm_left     : unsigned(16 downto 0) := (others => '0');  -- words still to move
+   signal dm_rqleft   : unsigned(15 downto 0) := (others => '0');  -- longs still to fetch
+   signal dm_z3       : std_logic := '0';                          -- dm_a in the Z3 board
+   signal dm_a        : unsigned(22 downto 0) := (others => '0');  -- next SDRAM long ([24:2])
+   signal dm_req, dm_we : std_logic := '0';
+   signal dm_out      : std_logic := '0';      -- a request is outstanding (until dm_ack_i)
+   signal dm_ra       : std_logic_vector(24 downto 2) := (others => '0');
+   signal dm_wd       : std_logic_vector(31 downto 0) := (others => '0');
+   signal dm_hi       : std_logic_vector(15 downto 0) := (others => '0');
+   signal dm_half     : std_logic := '0';      -- dm_hi holds the long's first word
+   signal dm_nxt      : std_logic_vector(31 downto 0) := (others => '0');
+   signal dm_nxt_v    : std_logic := '0';      -- dm_nxt waits for the SDRAM port
+   signal dm_gap      : std_logic := '0';      -- read: a clock between two words
+   signal dm_ok_d     : std_logic := '0';      -- read: DRQ was there in the clock before too
+   type t_dmq is array (0 to 3) of std_logic_vector(15 downto 0);
+   signal dm_q        : t_dmq := (others => (others => '0'));       -- write: fetched words
+   signal dm_qi       : unsigned(1 downto 0) := (others => '0');   -- ... the next one
+   signal dm_qn       : unsigned(2 downto 0) := (others => '0');   -- ... how many are left
+
+   function f_z2(a : unsigned(31 downto 0); ar3 : std_logic) return boolean is
+   begin
+      if a(31 downto 24) /= 0 then
+         return false;
+      elsif ar3 = '1' then
+         return a(23 downto 21) = "001";
+      else
+         return (a(23) xor (a(22) or a(21))) = '1';            -- addr[23:21] = 1..4
+      end if;
+   end function f_z2;
+
    -- helpers
    function rd8(v : std_logic_vector(7 downto 0)) return std_logic_vector is
    begin
@@ -405,6 +476,13 @@ begin
    -- Megamiga 0.7: from the latch (real Gayle), not from INTRQ itself (gayle.v)
    --irq_o       <= gayle_i and intrq and g_intena;
    irq_o       <= gayle_i and g_irq and g_intena;
+
+   dm_req_o    <= dm_req;
+   dm_we_o     <= dm_we;
+   dm_line_o   <= '0';
+   dm_addr_o   <= dm_ra;
+   dm_be_o     <= "1111";
+   dm_data_o   <= dm_wd;
 
    rom_avm_read_o    <= rom_read;
    rom_avm_address_o <= std_logic_vector(resize(unsigned(G_ROM_BASE) + unsigned(lat_addr(15 downto 2)), 32));
@@ -431,6 +509,13 @@ begin
       variable pf_clr    : boolean;                               -- restart the read-ahead
       variable pf_push   : boolean;                               -- send a word ahead
       variable n_cons    : unsigned(8 downto 0);
+      variable is_dma    : boolean;                               -- the DMA registers
+      variable w16       : std_logic_vector(15 downto 0);
+      variable dm_start, dm_abort : boolean;
+      variable dm_ov, dm_nv : std_logic;                          -- dm_out / dm_nxt_v of this clock
+      variable dm_avail  : boolean;
+      variable dm_aa, dm_ae : unsigned(31 downto 0);
+      variable dm_n      : unsigned(1 downto 0);
 
       procedure buffer_done is
       begin
@@ -452,6 +537,58 @@ begin
          dly_rst  <= C_EVT_DELAY;
          e_mode   <= EM_NONE;
       end procedure;
+      -- one data register access, the CPU's or the DMA's (Megamiga 0.7: shared code)
+      procedure data_read(w : out std_logic_vector(15 downto 0)) is
+      begin
+         if e_mode = EM_READ then
+            w := rr_q;                              -- the sector engine's ring
+            ptr <= ptr + 1;
+            ev_word := true;
+            if ptr = 255 then
+               e_sect := true;
+            end if;
+         else
+            w := rd_buf(to_integer(ptr));
+            ptr <= ptr + 1;
+            ev_word := true;
+            if ptr = 255 then
+               if last_blk = '1' then               -- the command ends here
+                  status  <= C_ST_READY;
+                  dly_buf <= C_EVT_DELAY;
+               else
+                  buffer_done;
+               end if;
+            end if;
+         end if;
+      end procedure;
+
+      procedure data_write(d : std_logic_vector(15 downto 0)) is
+      begin
+         wb_we   <= '1';
+         wb_addr <= ptr;
+         wb_data <= d;
+         ptr     <= ptr + 1;
+         ev_word := true;
+         if e_mode = EM_WRITE then
+            wr_we   <= '1';                         -- the sector engine's ring
+            wr_addr <= std_logic_vector(e_slot) & std_logic_vector(ptr);
+            if ptr = 255 then
+               e_sect := true;
+            end if;
+         elsif ptr = 255 then
+            buffer_done;
+         end if;
+      end procedure;
+
+      -- the next SDRAM long of the DMA, n longs on (wraps like the CPU's mapping)
+      procedure dm_step(n : natural) is
+      begin
+         if dm_z3 = '1' then
+            dm_a(21 downto 0) <= dm_a(21 downto 0) + n;
+         else
+            dm_a(20 downto 0) <= dm_a(20 downto 0) + n;
+         end if;
+      end procedure;
    begin
       if rising_edge(clk_i) then
          wb_we  <= '0';
@@ -462,11 +599,13 @@ begin
          ev_alt := false; ev_ack := false; ev_irq := false;
          ev_words := "00";
          pf_clr := false;
+         dm_start := false;
+         dm_abort := false;
          n_cons := resize(unsigned(ids_cons_i), 9);
          -- the IDE data stream: the word at ptr + pf_off (rr_addr) goes out in the next
          -- clock, from the ring's registered output
          pf_push := ids_rdy_i = '1' and status(C_DRQ) = '1' and phase_wr = '0' and
-                    e_mode = EM_READ and ('0' & ptr) + pf_off <= 255;
+                    e_mode = EM_READ and ('0' & ptr) + pf_off <= 255 and dm_st = DM_IDLE;
          ids_we   <= '0';
          if pf_push then
             ids_we   <= '1';
@@ -549,6 +688,7 @@ begin
                   a        := addr_i;
                   lat_addr <= addr_i;
                   ack_rw   <= rw_i;
+                  is_dma := gayle_i = '0' and ide_enabled = '1' and a(16 downto 12) = "01010";
                   if gayle_i = '1' then
                      is_rom  := false;
                      is_gid  := a(18) = '1';
@@ -600,31 +740,30 @@ begin
                               when others => rdata(15 downto 12) <= g_cfg;
                            end case;
                         end if;
+                        if is_dma then
+                           case a(3 downto 1) is
+                              when "000"  => rdata <= x"444D";             -- 'DM'
+                              when "001"  => rdata <= x"0001";             -- version
+                              when "010"  => rdata <= dm_ahi;
+                              when "011"  => rdata <= dm_alo;
+                              when "100"  => rdata <= (others => '0');
+                                             if dm_st /= DM_IDLE then rdata(15) <= '1'; end if;
+                                             rdata(14) <= dm_err;
+                                             rdata(8 downto 0) <= std_logic_vector(dm_left(16 downto 8));
+                              when others => rdata <= std_logic_vector(dm_left(15 downto 0));
+                           end case;
+                        end if;
                         if (is_tf or is_ctl) and present then
                            if is_ctl then
                               if reg = 6 then rdata <= rd8(status); ev_alt := true; end if;   -- alternate status
                            else
                               case reg is
                                  when 0 =>
-                                    if status(C_DRQ) = '1' and phase_wr = '0' and e_mode = EM_READ then
-                                       rdata <= rr_q;           -- the sector engine's ring
-                                       ptr   <= ptr + 1;
-                                       ev_word := true;
-                                       if ptr = 255 then
-                                          e_sect := true;
-                                       end if;
-                                    elsif status(C_DRQ) = '1' and phase_wr = '0' then
-                                       rdata <= rd_buf(to_integer(ptr));
-                                       ptr   <= ptr + 1;
-                                       ev_word := true;
-                                       if ptr = 255 then
-                                          if last_blk = '1' then   -- the command ends here
-                                             status  <= C_ST_READY;
-                                             dly_buf <= C_EVT_DELAY;
-                                          else
-                                             buffer_done;
-                                          end if;
-                                       end if;
+                                    -- (Megamiga 0.7: data_read, shared with the DMA,
+                                    -- which owns the data register while it runs)
+                                    if status(C_DRQ) = '1' and phase_wr = '0' and dm_st = DM_IDLE then
+                                       data_read(w16);
+                                       rdata <= w16;
                                     else
                                        rdata <= (others => '0');
                                     end if;
@@ -666,24 +805,31 @@ begin
                                           end if;
                         end case;
                      end if;
+                     if is_dma then
+                        case a(3 downto 1) is
+                           when "010"  => if dm_st = DM_IDLE then dm_ahi <= data_i; end if;
+                           when "011"  => if dm_st = DM_IDLE then dm_alo <= data_i; end if;
+                           when "100"  =>
+                              if data_i(14) = '1' then
+                                 dm_abort := true;
+                              elsif dm_st = DM_IDLE then
+                                 dm_start := true;
+                                 dm_dir   <= data_i(15);
+                                 if data_i(8 downto 0) = "000000000" then
+                                    dm_cnt <= to_unsigned(256, 9);
+                                 else
+                                    dm_cnt <= unsigned(data_i(8 downto 0));
+                                 end if;
+                              end if;
+                           when others => null;
+                        end case;
+                     end if;
                      if is_tf then
                         case reg is
                            when 0 =>
-                              if present and status(C_DRQ) = '1' and phase_wr = '1' then
-                                 wb_we   <= '1';
-                                 wb_addr <= ptr;
-                                 wb_data <= data_i;
-                                 ptr     <= ptr + 1;
-                                 ev_word := true;
-                                 if e_mode = EM_WRITE then
-                                    wr_we   <= '1';        -- the sector engine's ring
-                                    wr_addr <= std_logic_vector(e_slot) & std_logic_vector(ptr);
-                                    if ptr = 255 then
-                                       e_sect := true;
-                                    end if;
-                                 elsif ptr = 255 then
-                                    buffer_done;
-                                 end if;
+                              -- (Megamiga 0.7: data_write, shared with the DMA)
+                              if present and status(C_DRQ) = '1' and phase_wr = '1' and dm_st = DM_IDLE then
+                                 data_write(data_i);
                               end if;
                            when 6 =>
                               tf_devh <= byte;       -- always: it selects master/slave
@@ -760,6 +906,129 @@ begin
                e_sect := true;
             end if;
          end if;
+
+         ---------------------------------------------------------------------------------
+         -- IDE DMA (Megamiga 0.7, see the header)
+         ---------------------------------------------------------------------------------
+         dm_ov := dm_out;
+         if dm_out = '1' and dm_ack_i = dm_req then
+            dm_ov := '0';                           -- the SDRAM access is done
+         end if;
+         dm_nv := dm_nxt_v;
+         case dm_st is
+            when DM_IDLE =>
+               if dm_start then
+                  dm_err <= '0';
+                  dm_st  <= DM_CHECK;
+               end if;
+
+            when DM_CHECK =>                        -- the first and the last long of the range
+               dm_aa := unsigned(std_logic_vector'(dm_ahi & dm_alo));
+               dm_ae := dm_aa + (dm_cnt & "000000000") - 4;
+               dm_left   <= dm_cnt & x"00";
+               dm_rqleft <= dm_cnt & "0000000";
+               dm_half   <= '0';
+               dm_qn     <= (others => '0');
+               dm_gap    <= '0';
+               dm_nv     := '0';                -- (nothing of an earlier transfer is left)
+               if dm_aa(1 downto 0) /= "00" then
+                  dm_err <= '1';
+                  dm_st  <= DM_IDLE;
+               elsif fmap_z3_i = '1' and dm_aa(31 downto 24) = unsigned(fmap_z3base_i) and
+                     dm_ae(31 downto 24) = unsigned(fmap_z3base_i) then
+                  dm_z3 <= '1';
+                  dm_a  <= '1' & dm_aa(23 downto 2);
+                  dm_st <= DM_RUN;
+               elsif fmap_z2_i = '1' and f_z2(dm_aa, fmap_ar3_i) and f_z2(dm_ae, fmap_ar3_i) then
+                  dm_z3 <= '0';
+                  dm_a  <= "01" & dm_aa(22 downto 2);
+                  dm_st <= DM_RUN;
+               else
+                  dm_err <= '1';                    -- not (all) Fast RAM
+                  dm_st  <= DM_IDLE;
+               end if;
+
+            when DM_RUN =>
+               if dm_dir = '0' then
+                  -------------------------------------------------- card -> memory
+                  if dm_ov = '0' and dm_nv = '1' then
+                     dm_we  <= '1';
+                     dm_ra  <= std_logic_vector(dm_a);
+                     dm_wd  <= dm_nxt;
+                     dm_req <= not dm_req;
+                     dm_step(1);
+                     dm_ov  := '1';
+                     dm_nv  := '0';
+                  end if;
+                  dm_avail := status(C_DRQ) = '1' and phase_wr = '0' and present;
+                  if dm_avail then dm_ok_d <= '1'; else dm_ok_d <= '0'; end if;
+                  if dm_left /= 0 and dm_avail and dm_ok_d = '1' and dm_gap = '0' and dm_nv = '0' then
+                     data_read(w16);
+                     dm_gap  <= '1';
+                     dm_left <= dm_left - 1;
+                     if dm_half = '0' then
+                        dm_hi   <= w16;
+                        dm_half <= '1';
+                     else
+                        dm_nxt  <= dm_hi & w16;
+                        dm_nv   := '1';
+                        dm_half <= '0';
+                     end if;
+                  else
+                     dm_gap <= '0';
+                  end if;
+                  -- done, or stopped (dm_err): once the last long is written
+                  if (dm_left = 0 or dm_err = '1') and dm_nv = '0' and dm_ov = '0' then
+                     dm_st <= DM_IDLE;
+                  end if;
+               else
+                  -------------------------------------------------- memory -> card
+                  if dm_out = '1' and dm_ov = '0' and dm_we = '0' then
+                     -- the read is back: the 8 bytes holding dm_ra, from dm_ra's long on
+                     if dm_ra(3) = '0' then
+                        dm_q(0) <= dm_rdata_i(127 downto 112); dm_q(1) <= dm_rdata_i(111 downto 96);
+                        dm_q(2) <= dm_rdata_i(95 downto 80);   dm_q(3) <= dm_rdata_i(79 downto 64);
+                     else
+                        dm_q(0) <= dm_rdata_i(63 downto 48);   dm_q(1) <= dm_rdata_i(47 downto 32);
+                        dm_q(2) <= dm_rdata_i(31 downto 16);   dm_q(3) <= dm_rdata_i(15 downto 0);
+                     end if;
+                     if dm_ra(2) = '1' or dm_rqleft = 1 then
+                        dm_n := "01";
+                     else
+                        dm_n := "10";
+                     end if;
+                     if dm_ra(2) = '1' then dm_qi <= "10"; else dm_qi <= "00"; end if;
+                     dm_qn     <= resize(dm_n & '0', 3);
+                     dm_rqleft <= dm_rqleft - dm_n;
+                     dm_step(to_integer(dm_n));
+                  elsif dm_qn /= 0 then
+                     if status(C_DRQ) = '1' and phase_wr = '1' and present then
+                        data_write(dm_q(to_integer(dm_qi)));
+                        dm_qi   <= dm_qi + 1;
+                        dm_qn   <= dm_qn - 1;
+                        dm_left <= dm_left - 1;
+                     end if;
+                  elsif dm_ov = '0' and dm_rqleft /= 0 then
+                     dm_we  <= '0';
+                     dm_ra  <= std_logic_vector(dm_a);
+                     dm_req <= not dm_req;
+                     dm_ov  := '1';
+                  end if;
+                  if (dm_left = 0 or dm_err = '1') and dm_ov = '0' then
+                     dm_st <= DM_IDLE;
+                  end if;
+               end if;
+               -- the command ended (or failed) before the last word: stop (no more words come;
+               -- what was taken is still written, then the DMA ends with the error bit)
+               if dm_left /= 0 and status(C_BSY) = '0' and status(C_DRQ) = '0' then
+                  dm_err <= '1';
+               end if;
+         end case;
+         if dm_abort then
+            dm_st <= DM_IDLE;
+         end if;
+         dm_out   <= dm_ov;
+         dm_nxt_v <= dm_nv;
 
          ---------------------------------------------------------------------------------
          -- sector engine: command taken, sectors, completion
@@ -953,6 +1222,9 @@ begin
             tf_feat <= (others => '0'); tf_scnt <= (others => '0'); tf_lba0 <= (others => '0');
             tf_lba1 <= (others => '0'); tf_lba2 <= (others => '0'); tf_cmd  <= (others => '0');
             device_reset;
+            dm_st    <= DM_IDLE;               -- (dm_out stays: an access in flight ends)
+            dm_nxt_v <= '0';
+            dm_err   <= '0';
          end if;
       end if;
    end process bus_proc;
@@ -1057,7 +1329,7 @@ begin
    --rr_addr <= std_logic_vector(e_slot) & std_logic_vector(ptr);
    -- Megamiga 0.7: the IDE data stream reads ahead while ids_rdy_i; a bus cycle of the board
    -- comes at least two clocks after ids_rdy_i went low, so it reads the word at ptr
-   rr_addr <= std_logic_vector(e_slot) & std_logic_vector(ptr + pf_off(7 downto 0)) when ids_rdy_i = '1' else
+   rr_addr <= std_logic_vector(e_slot) & std_logic_vector(ptr + pf_off(7 downto 0)) when ids_rdy_i = '1' and dm_st = DM_IDLE else
               std_logic_vector(e_slot) & std_logic_vector(ptr);
    ids_we_o   <= ids_we;
    ids_data_o <= rr_q;

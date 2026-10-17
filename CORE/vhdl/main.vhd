@@ -224,6 +224,10 @@ entity main is
       ids_data_i              : in  std_logic_vector(15 downto 0);
       ids_last_i              : in  std_logic;
       ids_cons_o              : out std_logic_vector(1 downto 0);
+      -- Megamiga 0.7: cpu_wrapper's Fast RAM map for the IDE DMA (ide_board.vhd)
+      fmap_z2_o               : out std_logic;
+      fmap_z3_o               : out std_logic;
+      fmap_z3base_o           : out std_logic_vector(7 downto 0);
 
       -- Network card (eth_card.vhd in mega65.vhd), the second board on cpu_wrapper's ext_*
       -- port: in the autoconfig chain after the IDE board while eth_ena_i is high (latched at
@@ -597,7 +601,10 @@ architecture synthesis of main is
          ids_we         : in  std_logic;
          ids_data       : in  std_logic_vector(15 downto 0);
          ids_last       : in  std_logic;
-         ids_cons       : out std_logic_vector(1 downto 0)
+         ids_cons       : out std_logic_vector(1 downto 0);
+         fmap_z2        : out std_logic;
+         fmap_z3        : out std_logic;
+         fmap_z3base    : out std_logic_vector(7 downto 0)
       );
    end component cpu_wrapper;
 
@@ -1022,7 +1029,10 @@ begin
          ids_we          => ids_we_i,
          ids_data        => ids_data_i,
          ids_last        => ids_last_i,
-         ids_cons        => ids_cons_o
+         ids_cons        => ids_cons_o,
+         fmap_z2         => fmap_z2_o,
+         fmap_z3         => fmap_z3_o,
+         fmap_z3base     => fmap_z3base_o
       ); -- i_cpu_wrapper
 
    ---------------------------------------------------------------------------
