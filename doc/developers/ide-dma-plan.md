@@ -66,6 +66,10 @@ a separate step (25 MB/s raw).
 - `ata_write` (ata.c:546) the same way in the other direction.
 - Unaligned buffers: PIO as now.
 - The built ROM must stay RIPPLE-compatible: on a board without `DMA_ID` nothing changes.
+- Name (decided 2026-10-17): it stays `lide.device` (HDToolBox tooltypes, mountlists and
+  tools name it; nothing breaks in either direction). The version string says
+  `(Megamiga DMA n)`, the version number stays that of the lide release it is based on,
+  the fork's README lists the changes. `/amiga/lide.rom` as before.
 
 ## Tests
 
