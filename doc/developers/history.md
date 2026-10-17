@@ -2700,6 +2700,28 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     Merged into main (with floppy-direct); build `main-ids-a` (R6, REF main-merge-b):
     WNS +0.021 ns, WHS +0.016 ns, 0 routing errors; ideng STREAM=true all PASS on
     the merged tree.
+    Later on main-ids-a: lide 9.5 MB/s, scsi.device (3.2) 5.6 MB/s on 68040/Z3 - a few
+    hundred KB/s below ide-stream-a; not investigated (no floppy inserted).
+  - **IDE DMA (branch `ide-dma`, 2026-10-17; plan `doc/developers/ide-dma-plan.md`).**
+    sdram_ctrl: a second client of the 68040's fp_* slots (`dm*`, a one-sysclk front end
+    picks the client; the switch rule looks at the selected client's LIVE request, else a
+    slot can start while p_* change over), fp_* writes snoop cpu_cache_new (high half at the
+    slot start, low half at state 4 - one line). ide_board: the DMA unit (RIPPLE only,
+    registers at $A000 which lide never touches: ID $444D, address, control/status, words
+    left) runs the board's own data-register code (`data_read`/`data_write`), reads spaced
+    two clocks (ring output register), waits for DRQ by itself, refuses non-Fast-RAM ranges
+    (Z2/Z3 decode from cpu_wrapper's new fmap_* outputs), pauses the IDE data stream. An
+    early command end stops it but still writes the long it holds (found by the TB: the
+    unit went idle with it queued, the next DMA wrote it first). lide.device fork branch
+    `megamiga-dma` (51862e4): mm_dma in ata_read/ata_write after the first DRQ, one DMA per
+    command, CachePreDMA/CachePostDMA, PIO for unaligned/refused buffers; ata_read/ata_write
+    built -Os (the ROM was 304 bytes over with -O3; now 27268 of 28668). Name stays
+    lide.device, ID string "(Megamiga DMA 1)". TBs: `~/aexp-work/idedma/mem` (dm/fp random
+    traffic + snoop, 5 sdram_ctrl mutants, 4 killed + 1 that found the switch race),
+    `~/aexp-work/ideng` DMA=true (both scenarios PASS), mutants `mut_dma.py`; e2e040
+    run_ids.sh still PASS (default MAXCYC now 1500000). Build `ide-dma-a` (REF main-ids-a):
+    WNS +0.006, WHS +0.016. Hardware (KS 3.1, lide, Z3, 4-bit): SysInfo 68040 9.1 MB/s,
+    68020 9.8 MB/s (was ~5; the CPU no longer copies) - the card is the limit now.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
