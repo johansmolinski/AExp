@@ -2689,6 +2689,14 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     **10.5 MB/s** from the tray card in native 4-bit mode (before: ~4.8);
     2.84 MB/s from a card in SPI mode, where the board diagnostics show BSY
     72% / held 64% = the 68040 waits for the card.
+    Gayle (same build, 68040): 3.1's scsi.device 2.7 MB/s on 4-bit and SPI alike
+    (move.w loop, ~113 status polls per sector inside READ MULTIPLE blocks, BSY
+    39%), 3.2's scsi.device 6 MB/s on 4-bit - left as a driver limit. The slave
+    on the Gayle: 3.1's scsi.device probes only the master at init (no master =
+    no device, as on a real A1200) and stops the unit scan when the master's RDB
+    has rdb_Flags bit 0 (RDBFF_LAST, HDToolBox "Last disk"; amitools rdbtool
+    writes 7); lide.device ignores it. Clearing it on the master HDF made the
+    slave mount (user, 2026-10-17).
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
