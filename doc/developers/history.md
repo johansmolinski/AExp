@@ -2697,6 +2697,9 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     has rdb_Flags bit 0 (RDBFF_LAST, HDToolBox "Last disk"; amitools rdbtool
     writes 7); lide.device ignores it. Clearing it on the master HDF made the
     slave mount (user, 2026-10-17).
+    Merged into main (with floppy-direct); build `main-ids-a` (R6, REF main-merge-b):
+    WNS +0.021 ns, WHS +0.016 ns, 0 routing errors; ideng STREAM=true all PASS on
+    the merged tree.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
