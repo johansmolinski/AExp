@@ -95,6 +95,15 @@ entity amiga_sdram is
       fp_data_i      : in    std_logic_vector(31 downto 0) := (others => '0');
       fp_data_o      : out   std_logic_vector(127 downto 0);
       fp_ack_o       : out   std_logic;
+      -- Megamiga 0.7: the IDE board's DMA, a second client of the same slots and protocol
+      -- (sdram_ctrl.v dm*; read data in fp_data_o, the line of the last read slot of either)
+      dm_req_i       : in    std_logic := '0';
+      dm_we_i        : in    std_logic := '0';
+      dm_line_i      : in    std_logic := '0';
+      dm_addr_i      : in    std_logic_vector(24 downto 2) := (others => '0');
+      dm_be_i        : in    std_logic_vector(3 downto 0) := (others => '0');
+      dm_data_i      : in    std_logic_vector(31 downto 0) := (others => '0');
+      dm_ack_o       : out   std_logic;
 
       -- cold-boot scrub (amiga_cold_boot.vhd, core clock)
       scrub_i        : in    std_logic;
@@ -204,7 +213,14 @@ architecture synthesis of amiga_sdram is
          fpBE           : in    std_logic_vector(3 downto 0);
          fpWR           : in    std_logic_vector(31 downto 0);
          fpRD           : out   std_logic_vector(127 downto 0);
-         fpAck          : out   std_logic
+         fpAck          : out   std_logic;
+         dmReq          : in    std_logic;
+         dmWE           : in    std_logic;
+         dmLine         : in    std_logic;
+         dmAddr         : in    std_logic_vector(24 downto 2);
+         dmBE           : in    std_logic_vector(3 downto 0);
+         dmWR           : in    std_logic_vector(31 downto 0);
+         dmAck          : out   std_logic
       );
    end component sdram_ctrl;
 
@@ -672,7 +688,14 @@ begin
          fpBE           => fp_be_i,
          fpWR           => fp_data_i,
          fpRD           => fp_data_o,
-         fpAck          => fp_ack_o
+         fpAck          => fp_ack_o,
+         dmReq          => dm_req_i,
+         dmWE           => dm_we_i,
+         dmLine         => dm_line_i,
+         dmAddr         => dm_addr_i,
+         dmBE           => dm_be_i,
+         dmWR           => dm_data_i,
+         dmAck          => dm_ack_o
       ); -- i_sdram_ctrl
 
 end architecture synthesis;
