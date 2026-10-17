@@ -2685,7 +2685,10 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     `ide_board` + engine, scenarios 0/1 x Gayle, all PASS),
     `~/aexp-work/cpu060/e2e040/run_ids.sh` (every word checked, 6 PASS).
     Build `ide-stream-a` (R6, REF main-merge-b): WNS +0.119 ns, WHS +0.007 ns,
-    0 routing errors; not yet on hardware.
+    0 routing errors. Hardware (2026-10-17, 3.1, lide, 68040, Z3): SysInfo
+    **10.5 MB/s** from the tray card in native 4-bit mode (before: ~4.8);
+    2.84 MB/s from a card in SPI mode, where the board diagnostics show BSY
+    72% / held 64% = the 68040 waits for the card.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
