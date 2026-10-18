@@ -67,9 +67,10 @@
 -- clock goes to 50 MHz. A card in high speed mode changes its outputs after the RISING
 -- edge, up to 14 ns later, and holds them at least 2.5 ns after the next rising edge;
 -- with the MEGA65's pads and traces on top that window is not known in advance. So the
--- input is sampled at one of four points, 15, 20, 25 or 30 ns after the controller's
--- clock edge that makes SD_CLK rise (sample point 0..3; points 1..3 see each bit one
--- step later, which the state machine does not notice: every receiver looks for a
+-- input is sampled at one of four points, 10, 20, 25 or 30 ns after the controller's
+-- clock edge that makes SD_CLK rise (sample point 0..3; point 0 is the default speed
+-- sample; points 1..3 see each bit one step later, which the state machine does not
+-- notice: every receiver looks for a
 -- start bit, and the delayed samples are taken at the clock after each step, so a
 -- paused clock never skips a bit). A calibration reads block 0 four times at every
 -- point and keeps the middle of the points that passed (C_SAMP_PICK); none passed, or
@@ -425,6 +426,11 @@ architecture synthesis of sdhost is
    signal e_blk     : std_logic := '0';
    signal e_rd_we_d, e_done_d, e_blk_d : std_logic := '0';   -- the strobes' second clock
    signal e_wr_q    : std_logic_vector(7 downto 0) := (others => '0');   -- e_wr_data_i, clk_i reg
+   -- e_limit_i and e_abort_i, clk_i registers (the engine's limit comes out of adders: a
+   -- clk_i register gives the controller's compare the whole clk2x_i clock; one clock
+   -- late only ever allows less, and the first look comes many SD clocks after a start)
+   signal e_limit_q : std_logic_vector(15 downto 0) := (others => '0');
+   signal e_abort_q : std_logic := '0';
    signal wr2       : std_logic;            -- write data address two bytes ahead
 
    signal qn_pending : std_logic;           -- a QNICE command waits
@@ -460,6 +466,8 @@ begin
          e_wr_blk_o  <= std_logic_vector(blk_k);
          e_wr_idx_o  <= std_logic_vector(src_idx);
          e_wr_q      <= e_wr_data_i;
+         e_limit_q   <= e_limit_i;
+         e_abort_q   <= e_abort_i;
       end if;
    end process e_out;
 
@@ -467,23 +475,22 @@ begin
    wr2         <= op_eng and hs;
 
    qn_pending  <= '1' when q_req_rd /= q_seen_rd or q_req_wr /= q_seen_wr or q_req_rst /= q_seen_rst else '0';
-   preempt     <= op_eng and (qn_pending or e_abort_i);
-   e_room      <= '1' when op_eng = '0' or blk_k < unsigned(e_limit_i) else '0';
+   preempt     <= op_eng and (qn_pending or e_abort_q);
+   e_room      <= '1' when op_eng = '0' or blk_k < unsigned(e_limit_q) else '0';
 
    -- the inputs a step sees: default speed: sampled at the clock edge before the step
    -- (the falling SD edge); high speed: at sample point samp (see "High speed")
-   cmd_in <= cmd_ri when hs = '0' else
-             cmd_fi when samp = 0 else
+   cmd_in <= cmd_ri when hs = '0' or samp = 0 else
              cmd_l1 when samp = 1 else
              cmd_l2 when samp = 2 else
              cmd_l3;
-   dat_in <= dat_ri when hs = '0' else
-             dat_fi when samp = 0 else
+   dat_in <= dat_ri when hs = '0' or samp = 0 else
              dat_l1 when samp = 1 else
              dat_l2 when samp = 2 else
              dat_l3;
 
-   -- the falling clk2x_i edge samples (sample points 0 and 2)
+   -- the falling clk2x_i edge samples (sample point 2; only into cmd_l2/dat_l2: a direct
+   -- falling-to-rising path, half a clock)
    samples_f : process (clk2x_i)
    begin
       if falling_edge(clk2x_i) then
