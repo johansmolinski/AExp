@@ -171,8 +171,10 @@ mutant set.
 
 - **Profiles** A500 (OCS) / A600 (ECS) / A1200 (AGA), each with CPU
   (fx68k 68000, TG68K 68020 or AP68040 68040), chipset, Chip RAM 512K/1M/2M, Slow RAM,
-  Z2 Fast RAM (8 MB), Z3 RAM 16 MB and 32 MB (two boards, each its own
-  toggle, 020/040 only). `prof_decode` in
+  hard disk controller None / Gayle / RIPPLE, and a Zorro Boards section: Zorro
+  II RAM 8 MB, Zorro III RAM 16 MB and 32 MB, Graphics Card, Network Card (each
+  its own toggle; Zorro III and the graphics card 020/040 only, greyed out
+  otherwise). `prof_decode` in
   `mega65.vhd`; firmware `PROFILE_APPLY` loads what the user chose for the
   profile (settings-file text, 0.6.1; before: `aNNN.rom`, `aNNN.hdf`,
   `aNNN-1.hdf`), else `kick.rom` (optional since 0.6.1). Changes cold-boot via
@@ -440,8 +442,13 @@ the dated facts.
   before Megamiga's "Slow RAM: None" existed. Every option stays its own item:
   line numbers, settings file, OPTM_SIZE, mega65.vhd unchanged. Rules: row items
   consecutive, radio (no SINGLESEL), the row fits OPTM_DX - 2. TBs
-  `~/aexp-work/menu-rows` (`run.sh`, `radiofix/run.sh`, `cfg/run.sh` + render.py,
-  `mut.py`). Added in the JS fork 2026-10-18.
+  `~/aexp-work/menu-rows` (`run.sh`, `cfg/run.sh` + render.py, `mut.py`). Also in
+  the layout word: greyed-out rules (config.vhd `OPTM_AVAIL`: drawn dimmed, skipped
+  by the cursor, redrawn when the mother changes) and the separator line below
+  every headline (`OPTM_HEADLINE_LINE`: those separators are no items, which keeps
+  the menu below the 254 items the 256-bit settings register allows - 252 used).
+  `cfg-create` (same file set): HELP_MENU_INIT creates CFG_FILE (0xFF + zeros) when
+  no card has one. Added in the JS fork 2026-10-18.
   All other framework fixes
   go into `CORE/CORE.xdc` (constraints) or get documented for upstreaming.
   Git remote `upstream` = sy2002/MiSTer2MEGA65 (master = V2.0.1).

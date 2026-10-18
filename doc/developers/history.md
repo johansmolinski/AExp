@@ -2844,7 +2844,50 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     16 settings banks in RAM, a group across a bank boundary), `cfg/run.sh` (ghdl dump
     of config.vhd as the firmware reads it: row rules, widths, defaults; `render.py`
     draws a level), `mut.py` 20/20 mutants killed; `~/aexp-work/menu-nest` still PASS.
-    Build `hmenu-a` (6c0871f, REF z3-48-a): WNS +0.116, WHS +0.016. Not hardware-tested yet.
+    Build `hmenu-a` (6c0871f, REF z3-48-a): WNS +0.116, WHS +0.016; the user on the MEGA65:
+    "Looks great!".
+
+    Round 2 (afde733, 9cfc099; a NEW settings file is required, the user: "It's ok to
+    require a new config file. No fallbacks." - so `_HLP_RADIOFIX` went again):
+    - Profile blocks of 23 lines (stride 18 -> 23): rows CPU, Chipset, Hard Disk
+      Controller (None / Gayle / RIPPLE - the RIPPLE-compatible Zorro II board,
+      lide.device is its driver), Chip RAM, Slow RAM, Monitor Cartridge (no Zorro board:
+      it stays outside the section), then the headline "Zorro Boards": Zorro II RAM 8 MB,
+      Zorro III RAM 16 MB / 32 MB, Graphics Card, Network Card. The two cards had no switch
+      before (always in); now per profile, default on: `cpu_wrapper` input `rtgena` gates
+      `ac_rtgb`, `eth_ena` comes from the profile, None gates the IDE board's
+      `ide_ena`; all three cold-boot through `amiga_cold_boot` `boards_i`.
+    - Greyed out (the user: "grey out options that are not available"): config.vhd
+      `OPTM_AVAIL` rules (group, item mask, mother group, mother item mask) mirror
+      prof_decode - the Zorro III boards and the graphics card need a 68020/68040, HRTmon
+      not the 68040, the Action Replay the 68000. The layout word carries them (bit 1 +
+      mother/mask); `_OPTM_AVAIL` decides, OPTM_SHOW draws such items with
+      `M2M$SA_COL_DIM` (0x4F), up/down/left/right and the entry position skip them, a
+      change of a mother redraws the level (`_OPTM_GAFF`). The setting is kept.
+    - The menu limit: the settings register has 256 bits and HELP_MENU_INIT allows 254
+      items; the menu had 248 and needed 20 more. The 19 separators directly below a
+      headline (all of them unconditional) are no items any more: config.vhd's
+      `OPTM_HEADLINE_LINE` sets layout bit 14 for every headline and OPTR_PRINT draws the
+      line itself (`OPT_LINE_AT`). 248 - 19 + 20 + 3 (drive sound) = 252 items, 2 left;
+      more growth needs a wider settings register (an M2M change).
+    - Virtual Drive Sound (Drive Settings row "On / Noclick / Off", default On): while no
+      unit is the Hardware Floppy, `hwf_pins_proc` lets the real drive run its motor for
+      the lowest disk image unit whose motor is on (df0 > df1 > df2) and passes on that
+      unit's steps; without a motor the steps of the lowest selected disk image unit
+      still reach it - the click of an empty drive - unless Noclick. `main_snd_cyl` keeps
+      the head inside cylinders 0..79 (TRK0 resyncs it); write gate, side and density
+      stay inactive.
+    - The settings file is created when no card has one (`_HLP_CREATE`, M2M-UPSTREAM
+      cfg-create): on the first card that mounts, in the directory of CFG_FILE,
+      OPTM_SIZE bytes with byte 0 = 0xFF (the standard selectors), then the lookup runs
+      again; the user: "if config file is missing, create one".
+    - Firmware: ROM 32576/32768 words, MENU_HEAP_SIZE 4480 (demand 4476). Tests:
+      `~/aexp-work/menu-rows` (now also greying, the CPU redraw, a greyed selected option,
+      headline lines; 25/25 mutants), `cfg/run.sh` (rows, rules, defaults, no single-item
+      radio), `~/aexp-work/drvsound` (ghdl on the code block of mega65.vhd: priority,
+      Noclick, Off, the 0..79 limits, TRK0, pulse width; 10/10 mutants),
+      `~/aexp-work/cfgcreate` (cfgold + creation: 18 cases, the images checked; 4/5
+      mutants, no_flush equivalent). Builds `hmenu-b` (afde733) and `hmenu-c` (9cfc099).
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

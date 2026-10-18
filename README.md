@@ -141,16 +141,20 @@ you pick for it in **Profile Settings**. The profile is remembered, and at
 power-on the core starts with it.
 
 **Profile Settings** shows the details of the selected profile, and you can
-change each of them: CPU, chipset, the hard disk controller (**Gayle IDE
-controller**: on = the A600/A1200's built-in IDE port, off = a Zorro II IDE
-board, see Hard disks below), Chip RAM, Slow RAM, 8 MB Zorro II Fast RAM
-and Zorro III Fast RAM (68020 and 68040 only): **Zorro III RAM (16 MB)** and
-**Zorro III RAM (32 MB)** are two boards, switch on one or both (48 MB). The
-CPU is 68000, 68020 or 68040. Every profile keeps its own
-settings. CPU, Chip RAM, Slow RAM and the Monitor Cartridge (like the number of
-drives in Drive Settings) show their choices side by side on one line:
-<kbd>Left</kbd>/<kbd>Right</kbd> move to a choice, <kbd>Return</kbd> or
-<kbd>Space</kbd> selects it. The hard disk lines (**HDF 0** = master, **HDF 1** = slave) and the
+change each of them: CPU (68000, 68020 or 68040), chipset, the **Hard Disk
+Controller** (None, **Gayle** = the A600/A1200's built-in IDE port, or
+**RIPPLE** = a Zorro II IDE board, see Hard disks below), Chip RAM, Slow RAM
+and the Monitor Cartridge. These show their choices side by side on one line
+(like the number of drives in Drive Settings): <kbd>Left</kbd>/<kbd>Right</kbd>
+move to a choice, <kbd>Return</kbd> or <kbd>Space</kbd> selects it.
+
+Below them, **Zorro Boards** lists the expansion boards the profile has:
+**Zorro II RAM 8 MB**, **Zorro III RAM 16 MB** and **Zorro III RAM 32 MB**
+(two boards, switch on one or both for 48 MB), the **Graphics Card** (RTG)
+and the **Network Card**, each on or off. Every profile keeps its own
+settings. What the profile's CPU cannot use is greyed out and the cursor
+skips it: the Zorro III boards and the graphics card need a 68020 or 68040,
+HRTmon does not run on the 68040 and the Action Replay needs the 68000. The hard disk lines (**HDF 0** = master, **HDF 1** = slave) and the
 **Kickstart** line there pick the profile's files: the file is loaded at once
 (the Amiga restarts) and the profile keeps it, also after a power-off.
 <kbd>Space</kbd> on a mounted HDF line ejects the disk and the profile
@@ -163,7 +167,8 @@ options are in **Settings**.
 
 1. **The files.** Copy into `/amiga` of the SD card (the external one, in the
    back slot, if you use both): `lide.rom` and `megamiga-<version>.cfg` from
-   the release, your Kickstart ROMs and your hard disk images. Kickstart ROMs
+   the release (without it the core creates the settings file itself at the
+   first start), your Kickstart ROMs and your hard disk images. Kickstart ROMs
    are raw dumps of 256 KB (1.3) or 512 KB (2.04, 3.x), no byte swapping and
    no encryption (for example from Cloanto's Amiga Forever). Name them as you
    like, for example:
@@ -296,6 +301,15 @@ at the bottom of **Drive Settings** makes the disk image drives behave like
 real ones: ready 500 ms after motor on. It is off by default; Kickstart waits
 for spin-up anyway, so disks do not load noticeably slower with it.
 
+**Virtual Drive Sound** (**On**, **Noclick**, **Off**; On by default) lets
+the MEGA65's internal drive play the sounds of the disk image drives: its
+motor runs while a disk image drive's motor runs, and its head steps with
+it. If several drives run at once, the lowest one is heard (`df0:` before
+`df1:` before `df2:`). **Noclick** leaves out the "click" an empty Amiga
+drive makes every few seconds while Workbench checks for a disk. Nothing is
+written to a disk in the internal drive, and the sound is off while a drive
+is set to Hardware Floppy.
+
 Press <kbd>Help</kbd> to open the menu, which shows one line per existing
 drive: a disk image drive shows the mounted file name or `<Load>` when it is
 empty, a Hardware Floppy drive shows that instead. Move the highlight to a
@@ -351,9 +365,10 @@ The Amiga can have two hard disks, master and slave on one IDE channel:
 `*.hdf` image files on your SD card. Reads and writes go straight to the file
 on the SD card - there is no copy in memory and nothing to wait for before a
 reset. Each machine profile picks the controller the disks are on, with the
-**Gayle IDE controller** line in **Profile Settings**:
+**Hard Disk Controller** row in **Profile Settings** (**None** = no
+controller at all):
 
-* **Gayle IDE** (on by default in the A600 and A1200 profiles): the IDE port
+* **Gayle** (the default in the A600 and A1200 profiles): the IDE port
   built into the real A600 and A1200, at the same addresses. Their Kickstarts
   (2.05 and newer) bring its driver, `scsi.device`, and boot from it, so no
   boot ROM file is needed, HDToolBox and the AmigaOS installers find the
@@ -361,8 +376,8 @@ reset. Each machine profile picks the controller the disks are on, with the
   3.1.4 and 3.2 (disks over 4 GB, for example) apply. It needs an A600 or
   A1200 Kickstart: the A500 ones (1.3, 2.04) have no driver for it, and with
   such a ROM the Amiga simply finds no hard disk.
-* **Zorro II IDE board** (Gayle IDE off; the default in the A500 profile): an
-  emulated expansion board that behaves exactly like LIV2's open-source
+* **RIPPLE** (the default in the A500 and A4000 profiles): a Zorro II IDE
+  board, emulated to behave exactly like LIV2's open-source
   [RIPPLE](https://github.com/LIV2/RIPPLE-IDE). Its driver and boot ROM is
   [lide.device](https://github.com/LIV2/lide.device) (GPL-2.0), which works
   with every Kickstart, 1.3 included.
@@ -923,7 +938,9 @@ floppy images on the other, in any combination.
   Amiga partitions (type `7F`) of each card are listed below it.
 * **Settings file.** `megamiga-<version>.cfg` is looked for on the external
   card first, then on the internal one, and the settings are saved back to
-  the card it came from. `kick.rom` and `lide.rom` are read from that card
+  the card it came from. If neither card has it, the core creates it in
+  `/amiga` of the first card it can use (external first) with the default
+  settings. `kick.rom` and `lide.rom` are read from that card
   too (without a settings file: from the external card, else the internal).
 * **Profiles** remember their Kickstart and hard disks together with the
   card, for example `SD1:/amiga/kick31.rom` or `SD0:partition:2`. A file
