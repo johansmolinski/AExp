@@ -2750,7 +2750,46 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     are equivalent or defensive (the settle wait, the stream switch and the queued-long
     flag are covered by the drain on every exit). e2e040 with `DMTRAFFIC` (random dm*
     traffic next to the 68040 running code): no errors, longest CPU fp_* wait 23 clocks
-    with DMA, no starvation.
+    with DMA, no starvation. `CORE/ide/CacheTime` (68040): CachePreDMA+CachePostDMA on 128 KB
+    cost 491 us when the board writes memory, 238 us when it reads it, CacheClearU x2 the
+    same (about 120 us per call: the whole cache) - not the reason for the slower DMA read;
+    three DMA runs read 5.96-6.25 MB/s (one official-lide run 7.01). Not pursued: the SD
+    card is the limit (next entry).
+  - **SD card at 50 MHz (branch `sd50` from `ide-dma`, 2026-10-18; plan
+    `doc/developers/sd50-plan.md`).** `sdhost.vhd` (M2M exception 18): the controller
+    process runs on 100 MHz (`hr_clk`, same MMCM as the QNICE clock, phase 0; new port
+    `clk2x_i` through framework -> qnice_wrapper -> QNICE -> sdslots), all half periods and
+    G_MS doubled, so every state behaves as before in controller clocks. Between the
+    domains: QNICE reads clk_i copies, buffer writes and engine strobes last two controller
+    clocks, the engine port is clk_i registers (inputs e_limit/e_abort/e_wr_data too).
+    After the native init: CMD6 high speed (64-byte status block, group 1 result), 50 MHz,
+    a calibration of four sample points (10/20/25/30 ns after the edge that raises SD_CLK;
+    20..30 one step later, latched at the clock after each step so a paused clock skips no
+    bit) by four CRC-checked reads of block 0 each, the middle of the passing points
+    (`C_SAMP_PICK`); not switched / nothing passed / a failure at 50 MHz later -> native
+    25 MHz. Engine write data at 50 MHz: the address runs two bytes ahead (the clients'
+    block RAM + our registers: 6-7 clocks of latency, a byte every 4). Pin registers in
+    the IOBs (Vivado packs the input pair into an IDDR). Register 6: bit 4 high speed,
+    bits 6..5 the point. Found by the TBs: a retry into native ran the init's test read over
+    the resumed operation; a failed native multi-block transfer left the card sending while
+    the re-init drove DAT3 (now CMD12 first - also possible before 50 MHz); e_blk and e_done
+    in the same clk_i clock (ide_engine relies on them being apart; S_DISPATCH waits); the
+    calibration drain must outlast a block. TBs: `~/aexp-work/sd50` (12 scenarios, card
+    model with CMD6, high speed output delay/hold ('W' window), board delays, `rd_gap`,
+    strict data state; `mut.py` 17 mutants, 13 killed, survivors: lag_every_clock (needs a
+    block gap below the spec minimum), idx1_late (the other clk_i phase, not reachable in
+    the TB; the design has a clock of margin in both), hs_retry_loop (equivalent: a retry
+    skips the high speed steps), no_blk_guard (killed by ideng)); `~/aexp-work/ideng`
+    run_g50.sh (DMA, HS=true/false: all PASS), `sdslots` run50.sh PASS, `adfsd` run50.sh
+    (scenario 0 PASS; scenario 1 is hours long with the old controller as well, running).
+    Builds: `sd50-a` WNS -1.36 (the falling sample into the state machine had half a clock;
+    the engine's limit adders + the compare in one 100 MHz clock), `sd50-c` (cbb1561) WNS
+    +0.013, WHS +0.016. Hardware (68040, **Kickstart 3.2**, DMA lide, Z3, 4-bit): SysInfo
+    **14.8 MB/s** (3.2 on main-ids-a without DMA: 9.5; 3.1 with DMA at 25 MHz: 9.1);
+    DMATest Fast aligned write 6.89-7.54, read 8.16-8.50 MB/s; copying from an ADF on SD,
+    from SDCard: and to the hard disk at the same time works. DMATest is now bound by the
+    card's access time per 128 KB command (next: keep CMD18 running for sequential
+    commands).
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
