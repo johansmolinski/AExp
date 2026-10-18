@@ -3124,6 +3124,48 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   - Next: Zorro III RAM 16 -> 48 MB from the four free upper column halves, survey in
     `doc/developers/z3-48mb-plan.md`.
 
+- **Analog Standard VGA: every hires pixel (2026-10-16, branch
+  `eval-linedoubler` from main, upstream AExp `f4b5fdb` = WIP-V2-B2, AExp
+  issues #35/#36).** Upstream found that hires screens lose every second pixel
+  column on the analog output in the Standard VGA mode: the framework's
+  scandoubler doubles lines with MiSTer's Hq2x, which spends four clock enables
+  per input pixel, and the core enables hires pixels at 14.19 MHz on the
+  28.375 MHz video clock - two. Megamiga is affected identically (same
+  `video_clk_o <= main_clk`, same `video_ce_o`, scandoubler.v/video_mixer.sv/
+  hq2x.sv byte-identical to upstream's before the fix), and additionally its
+  SuperHires lines, whose averaged pixel pairs ride the same 14 MHz enable.
+  HDMI and both 15 kHz modes bypass the scandoubler (not affected, which is
+  why nobody noticed). Taken over: the framework part (M2M exception 20
+  `line-doubler`: `scandoubler.v` `LINEDOUBLER` + the plain line doubler,
+  `video_mixer.sv`, analog_pipeline/av_pipeline/framework generics),
+  `VGA_LINEDOUBLER true` in globals.vhd, the comments in main.vhd (merged by
+  hand with the SuperHires note) and upstream's bench `CORE/sim/video/`
+  (`run_scandoubler.sh`, `check_scandoubler.py`, two TBs); not taken: AExp's
+  docs, CORE_VERSION, `run_all.sh`/`run_long.sh` (Megamiga has no CORE/sim
+  gate). Quick bench on Megamiga's sources (incl. the AGA Minimig raster,
+  `q_minimig` 574/574 lines complete): all 9 line-doubler checks PASS; the two
+  Hq2x red controls (`q_hires_red`, `q_lores_same`) do not elaborate on Icarus
+  12.0 (`hq2x.sv:40`: whole-array assignment not supported), so the red half
+  is unproven here - upstream ran it on a newer Icarus.
+  Build `linedbl-b` (Fedora, `REF=a4000-b`) failed in place_design: "Could not
+  place all LUTRAM shapes" - upstream forces the two 1K x 24 halves to
+  distributed RAM (AExp's BRAM is full), 256 RAM64M that the reused placement
+  had no room for (LUT as memory 2867 -> 4162). A fresh build (`linedbl-c`)
+  placed but missed timing in the 68040 (WNS -0.410, re-rolls). So the halves
+  are block RAM in Megamiga (`ram_style = "block"`, original kept as a
+  comment), which keeps the LUTRAM layout of the reference builds. Collision
+  safety: both halves are read every clock, pix_out shows only rbuf_d's half,
+  and the write half we_b is never that half in the same clock (also not in
+  the swap clock). Proof: the quick bench on a copy whose read returns X when
+  it hits the address written in the same clock (worst-case BRAM collision):
+  9/9 PASS; mutant "write half = read half" on that copy: 9/9 FAIL.
+  Build `linedbl-d` (Fedora, `REF=a4000-b`): first pass missed, re-roll 2/16
+  (placement kept, route_design NoTimingRelaxation) WNS +0.050 / WHS +0.007,
+  0 routing errors, BRAM 110.5 (a4000-b 116), LUT as memory 2854 (2867),
+  Shell ROM 31338/32768. `linedbl-c` (LUTRAM, fresh placement) stopped after
+  2 failed re-rolls (best WNS -0.410). Loaded onto the MEGA65 over JTAG;
+  awaiting the field check (hires/SuperHires on analog VGA Standard).
+
 **ADF floppy milestone history (2026-07-03).** Read-only ADF
 support verified on real R3 hardware: Workbench 1.3.2 boots to the
 desktop, demoscene trackloaders run (State of the Art, Batman, TBL Eon).
