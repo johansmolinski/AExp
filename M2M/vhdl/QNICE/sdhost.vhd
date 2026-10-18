@@ -244,7 +244,8 @@ architecture synthesis of sdhost is
    constant C_TMO_READ    : natural := 250 * G_MS;    -- data start / token
    constant C_TMO_CAL     : natural := 20 * G_MS;     -- data start in the calibration
    constant C_CAL_READS   : natural := 4;             -- test reads per sample point
-   constant C_CAL_DRAIN   : natural := 2 * G_MS;      -- clock after a failed test read
+   constant C_CAL_DRAIN   : natural := 2 * G_MS;      -- clock after a failed test read (and
+                                                       -- at least 2047 SD clocks: a block)
 
    -- the sample point from the points that passed the calibration (bit n = point n):
    -- the middle of the passing points; next to a failing point, the one farther away
@@ -1136,6 +1137,7 @@ begin
                   when 18 =>                       -- its result (S_FAIL: c_ok = 0)
                      op_cal <= '0';
                      tmo    <= C_CAL_DRAIN;
+                     cnt    <= 0;
                      if c_ok = '0' then
                         istep <= 19;               -- failed: let the card finish first
                      elsif cal_n + 1 = C_CAL_READS then
@@ -1146,10 +1148,15 @@ begin
                         istep <= 17;
                      end if;
                   when 19 =>                       -- drain: clock with the lines released
+                     -- (the card may still be sending the block: a new command would be
+                     -- illegal in its data state)
                      run       <= '1';
                      cmd_oe_nx <= '0';
                      dat_oe_nx <= "0000";
-                     if tmo = 0 then
+                     if tick = '1' and cnt /= 2047 then
+                        cnt <= cnt + 1;
+                     end if;
+                     if tmo = 0 and cnt = 2047 then
                         istep <= 20;
                      end if;
                   when 20 =>                       -- the next sample point, or the choice
