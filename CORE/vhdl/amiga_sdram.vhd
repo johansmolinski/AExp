@@ -17,10 +17,14 @@
 --                             it 1:1 onto ramaddr[22:1], $800000-$9FFFFF wraps onto the first
 --                             2 MB), out of the way of the chipset banks
 --   banks 2/3                 the 16 MB Zorro III Fast RAM
---   bank 0, columns 512..1023 the floppy area: the three ADF image pools and lide.rom
---                             (formerly in HyperRAM; the word addresses are unchanged, see
---                             C_HMAP_* in globals.vhd). The Amiga ports only reach columns
---                             0..511, so this 8 MB area is disjoint from everything above.
+--   columns 512..1023         (Megamiga 0.7) the 32 MB Zorro III Fast RAM: the upper halves of
+--                             the rows of all four banks, word address bit 25 = column bit 9.
+--                             Bank 0's half was the floppy area (ADF pools, lide.rom) until
+--                             floppy-direct moved those to the SD card and to block RAM; the
+--                             floppy port below is still here but tied off by mega65.vhd, and
+--                             sdram_ctrl no longer serves it.
+--   (before 0.7: bank 0, columns 512..1023 the floppy area: the three ADF image pools and
+--   lide.rom, formerly in HyperRAM; the Amiga ports only reached columns 0..511.)
 --
 -- Floppy port: an Avalon-MM slave on the core clock for the ADF mount wrappers, the ADF
 -- track engine and the IDE board's ROM (behind the arbiters in mega65.vhd). Every word is one
@@ -74,7 +78,8 @@ entity amiga_sdram is
       -- CPU Fast RAM port: cpu_wrapper.v "ram*" (core clock)
       fram_sel_i     : in    std_logic;
       fram_state_i   : in    std_logic_vector(1 downto 0);   -- cpustate (3 = write)
-      fram_addr_i    : in    std_logic_vector(24 downto 1);   -- SDRAM word address (bank 24:23)
+      --fram_addr_i    : in    std_logic_vector(24 downto 1);   -- SDRAM word address (bank 24:23)
+      fram_addr_i    : in    std_logic_vector(25 downto 1);   -- SDRAM word address (bank 24:23, 25 = column bit 9)
       cpu_020_i      : in    std_logic;                      -- '1' = TG68K (core clock, static)
       fram_uds_n_i   : in    std_logic;
       fram_lds_n_i   : in    std_logic;
@@ -90,7 +95,7 @@ entity amiga_sdram is
       fp_req_i       : in    std_logic := '0';
       fp_we_i        : in    std_logic := '0';
       fp_line_i      : in    std_logic := '0';
-      fp_addr_i      : in    std_logic_vector(24 downto 2) := (others => '0');
+      fp_addr_i      : in    std_logic_vector(25 downto 2) := (others => '0');
       fp_be_i        : in    std_logic_vector(3 downto 0) := (others => '0');
       fp_data_i      : in    std_logic_vector(31 downto 0) := (others => '0');
       fp_data_o      : out   std_logic_vector(127 downto 0);
@@ -100,7 +105,7 @@ entity amiga_sdram is
       dm_req_i       : in    std_logic := '0';
       dm_we_i        : in    std_logic := '0';
       dm_line_i      : in    std_logic := '0';
-      dm_addr_i      : in    std_logic_vector(24 downto 2) := (others => '0');
+      dm_addr_i      : in    std_logic_vector(25 downto 2) := (others => '0');
       dm_be_i        : in    std_logic_vector(3 downto 0) := (others => '0');
       dm_data_i      : in    std_logic_vector(31 downto 0) := (others => '0');
       dm_ack_o       : out   std_logic;
@@ -190,7 +195,7 @@ architecture synthesis of amiga_sdram is
          chipWR         : in    std_logic_vector(15 downto 0);
          chipRD         : out   std_logic_vector(15 downto 0);
          chip48         : out   std_logic_vector(47 downto 0);
-         cpuAddr        : in    std_logic_vector(24 downto 1);
+         cpuAddr        : in    std_logic_vector(25 downto 1);
          cpuCS          : in    std_logic;
          cpustate       : in    std_logic_vector(1 downto 0);
          cpuL           : in    std_logic;
@@ -209,7 +214,7 @@ architecture synthesis of amiga_sdram is
          fpReq          : in    std_logic;
          fpWE           : in    std_logic;
          fpLine         : in    std_logic;
-         fpAddr         : in    std_logic_vector(24 downto 2);
+         fpAddr         : in    std_logic_vector(25 downto 2);
          fpBE           : in    std_logic_vector(3 downto 0);
          fpWR           : in    std_logic_vector(31 downto 0);
          fpRD           : out   std_logic_vector(127 downto 0);
@@ -217,7 +222,7 @@ architecture synthesis of amiga_sdram is
          dmReq          : in    std_logic;
          dmWE           : in    std_logic;
          dmLine         : in    std_logic;
-         dmAddr         : in    std_logic_vector(24 downto 2);
+         dmAddr         : in    std_logic_vector(25 downto 2);
          dmBE           : in    std_logic_vector(3 downto 0);
          dmWR           : in    std_logic_vector(31 downto 0);
          dmAck          : out   std_logic

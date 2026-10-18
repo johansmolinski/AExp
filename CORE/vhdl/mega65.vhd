@@ -346,7 +346,7 @@ signal main_dbg_cpu_stall     : std_logic_vector(23 downto 0);
 signal main_fp_req            : std_logic;
 signal main_fp_we             : std_logic;
 signal main_fp_line           : std_logic;
-signal main_fp_addr           : std_logic_vector(24 downto 2);
+signal main_fp_addr           : std_logic_vector(25 downto 2);   -- (0.7: 25 = column bit 9)
 signal main_fp_be             : std_logic_vector(3 downto 0);
 signal main_fp_wdata          : std_logic_vector(31 downto 0);
 signal main_fp_rdata          : std_logic_vector(127 downto 0);
@@ -390,10 +390,11 @@ constant C_HAS_SDRAM          : boolean := G_BOARD /= "MEGA65_R3";
 signal main_fastram_en        : std_logic;
 signal main_fram_sel          : std_logic;
 signal main_fram_we           : std_logic;
-signal main_fram_addr         : std_logic_vector(24 downto 1);   -- SDRAM word address
+signal main_fram_addr         : std_logic_vector(25 downto 1);   -- SDRAM word address (0.7: 25 = column bit 9)
 signal main_cpu_020           : std_logic;                       -- Megamiga: a 32-bit CPU (68020 or 68040)
 signal main_cpu_040           : std_logic;                       -- Megamiga: the 68040 (AP68040), not TG68K
 signal main_z3_ram            : std_logic;                       -- Megamiga: 16 MB Zorro III board
+signal main_z3b_ram           : std_logic;                       -- Megamiga 0.7: 32 MB Zorro III board
 signal main_gayle             : std_logic;                       -- Megamiga 0.7: IDE as the Gayle
 signal main_ide_irq           : std_logic;                       -- Megamiga 0.7: Gayle IDE interrupt
 signal main_chipset           : std_logic_vector(1 downto 0);    -- Megamiga: 00 OCS, 01 ECS, 10 AGA
@@ -506,10 +507,12 @@ signal main_ids_cons          : std_logic_vector(1 downto 0);
 signal main_fmap_z2           : std_logic;
 signal main_fmap_z3           : std_logic;
 signal main_fmap_z3base       : std_logic_vector(7 downto 0);
+signal main_fmap_z3b          : std_logic;
+signal main_fmap_z3bbase      : std_logic_vector(6 downto 0);
 signal ide_dm_req             : std_logic;
 signal ide_dm_we              : std_logic;
 signal ide_dm_line            : std_logic;
-signal ide_dm_addr            : std_logic_vector(24 downto 2);
+signal ide_dm_addr            : std_logic_vector(25 downto 2);
 signal ide_dm_be              : std_logic_vector(3 downto 0);
 signal ide_dm_wdata           : std_logic_vector(31 downto 0);
 signal ide_dm_ack             : std_logic;
@@ -1093,6 +1096,7 @@ constant C_PROF_CHIP_2M       : natural := 9;
 constant C_PROF_SLOW          : natural := 11;   -- Slow RAM (512 KB) toggle
 constant C_PROF_FAST          : natural := 12;   -- Zorro II Fast RAM (8 MB) toggle, R4+ only
 constant C_PROF_Z3            : natural := 13;   -- Zorro III RAM (16 MB) toggle, 68020 only
+constant C_PROF_Z3B           : natural := 14;   -- Zorro III RAM (32 MB) toggle, 68020 only (0.7: was a Line)
 constant C_PROF_CART_HRT      : natural := 16;   -- cartridge radio: 15 none, 16 HRTmon, 17 Action Replay III
 constant C_PROF_CART_AR3      : natural := 17;
 
@@ -1415,8 +1419,18 @@ begin
       --main_z3_ram  <= main_osm_control_i(v_base + C_PROF_Z3) and main_osm_control_i(v_base + C_PROF_CPU_020);
       main_cpu_020 <= main_osm_control_i(v_base + C_PROF_CPU_020) or main_osm_control_i(v_base + C_PROF_CPU_040);
       main_cpu_040 <= main_osm_control_i(v_base + C_PROF_CPU_040);
-      main_z3_ram  <= main_osm_control_i(v_base + C_PROF_Z3) and
-                      (main_osm_control_i(v_base + C_PROF_CPU_020) or main_osm_control_i(v_base + C_PROF_CPU_040));
+      -- Megamiga 0.7: both Zorro III boards are in the board SDRAM: R4+ only, like the Fast RAM
+      --main_z3_ram  <= main_osm_control_i(v_base + C_PROF_Z3) and
+      --                (main_osm_control_i(v_base + C_PROF_CPU_020) or main_osm_control_i(v_base + C_PROF_CPU_040));
+      if C_HAS_SDRAM then
+         main_z3_ram  <= main_osm_control_i(v_base + C_PROF_Z3) and
+                         (main_osm_control_i(v_base + C_PROF_CPU_020) or main_osm_control_i(v_base + C_PROF_CPU_040));
+         main_z3b_ram <= main_osm_control_i(v_base + C_PROF_Z3B) and
+                         (main_osm_control_i(v_base + C_PROF_CPU_020) or main_osm_control_i(v_base + C_PROF_CPU_040));
+      else
+         main_z3_ram  <= '0';
+         main_z3b_ram <= '0';
+      end if;
       main_slow_ram <= main_osm_control_i(v_base + C_PROF_SLOW);
       -- Megamiga 0.7: the HDFs on the A600/A1200 Gayle instead of the RIPPLE board
       main_gayle    <= main_osm_control_i(v_base + C_PROF_GAYLE);
@@ -1474,6 +1488,7 @@ begin
          cpu_020_i         => main_cpu_020,
          cpu_040_i         => main_cpu_040,
          z3_ram_i          => main_z3_ram,
+         z3b_ram_i         => main_z3b_ram,
          gayle_i           => main_gayle,
          chipset_i         => main_chipset,
          chip_size_i       => main_chip_size,
@@ -1595,6 +1610,7 @@ begin
          cpu_020_i            => main_cpu_020,
          cpu_040_i            => main_cpu_040,
          z3_ram_i             => main_z3_ram,
+         z3b_ram_i            => main_z3b_ram,
          chipset_i            => main_chipset,
          chip_size_i          => main_chip_size,
          fram_sel_o           => main_fram_sel,
@@ -1650,6 +1666,8 @@ begin
          fmap_z2_o            => main_fmap_z2,
          fmap_z3_o            => main_fmap_z3,
          fmap_z3base_o        => main_fmap_z3base,
+         fmap_z3b_o           => main_fmap_z3b,
+         fmap_z3bbase_o       => main_fmap_z3bbase,
          eth_ena_i            => '1',              -- the network card is always there
          eth_sel_o            => main_eth_sel,
          eth_data_i           => main_eth_rddata,
@@ -1990,6 +2008,8 @@ begin
          fmap_ar3_i              => main_cart_ar3,
          fmap_z3_i               => main_fmap_z3,
          fmap_z3base_i           => main_fmap_z3base,
+         fmap_z3b_i              => main_fmap_z3b,
+         fmap_z3bbase_i          => main_fmap_z3bbase,
          dm_req_o                => ide_dm_req,
          dm_we_o                 => ide_dm_we,
          dm_line_o               => ide_dm_line,

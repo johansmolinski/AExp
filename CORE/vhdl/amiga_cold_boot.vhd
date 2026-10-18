@@ -43,6 +43,7 @@ entity amiga_cold_boot is
       cpu_020_i         : in  std_logic;                     -- Megamiga: 68020 instead of 68000
       cpu_040_i         : in  std_logic;                     -- Megamiga: the 68040 (cpu_020_i is '1' too)
       z3_ram_i          : in  std_logic;                     -- Megamiga: 16 MB Zorro III board
+      z3b_ram_i         : in  std_logic;                     -- Megamiga 0.7: 32 MB Zorro III board
       gayle_i           : in  std_logic;                     -- Megamiga 0.7: IDE as the Gayle
       chipset_i         : in  std_logic_vector(1 downto 0);  -- Megamiga: OCS / ECS / AGA
       chip_size_i       : in  std_logic_vector(1 downto 0);  -- Megamiga: chip RAM 512K / 1M / 2M
@@ -75,6 +76,7 @@ architecture synthesis of amiga_cold_boot is
    signal cpu_020_applied  : std_logic := '0'; -- OSM default is the 68000
    signal cpu_040_applied  : std_logic := '0';
    signal z3_ram_applied   : std_logic := '0'; -- OSM default is no Zorro III RAM
+   signal z3b_ram_applied  : std_logic := '0';
    signal gayle_applied    : std_logic := '0';
    -- the power-on values are the menu defaults = the A500 profile (68000, OCS, 512 KB
    -- chip + 512 KB slow), so there is no spurious cold boot at t=0
@@ -115,6 +117,7 @@ begin
                if slow_ram_i /= slow_ram_applied or fast_ram_i /= fast_ram_applied or
                   cpu_020_i /= cpu_020_applied or z3_ram_i /= z3_ram_applied or
                   cpu_040_i /= cpu_040_applied or gayle_i /= gayle_applied or
+                  z3b_ram_i /= z3b_ram_applied or
                   chipset_i /= chipset_applied or chip_size_i /= chip_size_applied or
                   drv_map_i /= drv_map_applied or kick_hold_i = '1' or cart_i /= cart_applied then
                   reset_hold_count <= C_RESET_HOLD_CYCLES - 1;
@@ -170,6 +173,7 @@ begin
                   cpu_020_applied  <= cpu_020_i;
                   cpu_040_applied  <= cpu_040_i;
                   z3_ram_applied   <= z3_ram_i;
+                  z3b_ram_applied  <= z3b_ram_i;
                   gayle_applied    <= gayle_i;
                   chipset_applied  <= chipset_i;
                   chip_size_applied <= chip_size_i;

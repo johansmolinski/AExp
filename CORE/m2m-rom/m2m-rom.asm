@@ -9131,7 +9131,11 @@ SHR_RNOBJ       .BLOCK 8                        ; RENAME: the object
 ; of the four profiles became the Gayle IDE controller toggle (+84 characters,
 ; still 248 items): demand 4320 = exactly 135 x 32, MENU_HEAP_SIZE 4320, headroom
 ; 0 (both checks fail only on demand > size), release HEAP_SIZE -64.
-MENU_HEAP_SIZE  .EQU 4320
+;MENU_HEAP_SIZE  .EQU 4320
+; Megamiga 0.7 48 MB Zorro III: the blank line after the "Zorro III RAM (16 MB)"
+; toggle of each profile became " Zorro III RAM (32 MB)" (+88 characters, still
+; 248 items): demand 4408, MENU_HEAP_SIZE 4416, headroom 8, release HEAP_SIZE -96.
+MENU_HEAP_SIZE  .EQU 4416
 
 #ifndef RELEASE
 
@@ -9189,7 +9193,8 @@ HEAP            .BLOCK 1
 ;HEAP_SIZE       .EQU 14656                      ; 18528 - 3872 = 14656
 ;HEAP_SIZE       .EQU 14624                      ; 18528 - 3904 = 14624
 ;HEAP_SIZE       .EQU 14272                      ; 18528 - 4256 = 14272
-HEAP_SIZE       .EQU 14208                      ; 18528 - 4320 = 14208
+;HEAP_SIZE       .EQU 14208                      ; 18528 - 4320 = 14208
+HEAP_SIZE       .EQU 14112                      ; 18528 - 4416 = 14112
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

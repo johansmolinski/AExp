@@ -104,10 +104,10 @@ constant HELP_1 : string :=
    " A1200: 68020, AGA, 2 MB Chip\n" &
    " A4000: 68040, AGA, 2 MB Chip, Zorro III\n" &
    " CPU (68000-68040), chipset, RAM (8 MB\n" &
-   " Zorro II, 16 MB Zorro III) are set in\n" &
-   " Profile Settings. A profile keeps the\n" &
-   " Kickstart (else kick.rom) and hard\n" &
-   " disks you load for it.\n\n" &
+   " Zorro II, 16 and 32 MB Zorro III) are\n" &
+   " set in Profile Settings. A profile\n" &
+   " keeps the Kickstart (else kick.rom)\n" &
+   " and hard disks you load for it.\n\n" &
 
    " Mouse: Port 1   Joystick: Port 2\n\n" &
 
@@ -577,6 +577,12 @@ constant OPTM_DY           : natural := 29;
 --   line 152: Zorro III RAM (16 MB) toggle (C_MENU_Z3RAM), default OFF; only with the
 --            68020: one 16 MB Zorro III board in SDRAM banks 2/3, autoconfig'd by
 --            Kickstart 2.0 or newer (1.3 does not know Zorro III - leave it off there)
+--   lines 37 / 55 / 73 / 91: per-profile "Zorro III RAM (32 MB)" toggle (Megamiga 0.7,
+--            C_PROF_Z3B = 14 in mega65.vhd; the blank line after the 16 MB toggle, so no
+--            line moved), default OFF: a second, 32 MB Zorro III board in the upper halves
+--            of the SDRAM rows (free since floppy-direct), independent of the 16 MB board;
+--            68020/68040 only, R4+ only. With both: 48 MB ($40000000-$42FFFFFF, the 32 MB
+--            board first). A change cold-boots the Amiga.
 --   lines 154/155: CPU radio (C_MENU_CPU_020 = 155): 68000 (fx68k, cycle-exact, default)
 --            or 68020 (TG68K, MiSTer's 68020 mode). Both changes cold-boot the Amiga.
 --            [Megamiga: superseded by the per-profile CPU radio, lines 19..21 / 33..35 /
@@ -666,7 +672,7 @@ constant OPTM_ITEMS        : string :=
    " Slow RAM (512 KB)\n"   &    --  34: A500: Slow RAM toggle
    " Fast RAM (8 MB)\n"     &    --  35: A500: Zorro II Fast RAM toggle
    " Zorro III RAM (16 MB)\n" &    --  36: A500: Zorro III RAM toggle (68020)
-   "\n"                     &    --  37: Line (this profile)
+   " Zorro III RAM (32 MB)\n" &  --  37: A500: Zorro III RAM (32 MB) toggle (68020; 0.7: was a Line)
    " Cart: None\n"          &    --  38: A500: no cartridge
    " Cart: HRTmon\n"        &    --  39: A500: HRTmon cartridge
    " Cart: Action Replay 3\n" &    --  40: A500: Action Replay III cartridge
@@ -684,7 +690,7 @@ constant OPTM_ITEMS        : string :=
    " Slow RAM (512 KB)\n"   &    --  52: A600: Slow RAM toggle
    " Fast RAM (8 MB)\n"     &    --  53: A600: Zorro II Fast RAM toggle
    " Zorro III RAM (16 MB)\n" &    --  54: A600: Zorro III RAM toggle (68020)
-   "\n"                     &    --  55: Line (this profile)
+   " Zorro III RAM (32 MB)\n" &  --  55: A600: Zorro III RAM (32 MB) toggle (68020; 0.7: was a Line)
    " Cart: None\n"          &    --  56: A600: no cartridge
    " Cart: HRTmon\n"        &    --  57: A600: HRTmon cartridge
    " Cart: Action Replay 3\n" &    --  58: A600: Action Replay III cartridge
@@ -702,7 +708,7 @@ constant OPTM_ITEMS        : string :=
    " Slow RAM (512 KB)\n"   &    --  70: A1200: Slow RAM toggle
    " Fast RAM (8 MB)\n"     &    --  71: A1200: Zorro II Fast RAM toggle
    " Zorro III RAM (16 MB)\n" &    --  72: A1200: Zorro III RAM toggle (68020)
-   "\n"                     &    --  73: Line (this profile)
+   " Zorro III RAM (32 MB)\n" &  --  73: A1200: Zorro III RAM (32 MB) toggle (68020; 0.7: was a Line)
    " Cart: None\n"          &    --  74: A1200: no cartridge
    " Cart: HRTmon\n"        &    --  75: A1200: HRTmon cartridge
    " Cart: Action Replay 3\n" &    --  76: A1200: Action Replay III cartridge
@@ -720,7 +726,7 @@ constant OPTM_ITEMS        : string :=
    " Slow RAM (512 KB)\n"   &    --  88: A4000: Slow RAM toggle
    " Fast RAM (8 MB)\n"     &    --  89: A4000: Zorro II Fast RAM toggle
    " Zorro III RAM (16 MB)\n" &  --  90: A4000: Zorro III RAM toggle (68020)
-   "\n"                     &    --  91: Line (this profile)
+   " Zorro III RAM (32 MB)\n" &  --  91: A4000: Zorro III RAM (32 MB) toggle (68020; 0.7: was a Line)
    " Cart: None\n"          &    --  92: A4000: no cartridge
    " Cart: HRTmon\n"        &    --  93: A4000: HRTmon cartridge
    " Cart: Action Replay 3\n" &  --  94: A4000: Action Replay III cartridge
@@ -949,6 +955,10 @@ constant OPTM_G_P1GAYLE    : integer := 65;  -- A500 profile: Gayle IDE controll
 constant OPTM_G_P2GAYLE    : integer := 66;  -- A600 profile: Gayle IDE controller toggle
 constant OPTM_G_P3GAYLE    : integer := 67;  -- A1200 profile: Gayle IDE controller toggle
 constant OPTM_G_P4GAYLE    : integer := 68;  -- A4000 profile: Gayle IDE controller toggle (off by default)
+constant OPTM_G_P1Z3B      : integer := 69;  -- A500 profile: Zorro III RAM (32 MB) toggle (Megamiga 0.7)
+constant OPTM_G_P2Z3B      : integer := 70;  -- A600 profile: Zorro III RAM (32 MB) toggle
+constant OPTM_G_P3Z3B      : integer := 71;  -- A1200 profile: Zorro III RAM (32 MB) toggle
+constant OPTM_G_P4Z3B      : integer := 72;  -- A4000 profile: Zorro III RAM (32 MB) toggle
 
 -- Smart dependencies (M2M-UPSTREAM osm-deps): tag a line so that it is only visible
 -- while one of the items of a "mother" group is selected. This is a pure VISIBILITY
@@ -1031,7 +1041,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P1SLOW + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  34: A500: Slow RAM toggle
                                               OPTM_G_P1FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  35: A500: Zorro II Fast RAM toggle
                                               OPTM_G_P1Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  36: A500: Zorro III RAM toggle (68020)
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 0),                --  37: Line (this profile)
+                                              OPTM_G_P1Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  37: A500: Zorro III RAM (32 MB) toggle (68020)
                                               OPTM_G_P1CART + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  38: A500: no cartridge
                                               OPTM_G_P1CART + OPTM_DEP(OPTM_G_PROFILE, 0),              --  39: A500: HRTmon cartridge
                                               OPTM_G_P1CART + OPTM_DEP(OPTM_G_PROFILE, 0),              --  40: A500: Action Replay III cartridge
@@ -1049,7 +1059,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P2SLOW + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  52: A600: Slow RAM toggle
                                               OPTM_G_P2FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  53: A600: Zorro II Fast RAM toggle
                                               OPTM_G_P2Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  54: A600: Zorro III RAM toggle (68020)
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 1),                --  55: Line (this profile)
+                                              OPTM_G_P2Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  55: A600: Zorro III RAM (32 MB) toggle (68020)
                                               OPTM_G_P2CART + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  56: A600: no cartridge
                                               OPTM_G_P2CART + OPTM_DEP(OPTM_G_PROFILE, 1),              --  57: A600: HRTmon cartridge
                                               OPTM_G_P2CART + OPTM_DEP(OPTM_G_PROFILE, 1),              --  58: A600: Action Replay III cartridge
@@ -1067,7 +1077,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P3SLOW + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  70: A1200: Slow RAM toggle
                                               OPTM_G_P3FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  71: A1200: Zorro II Fast RAM toggle
                                               OPTM_G_P3Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  72: A1200: Zorro III RAM toggle (68020)
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 2),                --  73: Line (this profile)
+                                              OPTM_G_P3Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  73: A1200: Zorro III RAM (32 MB) toggle (68020)
                                               OPTM_G_P3CART + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  74: A1200: no cartridge
                                               OPTM_G_P3CART + OPTM_DEP(OPTM_G_PROFILE, 2),              --  75: A1200: HRTmon cartridge
                                               OPTM_G_P3CART + OPTM_DEP(OPTM_G_PROFILE, 2),              --  76: A1200: Action Replay III cartridge
@@ -1085,7 +1095,7 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P4SLOW + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  88: A4000: Slow RAM toggle
                                               OPTM_G_P4FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  89: A4000: Zorro II Fast RAM toggle
                                               OPTM_G_P4Z3 + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  90: A4000: Zorro III RAM toggle (68020)
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 3),                  --  91: Line (this profile)
+                                              OPTM_G_P4Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  91: A4000: Zorro III RAM (32 MB) toggle (68020)
                                               OPTM_G_P4CART + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  92: A4000: no cartridge
                                               OPTM_G_P4CART + OPTM_DEP(OPTM_G_PROFILE, 3),                --  93: A4000: HRTmon cartridge
                                               OPTM_G_P4CART + OPTM_DEP(OPTM_G_PROFILE, 3),                --  94: A4000: Action Replay III cartridge
