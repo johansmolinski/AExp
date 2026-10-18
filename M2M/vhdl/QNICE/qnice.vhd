@@ -32,6 +32,9 @@ generic (
 port (
    -- QNICE MEGA65 hardware interface
    clk50_i              : in std_logic;            -- 50 MHz clock
+   -- M2M-UPSTREAM sd-host (Megamiga 0.7): the SD host controllers' clock, 100 MHz from the
+   -- MMCM of clk50_i with phase 0 (sdhost.vhd: 50 MHz SD clock)
+   clk100_i             : in std_logic;
    reset_n_i            : in std_logic;            -- reset the whole QNICE SOC
 
    uart_rxd_i           : in std_logic;            -- receive data, 115.200 baud, 8-N-1, rxd, txd only; rts/cts are not available
@@ -407,6 +410,7 @@ begin
       port map
       (
          clk_i                => clk50_i,
+         clk2x_i              => clk100_i,          -- M2M-UPSTREAM sd-host (Megamiga 0.7)
          reset_i              => reset_ctl,
          en_i                 => sd_en,
          we_i                 => sd_we,
