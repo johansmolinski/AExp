@@ -2815,7 +2815,7 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     the 32 MB board, refused ranges; scenarios 0/1 PASS; `mut.sh` 3 mutants killed - its
     first run was void: parallel `ghdl -e` overwrote one ./tb_ide_g, each mutant now has its
     own directory). Build `z3-48-a` (ea36094): WNS +0.025, WHS +0.016, 117.7k LUTs (88%).
-    Not hardware-tested yet.
+    Hardware-confirmed by the user on 2026-10-18 (z3-48-a on the MEGA65 R6).
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
