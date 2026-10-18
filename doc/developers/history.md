@@ -2844,6 +2844,7 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     16 settings banks in RAM, a group across a bank boundary), `cfg/run.sh` (ghdl dump
     of config.vhd as the firmware reads it: row rules, widths, defaults; `render.py`
     draws a level), `mut.py` 20/20 mutants killed; `~/aexp-work/menu-nest` still PASS.
+    Build `hmenu-a` (6c0871f, REF z3-48-a): WNS +0.116, WHS +0.016. Not hardware-tested yet.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
