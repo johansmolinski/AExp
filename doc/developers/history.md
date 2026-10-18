@@ -2722,6 +2722,35 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     run_ids.sh still PASS (default MAXCYC now 1500000). Build `ide-dma-a` (REF main-ids-a):
     WNS +0.006, WHS +0.016. Hardware (KS 3.1, lide, Z3, 4-bit): SysInfo 68040 9.1 MB/s,
     68020 9.8 MB/s (was ~5; the CPU no longer copies) - the card is the limit now.
+    **DMATest and two watchdogs (2026-10-18).** `CORE/ide/DMATest` (vbcc, `build.sh`)
+    writes and reads back an 8 MB pattern file from four buffers: Fast RAM long-aligned
+    (DMA), +2 and +1 (CPU copy) and Chip RAM (refused by the DMA, CPU copy); the CPU fills
+    the buffer just before each Write() and fills it with garbage just before each Read(),
+    so a missing cache push or invalidate shows up as wrong data. First run (68040,
+    ide-dma-a): write error at block 47940 - the board holds a data-register access while
+    the SD card is busy inside READ/WRITE MULTIPLE (up to 250 ms by the SD spec) and
+    cpu_wrapper's bus watchdog (`ap040_bus_timeout`, 2^20 core clocks = 37 ms, shared by
+    TG68K and the 68040) ended the cycle. Now 2^24 = 591 ms (`ae26e0c`, build ide-dma-b):
+    the 68020 passes all rounds. The 68040 then froze (mouse dead, even with the official
+    lide): the AP68040's own core stall watchdog (`ap040_pipe_tg68k_compat.v`, 2^21 clk_cpu
+    = 50 ms) fired under the bus watchdog and injected an access error. Now 2^25 = 0.8 s,
+    above the bus watchdog (`cf736eb`, build ide-dma-c, WNS +0.006, WHS +0.016). Hardware
+    (68040, KS 3.1, Z3, 4-bit), all rounds OK with both drivers (write / read MB/s):
+
+    | Buffer | official lide 40.12 | DMA lide (Megamiga DMA 1) |
+    |---|---|---|
+    | Fast, long-aligned | 4.34 / 7.01 | 5.88 / 6.25 |
+    | Fast, +2 | 2.33 / 4.59 | 2.50 / 4.65 |
+    | Fast, +1 | 1.74 / 1.10 | 1.33 / 0.87 |
+    | Chip | 1.36 / 1.51 | 1.39 / 1.48 |
+
+    The DMA round writes 35% faster but READS about 10% slower than the CPU copy (128 KB
+    Read()s through the filesystem; SysInfo still 9.1 MB/s) - under investigation. TB
+    results: `mut_dma.py` 9 of 12 killed; `no_settle`, `stream_on`, `keep_nv` survive and
+    are equivalent or defensive (the settle wait, the stream switch and the queued-long
+    flag are covered by the drain on every exit). e2e040 with `DMTRAFFIC` (random dm*
+    traffic next to the 68040 running code): no errors, longest CPU fp_* wait 23 clocks
+    with DMA, no starvation.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
