@@ -73,9 +73,10 @@ Features
 * 512 KB, 1 MB or 2 MB Chip RAM, optional 512 KB Slow RAM (trapdoor
   expansion)
 * Optional 8 MB Zorro II Fast RAM, switched off by default
-* Optional 16 MB Zorro III Fast RAM with the 68020 or 68040 (off by default; needs
+* Optional Zorro III Fast RAM with the 68020 or 68040: a 16 MB and a 32 MB
+  board, each switched on by itself, 48 MB with both (off by default; needs
   Kickstart 2.0 or newer - Kickstart 1.3 does not know Zorro III boards, so
-  leave it off there)
+  leave them off there)
 * MEGA65 R4, R5 and R6 only: all Amiga memory lives in the board SDRAM
 * Up to three floppy drives (`df0:`, `df1:`, `df2:`), one of them — `df0:`
   as a disk image — switched on by default: mount standard 880 KB `*.adf`
@@ -143,8 +144,9 @@ power-on the core starts with it.
 change each of them: CPU, chipset, the hard disk controller (**Gayle IDE
 controller**: on = the A600/A1200's built-in IDE port, off = a Zorro II IDE
 board, see Hard disks below), Chip RAM, Slow RAM, 8 MB Zorro II Fast RAM
-and 16 MB Zorro III Fast RAM (68020 and 68040 only). The CPU is 68000, 68020
-or 68040. Every profile keeps its own
+and Zorro III Fast RAM (68020 and 68040 only): **Zorro III RAM (16 MB)** and
+**Zorro III RAM (32 MB)** are two boards, switch on one or both (48 MB). The
+CPU is 68000, 68020 or 68040. Every profile keeps its own
 settings. The hard disk lines (**HDF 0** = master, **HDF 1** = slave) and the
 **Kickstart** line there pick the profile's files: the file is loaded at once
 (the Amiga restarts) and the profile keeps it, also after a power-off.

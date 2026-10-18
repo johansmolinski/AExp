@@ -171,7 +171,8 @@ mutant set.
 
 - **Profiles** A500 (OCS) / A600 (ECS) / A1200 (AGA), each with CPU
   (fx68k 68000, TG68K 68020 or AP68040 68040), chipset, Chip RAM 512K/1M/2M, Slow RAM,
-  Z2 Fast RAM (8 MB), Z3 RAM (16 MB, 020/040 only). `prof_decode` in
+  Z2 Fast RAM (8 MB), Z3 RAM 16 MB and 32 MB (two boards, each its own
+  toggle, 020/040 only). `prof_decode` in
   `mega65.vhd`; firmware `PROFILE_APPLY` loads what the user chose for the
   profile (settings-file text, 0.6.1; before: `aNNN.rom`, `aNNN.hdf`,
   `aNNN-1.hdf`), else `kick.rom` (optional since 0.6.1). Changes cold-boot via
@@ -179,8 +180,9 @@ mutant set.
 - **Memory**: all Amiga memory in the board SDRAM (R4/R5/R6 only), Minimig's
   `sdram_ctrl.v` at 113.5 MHz = 4x the 28.375 MHz core clock (native MMCM;
   the HDMI flicker-free fast twin is disabled in this mode). Bank 0 chip/
-  slow/kick + the 8 MB floppy area (column bit 9 = 1; free since
-  `floppy-direct`), bank 1 Z2, banks 2/3 Z3. HyperRAM: ascal framebuffer +
+  slow/kick, bank 1 Z2, banks 2/3 the 16 MB Z3 board (column bit 9 = 0); the
+  upper row halves of all four banks (column bit 9 = 1, the old floppy area, free
+  since `floppy-direct`) are the 32 MB Z3 board (`z3-48`, 2026-10-18). HyperRAM: ascal framebuffer +
   RTG VRAM (byte `$400000`, 4 MB).
 - **PAL only.** Video CE never 28 MHz (SuperHires pixel pairs averaged).
 - **Floppy**: df0..df2, each Disk Image (ADF r/w; until `floppy-direct`

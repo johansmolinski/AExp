@@ -2790,6 +2790,32 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     from SDCard: and to the hard disk at the same time works. DMATest is now bound by the
     card's access time per 128 KB command (next: keep CMD18 running for sequential
     commands).
+  - **Zorro III RAM 48 MB (branch `z3-48` from main 8a99a9c, Minimig branch `z3-48`,
+    2026-10-18; survey `doc/developers/z3-48mb-plan.md`).** A second Zorro III board, 32 MB,
+    with its own toggle per profile: the separator line after "Zorro III RAM (16 MB)" became
+    "Zorro III RAM (32 MB)" (lines 37/55/73/91, `C_PROF_Z3B` = 14, groups
+    `OPTM_G_P1Z3B`..`P4Z3B` = 69..72, default off, no line moved; MENU_HEAP_SIZE 4416 for a
+    demand of 4408, release HEAP_SIZE 14112). Both Zorro III toggles now need the SDRAM (R4+)
+    as well as a 68020/68040; a change cold-boots the Amiga. The board is the upper halves of
+    the SDRAM rows of all four banks (column bit 9 - free since floppy-direct; the unused
+    floppy slot of `sdram_ctrl.v` is gone): fram/fp/dm addresses and the TG68K cache snoop got
+    bit 25, `main.vhd` maps ramaddr[25] = 1 to `'1' & [24:1]`. `cpu_wrapper.v`: `ac_z3b`
+    (size code 001, serial 3) first among the Zorro III boards, so Kickstart puts it at
+    $40000000, the 16 MB board at $42000000 and the RTG board at $43000000 (32 MB alone: RTG
+    at $42000000; nothing hard-codes the RTG base); `ap040_island.v` + the compat wrapper:
+    window 1 = the 32 MB board (A31..A25), its line fills and aligned accesses to the fp_*
+    port at `'1' & A24..A2`; `ide_board.vhd`: the DMA decodes both boards (a range across
+    them is refused like any other, lide falls back to PIO). TBs: `~/aexp-work/z3b` (e2e040
+    copy: SDRAM model with all 1024 columns - the old one dropped column bit 9 and would have
+    hidden every alias; prog.S `Z3B` 0/1/2 with regions in every half bank of both boards and
+    twins that differ only in column bit 9; release configuration, TG68K and AP68040: all six
+    PASS; `mut.py` 12 mutants, 11 killed, `cw_snoop_b25` survives: no IDE DMA write meets a
+    TG68K-cached line of the board in the bench) and `~/aexp-work/z3b/ide` (ideng tb_ide_g50
+    with both boards: DMA at the start, the end and across the bank boundary at $40800000 of
+    the 32 MB board, refused ranges; scenarios 0/1 PASS; `mut.sh` 3 mutants killed - its
+    first run was void: parallel `ghdl -e` overwrote one ./tb_ide_g, each mutant now has its
+    own directory). Build `z3-48-a` (ea36094): WNS +0.025, WHS +0.016, 117.7k LUTs (88%).
+    Hardware-confirmed by the user on 2026-10-18 (z3-48-a on the MEGA65 R6).
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

@@ -1,4 +1,12 @@
-# Zorro III RAM 16 MB -> 48 MB: design survey (2026-10-17, not implemented)
+# Zorro III RAM 16 MB -> 48 MB: design survey (2026-10-17)
+
+**Implemented 2026-10-18 on branch `z3-48`** (see history.md). Differences to the plan below:
+the two boards are switched on separately (the 16 MB toggle as before, a new "Zorro III RAM
+(32 MB)" toggle in the profile's separator line after it, `C_PROF_Z3B = 14`), not as a
+"48 MB" option on top of the 16 MB board; since 0.7 the fp_* and dm* writes snoop the TG68K
+cache too, so the snoop address got bit 25 as well; the IDE DMA (ide_board.vhd, new since
+this survey) decodes both boards; no extra XDC exception (the static base registers close
+timing like the 16 MB board's always did). Line numbers below are the survey's.
 
 With `floppy-direct` nothing uses the upper column halves of the SDRAM (column bit 9 = 1) any
 more: bank 0's was the floppy area, banks 1..3 were always free. Four halves = 32 MB. Plan:

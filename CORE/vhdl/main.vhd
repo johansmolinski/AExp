@@ -145,6 +145,7 @@ entity main is
       cpu_020_i               : in  std_logic;
       cpu_040_i               : in  std_logic;   -- Megamiga: the AP68040 instead of TG68K (cpu_020_i too)
       z3_ram_i                : in  std_logic;
+      z3b_ram_i               : in  std_logic;   -- Megamiga 0.7: the 32 MB Zorro III board
       -- Megamiga: chipset "00" OCS, "01" ECS, "10" AGA (userio 0xF3, static OSM bits)
       chipset_i               : in  std_logic_vector(1 downto 0);
       -- Megamiga: chip RAM size "00" 512 KB, "01" 1 MB, "11" 2 MB (userio 0xF5 CC)
@@ -153,7 +154,9 @@ entity main is
       fram_we_o               : out std_logic;                      -- '1' = write cycle
       -- Megamiga: the SDRAM word address of the CPU port (bank in bits 24:23):
       -- 01 = Zorro II, 1x = Zorro III, 00 = everything else (bank 0, as the chipset)
-      fram_addr_o             : out std_logic_vector(24 downto 1);  -- word address
+      -- Megamiga 0.7: bit 25 = column bit 9 (the upper row halves): the 32 MB Zorro III board
+      --fram_addr_o             : out std_logic_vector(24 downto 1);  -- word address
+      fram_addr_o             : out std_logic_vector(25 downto 1);  -- word address
       fram_uds_n_o            : out std_logic;
       fram_lds_n_o            : out std_logic;
       fram_data_o             : out std_logic_vector(15 downto 0);  -- write data
@@ -170,7 +173,8 @@ entity main is
       fp_req_o                : out std_logic;
       fp_we_o                 : out std_logic;
       fp_line_o               : out std_logic;
-      fp_addr_o               : out std_logic_vector(24 downto 2);
+      --fp_addr_o               : out std_logic_vector(24 downto 2);
+      fp_addr_o               : out std_logic_vector(25 downto 2);  -- Megamiga 0.7: like fram_addr_o
       fp_be_o                 : out std_logic_vector(3 downto 0);
       fp_data_o               : out std_logic_vector(31 downto 0);
       fp_data_i               : in  std_logic_vector(127 downto 0);
@@ -228,6 +232,8 @@ entity main is
       fmap_z2_o               : out std_logic;
       fmap_z3_o               : out std_logic;
       fmap_z3base_o           : out std_logic_vector(7 downto 0);
+      fmap_z3b_o              : out std_logic;                      -- the 32 MB Zorro III board
+      fmap_z3bbase_o          : out std_logic_vector(6 downto 0);   -- ... its A31..A25
 
       -- Network card (eth_card.vhd in mega65.vhd), the second board on cpu_wrapper's ext_*
       -- port: in the autoconfig chain after the IDE board while eth_ena_i is high (latched at
@@ -568,6 +574,7 @@ architecture synthesis of main is
          ide_ena        : in  std_logic;
          gayle_ena      : in  std_logic;
          z3ena          : in  std_logic;
+         z3bena         : in  std_logic;
          eth_ena        : in  std_logic;
          ext_eth        : out std_logic;
          ext_shr        : out std_logic;
@@ -592,7 +599,7 @@ architecture synthesis of main is
          fp_req         : out std_logic;
          fp_we          : out std_logic;
          fp_line        : out std_logic;
-         fp_addr        : out std_logic_vector(24 downto 2);
+         fp_addr        : out std_logic_vector(25 downto 2);
          fp_be          : out std_logic_vector(3 downto 0);
          fp_wdata       : out std_logic_vector(31 downto 0);
          fp_rdata       : in  std_logic_vector(127 downto 0);
@@ -604,7 +611,9 @@ architecture synthesis of main is
          ids_cons       : out std_logic_vector(1 downto 0);
          fmap_z2        : out std_logic;
          fmap_z3        : out std_logic;
-         fmap_z3base    : out std_logic_vector(7 downto 0)
+         fmap_z3base    : out std_logic_vector(7 downto 0);
+         fmap_z3b       : out std_logic;
+         fmap_z3bbase   : out std_logic_vector(6 downto 0)
       );
    end component cpu_wrapper;
 
@@ -907,10 +916,17 @@ begin
    -- steer MiSTer's SDRAM/DDR3 split and are constant for Zorro II.
    -- Megamiga: cpu_wrapper's ramaddr[28:27] tells the board: 11 = Zorro II -> SDRAM
    -- bank 1, 10 = Zorro III (16 MB, [23:1]) -> banks 2/3, 00 = bank 0 (chipset layout)
-   with cpu_ramaddr(28 downto 27) select fram_addr_o <=
-      "01" & cpu_ramaddr(22 downto 1)  when "11",
-      "1"  & cpu_ramaddr(23 downto 1)  when "10",
-      "00" & cpu_ramaddr(22 downto 1)  when others;
+   --with cpu_ramaddr(28 downto 27) select fram_addr_o <=
+   --   "01" & cpu_ramaddr(22 downto 1)  when "11",
+   --   "1"  & cpu_ramaddr(23 downto 1)  when "10",
+   --   "00" & cpu_ramaddr(22 downto 1)  when others;
+   -- Megamiga 0.7: fram_addr_o(25) = column bit 9. 10 with ramaddr[25] = 1 is the 32 MB
+   -- Zorro III board ([24:1]) in the upper halves of the rows of all four banks, which
+   -- nothing else uses since floppy-direct; everything else stays in the lower halves.
+   fram_addr_o <= "001" & cpu_ramaddr(22 downto 1) when cpu_ramaddr(28 downto 27) = "11" else
+                  '1'   & cpu_ramaddr(24 downto 1) when cpu_ramaddr(28 downto 27) = "10" and cpu_ramaddr(25) = '1' else
+                  "01"  & cpu_ramaddr(23 downto 1) when cpu_ramaddr(28 downto 27) = "10" else
+                  "000" & cpu_ramaddr(22 downto 1);
    cpu_cpucfg  <= "11" when cpu_020_i = '1' else "00";
    fram_rtg_o  <= cpu_ramaddr(26);
    fram_we_o   <= '1' when cpu_state = "11" else '0';
@@ -1000,6 +1016,7 @@ begin
          ide_ena         => ide_ena_i,           -- IDE board in the autoconfig chain
          gayle_ena       => gayle_ena_i,         -- ... or as the Gayle
          z3ena           => z3_ram_i,            -- 16 MB Zorro III board (68020 only)
+         z3bena          => z3b_ram_i,           -- 32 MB Zorro III board (68020 only)
          eth_ena         => eth_ena_i,           -- network card in the autoconfig chain
          ext_eth         => cpu_ext_eth,
          ext_shr         => cpu_ext_shr,
@@ -1036,7 +1053,9 @@ begin
          ids_cons        => ids_cons_o,
          fmap_z2         => fmap_z2_o,
          fmap_z3         => fmap_z3_o,
-         fmap_z3base     => fmap_z3base_o
+         fmap_z3base     => fmap_z3base_o,
+         fmap_z3b        => fmap_z3b_o,
+         fmap_z3bbase    => fmap_z3bbase_o
       ); -- i_cpu_wrapper
 
    ---------------------------------------------------------------------------

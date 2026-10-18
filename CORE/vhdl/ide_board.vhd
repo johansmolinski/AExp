@@ -152,8 +152,9 @@
 --            ended or failed before the last word), bits 8..0 sectors still to move
 --   $A00A R: words still to move (bits 15..0)
 -- The range must lie in Zorro II Fast RAM ($200000-$9FFFFF, $200000-$3FFFFF with the Action
--- Replay) or in the Zorro III board (fmap_*, the same decode and SDRAM mapping as
--- cpu_wrapper.v / ap040_island.v). The transfer waits for DRQ by itself, so one start can
+-- Replay) or in one Zorro III board (fmap_*, the same decode and SDRAM mapping as
+-- cpu_wrapper.v / ap040_island.v; 0.7: the 16 MB or the 32 MB board - a range across both
+-- is refused like any other). The transfer waits for DRQ by itself, so one start can
 -- cover a whole command; the driver polls $A008 and must not touch the data register
 -- meanwhile (ignored: reads give 0). Reads are spaced two clocks apart (the ring's
 -- registered output), one long per SDRAM slot; the IDE data stream pauses meanwhile. Caches:
@@ -203,10 +204,12 @@ entity ide_board is
       fmap_ar3_i             : in  std_logic := '0';   -- ... $200000-$3FFFFF only (AR3)
       fmap_z3_i              : in  std_logic := '0';   -- the Zorro III board is configured
       fmap_z3base_i          : in  std_logic_vector(7 downto 0) := (others => '0');  -- A31..A24
+      fmap_z3b_i             : in  std_logic := '0';   -- Megamiga 0.7: the 32 MB Zorro III board
+      fmap_z3bbase_i         : in  std_logic_vector(6 downto 0) := (others => '0');  -- A31..A25
       dm_req_o               : out std_logic;
       dm_we_o                : out std_logic;
       dm_line_o              : out std_logic;
-      dm_addr_o              : out std_logic_vector(24 downto 2);
+      dm_addr_o              : out std_logic_vector(25 downto 2);   -- (25 = column bit 9)
       dm_be_o                : out std_logic_vector(3 downto 0);
       dm_data_o              : out std_logic_vector(31 downto 0);
       dm_rdata_i             : in  std_logic_vector(127 downto 0) := (others => '0');
@@ -434,10 +437,11 @@ architecture synthesis of ide_board is
    signal dm_left     : unsigned(16 downto 0) := (others => '0');  -- words still to move
    signal dm_rqleft   : unsigned(15 downto 0) := (others => '0');  -- longs still to fetch
    signal dm_z3       : std_logic := '0';                          -- dm_a in the Z3 board
-   signal dm_a        : unsigned(22 downto 0) := (others => '0');  -- next SDRAM long ([24:2])
+   signal dm_z3b      : std_logic := '0';                          -- ... in the 32 MB Z3 board
+   signal dm_a        : unsigned(23 downto 0) := (others => '0');  -- next SDRAM long ([25:2])
    signal dm_req, dm_we : std_logic := '0';
    signal dm_out      : std_logic := '0';      -- a request is outstanding (until dm_ack_i)
-   signal dm_ra       : std_logic_vector(24 downto 2) := (others => '0');
+   signal dm_ra       : std_logic_vector(25 downto 2) := (others => '0');
    signal dm_wd       : std_logic_vector(31 downto 0) := (others => '0');
    signal dm_hi       : std_logic_vector(15 downto 0) := (others => '0');
    signal dm_half     : std_logic := '0';      -- dm_hi holds the long's first word
@@ -583,7 +587,9 @@ begin
       -- the next SDRAM long of the DMA, n longs on (wraps like the CPU's mapping)
       procedure dm_step(n : natural) is
       begin
-         if dm_z3 = '1' then
+         if dm_z3b = '1' then
+            dm_a(22 downto 0) <= dm_a(22 downto 0) + n;
+         elsif dm_z3 = '1' then
             dm_a(21 downto 0) <= dm_a(21 downto 0) + n;
          else
             dm_a(20 downto 0) <= dm_a(20 downto 0) + n;
@@ -934,14 +940,25 @@ begin
                if dm_aa(1 downto 0) /= "00" then
                   dm_err <= '1';
                   dm_st  <= DM_IDLE;
+               -- Megamiga 0.7: + the 32 MB Zorro III board (the upper row halves, '1' & [24:2])
+               elsif fmap_z3b_i = '1' and dm_aa(31 downto 25) = unsigned(fmap_z3bbase_i) and
+                     dm_ae(31 downto 25) = unsigned(fmap_z3bbase_i) then
+                  dm_z3  <= '0';
+                  dm_z3b <= '1';
+                  dm_a   <= '1' & dm_aa(24 downto 2);
+                  dm_st  <= DM_RUN;
                elsif fmap_z3_i = '1' and dm_aa(31 downto 24) = unsigned(fmap_z3base_i) and
                      dm_ae(31 downto 24) = unsigned(fmap_z3base_i) then
-                  dm_z3 <= '1';
-                  dm_a  <= '1' & dm_aa(23 downto 2);
-                  dm_st <= DM_RUN;
+                  dm_z3  <= '1';
+                  dm_z3b <= '0';
+                  --dm_a  <= '1' & dm_aa(23 downto 2);
+                  dm_a   <= "01" & dm_aa(23 downto 2);
+                  dm_st  <= DM_RUN;
                elsif fmap_z2_i = '1' and f_z2(dm_aa, fmap_ar3_i) and f_z2(dm_ae, fmap_ar3_i) then
-                  dm_z3 <= '0';
-                  dm_a  <= "01" & dm_aa(22 downto 2);
+                  dm_z3  <= '0';
+                  dm_z3b <= '0';
+                  --dm_a  <= "01" & dm_aa(22 downto 2);
+                  dm_a   <= "001" & dm_aa(22 downto 2);
                   dm_st <= DM_RUN;
                else
                   dm_err <= '1';                    -- not (all) Fast RAM
