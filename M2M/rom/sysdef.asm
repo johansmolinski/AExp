@@ -94,6 +94,7 @@ M2M$SA_COL_STD_INV  .EQU 0x8B   ; inverse standard
 M2M$SA_COL_TTLE     .EQU 0x0E   ; Title: Yellow on blue background
 M2M$SA_COL_TTLE_INV .EQU 0x8E   ; inverse Title
 M2M$SA_COL_SEL      .EQU 0x0F   ; selection: white font on blue background
+M2M$SA_COL_DIM      .EQU 0x4F   ; greyed out: dark white on blue (menu-rows)
 
 ; Special characters in font Anikki-16x16
 M2M$FC_TL           .EQU 201    ; fat top/left corner

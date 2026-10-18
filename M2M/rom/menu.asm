@@ -43,6 +43,7 @@ OPTM_SEL_STD    .EQU 0
 OPTM_SEL_SEL    .EQU 1
 OPTM_SEL_TLL    .EQU 2
 OPTM_SEL_TLLSEL .EQU 3
+OPTM_SEL_DIM    .EQU 4                          ; M2M-UPSTREAM menu-rows: greyed out
 
 ; ----------------------------------------------------------------------------
 ; Hardcoded error messages for OPTM_CLBK_HALT
@@ -315,13 +316,25 @@ _OPTM_TT_0      MOVE    @R0++, R3
                 RBRA    _OPTM_TT_1A, !N         ; .. (sub)menu structure?
 
                 AND     OPTM_HEADLINE, R3
-                RBRA    _OPTM_TT_1B, Z          ; flag not set: continue
+                RBRA    _OPTM_TT_GR, Z          ; flag not set: continue
 
                 ; flag is set, so print the menu item in highlighted mode
                 MOVE    OPTM_FP_SELECT, R7
                 MOVE    R1, R8                  ; itm to highlight, cnt frm 0
                 SUB     R4, R8                  ; deduct skip counter
                 MOVE    OPTM_SEL_TLL, R9
+                RSUB    _OPTM_CALL, 1
+                RBRA    _OPTM_TT_1B, 1
+
+                ; M2M-UPSTREAM menu-rows: an item that is not available right
+                ; now (config.vhd: OPTM_AVAIL) is drawn dimmed
+_OPTM_TT_GR     MOVE    R1, R8
+                RSUB    _OPTM_AVAIL, 1
+                RBRA    _OPTM_TT_1B, C
+                MOVE    OPTM_FP_SELECT, R7
+                MOVE    R1, R8
+                SUB     R4, R8
+                MOVE    OPTM_SEL_DIM, R9
                 RSUB    _OPTM_CALL, 1
                 RBRA    _OPTM_TT_1B, 1
 
@@ -649,7 +662,7 @@ _OPTM_RUN_INI   MOVE    SP, R7                  ; structure word of position R2
                 AND     OPTM_SUBMENU, R8
                 RBRA    _OPTM_RUN_INID, !Z
                 AND     0x00FF, R7              ; group id != 0: selectable
-                RBRA    _OPTM_RUN_INID, !Z
+                RBRA    _OPTM_RUN_INIG, !Z
 _OPTM_RUN_INIA  ADD     1, R2                   ; next flat position
                 CMP     R0, R2                  ; wrap around at the end
                 RBRA    _OPTM_RUN_INIB, !Z
@@ -657,6 +670,10 @@ _OPTM_RUN_INIA  ADD     1, R2                   ; next flat position
 _OPTM_RUN_INIB  SUB     1, R9                   ; a menu without any selectable
                 RBRA    _OPTM_RUN_INI, !Z       ; line cannot happen, but never
                 XOR     R2, R2                  ; loop forever either
+                RBRA    _OPTM_RUN_INID, 1
+_OPTM_RUN_INIG  MOVE    R2, R8                  ; M2M-UPSTREAM menu-rows: and
+                RSUB    _OPTM_AVAIL, 1          ; not greyed out
+                RBRA    _OPTM_RUN_INIA, !C
 _OPTM_RUN_INID  MOVE    R2, R3                  ; old selected item = current
 
                 ; Main loop
@@ -1055,6 +1072,11 @@ _OPTM_RUN_SCHG  MOVE    R1, R8                  ; group word of the changed line
                 MOVE    @R8, R8
                 RSUB    OPTM_DEPS_AFFECTS, 1
                 RBRA    _OPTM_RUN_SM_4, C       ; mother changed: redraw level
+                MOVE    R1, R8                  ; M2M-UPSTREAM menu-rows: the
+                ADD     R2, R8                  ; mother of greyed-out items
+                MOVE    @R8, R8                 ; changed: redraw too
+                RSUB    _OPTM_GAFF, 1
+                RBRA    _OPTM_RUN_SM_4, C
                 RBRA    _OPTM_RUN_SEL, 1        ; otherwise continue menu loop
 
 _OPTM_RUN_RET   MOVE    OPTM_STRUCT, R7         ; important to reset to zero..
@@ -1732,6 +1754,9 @@ _OPTM_RST_1     ADD     R1, R0
                 RSUB    _OPTM_VIS, 1
                 RBRA    _OPTM_RST_1, !C         ; hidden: skip it
                 MOVE    R0, R8
+                RSUB    _OPTM_AVAIL, 1
+                RBRA    _OPTM_RST_1, !C         ; greyed out: skip it
+                MOVE    R0, R8
                 AND     0xFFFB, SR              ; found: clear Carry
                 DECRB
                 RET
@@ -1739,14 +1764,100 @@ _OPTM_RST_NO    OR      0x0004, SR              ; none: set Carry
                 DECRB
                 RET
 
+; _OPTM_AVAIL: C=1 when the flat index R8 is available, C=0 when it is
+; greyed out (lines word bit 2: config.vhd's OPTM_AVAIL rule, bits 6..3 = the
+; mother items that make it available, bits 14..7 = the mother group)
+_OPTM_AVAIL     INCRB
+                MOVE    OPTM_DATA, R0
+                MOVE    @R0, R0
+                MOVE    R0, R1
+                ADD     OPTM_IR_LINES, R1
+                MOVE    @R1, R1
+                ADD     R8, R1
+                MOVE    @R1, R1                 ; R1: lines word
+                MOVE    R1, R2
+                AND     4, R2                   ; a rule at all?
+                RBRA    _OPTM_AV_Y, Z
+                MOVE    R1, R2                  ; R2: mother group
+                AND     0xFFFB, SR
+                SHR     7, R2
+                AND     0x00FF, R2
+                MOVE    R1, R3                  ; R3: mother item mask
+                AND     0xFFFB, SR
+                SHR     3, R3
+                AND     0x000F, R3
+                MOVE    R0, R4                  ; R4: groups
+                ADD     OPTM_IR_GROUPS, R4
+                MOVE    @R4, R4
+                MOVE    R0, R5                  ; R5: selected items
+                ADD     OPTM_IR_STDSEL, R5
+                MOVE    @R5, R5
+                ADD     OPTM_IR_SIZE, R0
+                MOVE    @R0, R0                 ; R0: items left
+                MOVE    1, R6                   ; R6: bit of the next member
+_OPTM_AV_1      MOVE    @R4++, R7
+                MOVE    R7, R1
+                AND     OPTM_SUBMENU, R1        ; (a submenu line is no member)
+                RBRA    _OPTM_AV_2, !Z
+                AND     0x00FF, R7
+                CMP     R7, R2
+                RBRA    _OPTM_AV_2, !Z
+                CMP     0, @R5                  ; the selected member?
+                RBRA    _OPTM_AV_3, !Z
+                ADD     R6, R6
+_OPTM_AV_2      ADD     1, R5
+                SUB     1, R0
+                RBRA    _OPTM_AV_1, !Z
+                RBRA    _OPTM_AV_Y, 1           ; no selection: available
+_OPTM_AV_3      AND     R6, R3                  ; in the mask?
+                RBRA    _OPTM_AV_Y, !Z
+                AND     0xFFFB, SR              ; greyed out: clear Carry
+                DECRB
+                RET
+_OPTM_AV_Y      OR      0x0004, SR              ; available: set Carry
+                DECRB
+                RET
+
+; _OPTM_GAFF: C=1 when the group word R8 is the mother of a greyed-out rule
+_OPTM_GAFF      INCRB
+                MOVE    R8, R2
+                AND     0x00FF, R2              ; R2: the changed group
+                MOVE    OPTM_DATA, R0
+                MOVE    @R0, R0
+                MOVE    R0, R1
+                ADD     OPTM_IR_LINES, R1
+                MOVE    @R1, R1                 ; R1: lines words
+                ADD     OPTM_IR_SIZE, R0
+                MOVE    @R0, R0                 ; R0: items left
+_OPTM_GA_1      MOVE    @R1++, R3
+                MOVE    R3, R4
+                AND     4, R4
+                RBRA    _OPTM_GA_2, Z
+                AND     0xFFFB, SR
+                SHR     7, R3
+                AND     0x00FF, R3
+                CMP     R3, R2
+                RBRA    _OPTM_GA_Y, Z
+_OPTM_GA_2      SUB     1, R0
+                RBRA    _OPTM_GA_1, !Z
+                AND     0xFFFB, SR
+                DECRB
+                RET
+_OPTM_GA_Y      OR      0x0004, SR
+                DECRB
+                RET
+
 ; _OPTM_ROWSKIP: R8 = the item up/down found, R9 = the item the cursor is on
-; -> C=1: R8 is another option of the row the cursor is on: search on
+; -> C=1: R8 is another option of the row the cursor is on, or greyed out:
+;         search on
 ;    C=0: R8 = where the cursor goes: the item found, or when it is an option
 ;         of a row, the selected (shown) option of that row
 _OPTM_ROWSKIP   INCRB
                 MOVE    R8, R0                  ; R0: the item found
                 CMP     R8, R9                  ; back at the start: take it
                 RBRA    _OPTM_RSK_GO, Z
+                RSUB    _OPTM_AVAIL, 1          ; greyed out: search on
+                RBRA    _OPTM_RSK_ON, !C
                 MOVE    R9, R8
                 RSUB    _OPTM_ROWID, 1
                 MOVE    R8, R1                  ; R1: row of the cursor
@@ -1756,7 +1867,7 @@ _OPTM_ROWSKIP   INCRB
                 RBRA    _OPTM_RSK_GO, Z         ; no row: take it
                 CMP     R1, R2
                 RBRA    _OPTM_RSK_SN, !Z        ; another row: its selection
-                OR      0x0004, SR              ; the same row: search on
+_OPTM_RSK_ON    OR      0x0004, SR              ; the same row: search on
                 DECRB
                 RET
 
@@ -1784,6 +1895,9 @@ _OPTM_RSK_3     MOVE    R3, R8                  ; walk the row
                 RBRA    _OPTM_RSK_4, Z
                 MOVE    R3, R8
                 RSUB    _OPTM_VIS, 1
+                RBRA    _OPTM_RSK_4, !C
+                MOVE    R3, R8
+                RSUB    _OPTM_AVAIL, 1
                 RBRA    _OPTM_RSK_4, !C
                 MOVE    R3, R0                  ; the selected option
                 RBRA    _OPTM_RSK_GO, 1

@@ -22,14 +22,24 @@
 ; on screen (OPTR_LAY) while it draws the menu, and the screen callbacks below
 ; and OPT_SELECT / OPT_PRINTLINE in options.asm translate through OPTR_POS.
 ;
-; Rules for config.vhd (checked by .research/check_osm_menu.py):
+; The lines word of an item (options.asm builds it from SEL_OPTM_ROWS):
+;   bit 0      separator line (config.vhd: OPTM_G_LINE)
+;   bit 1      option of a row (OPTM_ROWS)
+;   bit 2      greyed-out rule (OPTM_AVAIL): bits 6..3 = the items of the mother
+;              group that make it available, bits 14..7 = the mother group;
+;              unavailable items are drawn dimmed and the cursor skips them
+;   bit 15     a separator line is drawn below the item (a headline) without
+;              being a menu item of its own
+;
+; Rules for config.vhd (checked by ~/aexp-work/menu-rows/cfg/check.py):
 ; - the items of a row group are consecutive lines, the row's first item
 ;   carries the label ("CPU: 68000"), the others only the option (" 68020")
 ; - a row group is a radio group (no OPTM_G_SINGLESEL)
 ; - a row fits into the frame: 1 + sum(1 + len(option) + 1) - 1 <= OPTM_DX - 2
 ;
 ; Needs (from the includer): OPTM_* variables (menu_vars.asm), OPTM_NL,
-; SCR$PRINTSTRXY, ERR_F_NEWLINE and FATAL.
+; SCR$PRINTSTRXY, OPT_LINE_AT (a separator at screen row R8), ERR_F_NEWLINE
+; and FATAL.
 ;
 ; done by Johan Smolinski in 2026 and licensed under GPL v3
 ; ****************************************************************************
@@ -169,6 +179,15 @@ _OPTR_P_NR      RSUB    _OPTR_CLOSE, 1          ; a classic line
                 RSUB    _OPTR_REC, 1
                 ADD     1, R5
                 ADD     1, R6
+                MOVE    @R3, R7                 ; a separator line below it?
+                AND     0x8000, R7              ; (a headline: no menu item of
+                RBRA    _OPTR_P_NEXT, Z         ; its own; OPT_LINE_AT draws it)
+                MOVE    OPTM_Y, R8
+                MOVE    @R8, R8
+                ADD     1, R8
+                ADD     R5, R8
+                RSUB    OPT_LINE_AT, 1
+                ADD     1, R5
 
 _OPTR_P_NEXT    MOVE    @SP++, R2               ; next item
                 ADD     1, R1

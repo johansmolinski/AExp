@@ -9141,7 +9141,12 @@ SHR_RNOBJ       .BLOCK 8                        ; RENAME: the object
 ; Slow RAM and Monitor Cartridge carry only their option text, the Slow RAM
 ; separator became "Slow RAM: None" (-148 characters, still 248 items): demand
 ; 4260, MENU_HEAP_SIZE 4288, headroom 28, release HEAP_SIZE +128.
-MENU_HEAP_SIZE  .EQU 4288
+;MENU_HEAP_SIZE  .EQU 4288
+; Megamiga 0.7 profile page: rows for Chipset and Hard Disk Controller, a Zorro
+; Boards section with Graphics/Network Card, Virtual Drive Sound; the 19
+; separators under headlines are no items any more (+200 characters, 252 items):
+; demand 4476, MENU_HEAP_SIZE 4480, headroom 4, release HEAP_SIZE -192.
+MENU_HEAP_SIZE  .EQU 4480
 
 #ifndef RELEASE
 
@@ -9201,7 +9206,8 @@ HEAP            .BLOCK 1
 ;HEAP_SIZE       .EQU 14272                      ; 18528 - 4256 = 14272
 ;HEAP_SIZE       .EQU 14208                      ; 18528 - 4320 = 14208
 ;HEAP_SIZE       .EQU 14112                      ; 18528 - 4416 = 14112
-HEAP_SIZE       .EQU 14240                      ; 18528 - 4288 = 14240
+;HEAP_SIZE       .EQU 14240                      ; 18528 - 4288 = 14240
+HEAP_SIZE       .EQU 14048                      ; 18528 - 4480 = 14048
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

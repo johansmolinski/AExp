@@ -503,7 +503,7 @@ constant OPTM_S_SAVING     : string := "<Saving>";          -- the internal writ
 --             Do use a lower case \n. If you forget one of them or if you use upper case, you will run into undefined behavior.
 --          2. Start each line that contains an actual menu item (multi- or single-select) with a Space character,
 --             otherwise you will experience visual glitches.
-constant OPTM_SIZE         : natural := 248; -- amount of items including empty lines:
+constant OPTM_SIZE         : natural := 252; -- amount of items including empty lines:
                                              -- needs to be equal to the number of lines in OPTM_ITEMS and amount of items in OPTM_GROUPS
                                              -- IMPORTANT: If SAVE_SETTINGS is true and OPTM_SIZE changes: Make sure to re-generate and
                                              -- and re-distribute the config file. You can make a new one using M2M/tools/make_config.sh
@@ -636,254 +636,258 @@ constant OPTM_DY           : natural := 29;
 -- contiguity-defined and M2M$CFM_DATA bit i is positionally bound to line i.
 constant OPTM_ITEMS        : string :=
 
-   " Megamiga\n"            &    --   0: Headline "Megamiga"
-   "\n"                     &    --   1: Line
-   " df0:%s\n"              &    --   2: mount ADF into df0; cursor start
-   " df0:Hardware Floppy   \n" &    --   3: Text: df0 is the hardware drive
-   " df1:%s\n"              &    --   4: mount ADF into df1
-   " df1:Hardware Floppy   \n" &    --   5: Text: df1 is the hardware drive
-   " df2:%s\n"              &    --   6: mount ADF into df2
-   " df2:Hardware Floppy   \n" &    --   7: Text: df2 is the hardware drive
-   " Mount SDCard\n"        &    --   8: Shared folder SDCard: mounted (toggle, default OFF, never saved)
-   "\n"                     &    --   9: Line
-   " A500 (OCS)\n"          &    --  10: Profile radio: A500 OCS (default)
-   " A600 (ECS)\n"          &    --  11: Profile radio: A600 ECS
-   " A1200 (AGA)\n"         &    --  12: Profile radio: A1200 AGA
-   " A4000 (AGA)\n"         &    --  13: Profile radio: A4000 AGA
-   "\n"                     &    --  14: Line
-   " Profile Settings\n"    &    --  15: Profile Settings submenu head
-   " Profile Settings\n"    &    --  16: Headline "Profile Settings"
-   "\n"                     &    --  17: Line
-   " HDF 0:%s\n"            &    --  18: HDF master (unit 0) into the IDE board (manual CRT/ROM load 3)
-   " HDF 1:%s\n"            &    --  19: HDF slave (unit 1) into the IDE board (manual CRT/ROM load 4)
-   " Kickstart:%s\n"        &    --  20: Kickstart (manual CRT/ROM load 5)
-   " AR3 ROM:%s\n"          &    --  21: Action Replay III ROM (manual CRT/ROM load 6)
-   "\n"                     &    --  22: Line
-   " CPU: 68000\n"          &    --  23: A500: CPU 68000
-   " 68020\n"               &    --  24: A500: CPU 68020 (row "CPU", menu-rows)
-   " 68040\n"               &    --  25: A500: CPU 68040 (was a Line)
-   " Chipset: OCS\n"        &    --  26: A500: chipset OCS
-   " Chipset: ECS\n"        &    --  27: A500: chipset ECS
-   " Chipset: AGA\n"        &    --  28: A500: chipset AGA
-   " Gayle IDE controller\n" &  --  29: A500: Gayle IDE toggle (was a Line)
-   " Chip RAM: 512 kB\n"    &    --  30: A500: chip RAM 512 KB (row "Chip RAM")
-   " 1 MB\n"                &    --  31: A500: chip RAM 1 MB
-   " 2 MB\n"                &    --  32: A500: chip RAM 2 MB
-   " Slow RAM: None\n"      &    --  33: A500: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
-   " 512 kB\n"              &    --  34: A500: Slow RAM 512 KB (was a toggle)
-   " Fast RAM (8 MB)\n"     &    --  35: A500: Zorro II Fast RAM toggle
-   " Zorro III RAM (16 MB)\n" &    --  36: A500: Zorro III RAM toggle (68020)
-   " Zorro III RAM (32 MB)\n" &  --  37: A500: Zorro III RAM (32 MB) toggle (68020; 0.7: was a Line)
-   " Monitor Cartridge: None\n" & --  38: A500: no cartridge (row "Monitor Cartridge")
-   " HRTmon\n"              &    --  39: A500: HRTmon cartridge
-   " AR3\n"                 &    --  40: A500: Action Replay III cartridge
-   " CPU: 68000\n"          &    --  41: A600: CPU 68000
-   " 68020\n"               &    --  42: A600: CPU 68020 (row "CPU", menu-rows)
-   " 68040\n"               &    --  43: A600: CPU 68040 (was a Line)
-   " Chipset: OCS\n"        &    --  44: A600: chipset OCS
-   " Chipset: ECS\n"        &    --  45: A600: chipset ECS
-   " Chipset: AGA\n"        &    --  46: A600: chipset AGA
-   " Gayle IDE controller\n" &  --  47: A600: Gayle IDE toggle (was a Line)
-   " Chip RAM: 512 kB\n"    &    --  48: A600: chip RAM 512 KB (row "Chip RAM")
-   " 1 MB\n"                &    --  49: A600: chip RAM 1 MB
-   " 2 MB\n"                &    --  50: A600: chip RAM 2 MB
-   " Slow RAM: None\n"      &    --  51: A600: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
-   " 512 kB\n"              &    --  52: A600: Slow RAM 512 KB (was a toggle)
-   " Fast RAM (8 MB)\n"     &    --  53: A600: Zorro II Fast RAM toggle
-   " Zorro III RAM (16 MB)\n" &    --  54: A600: Zorro III RAM toggle (68020)
-   " Zorro III RAM (32 MB)\n" &  --  55: A600: Zorro III RAM (32 MB) toggle (68020; 0.7: was a Line)
-   " Monitor Cartridge: None\n" & --  56: A600: no cartridge (row "Monitor Cartridge")
-   " HRTmon\n"              &    --  57: A600: HRTmon cartridge
-   " AR3\n"                 &    --  58: A600: Action Replay III cartridge
-   " CPU: 68000\n"          &    --  59: A1200: CPU 68000
-   " 68020\n"               &    --  60: A1200: CPU 68020 (row "CPU", menu-rows)
-   " 68040\n"               &    --  61: A1200: CPU 68040 (was a Line)
-   " Chipset: OCS\n"        &    --  62: A1200: chipset OCS
-   " Chipset: ECS\n"        &    --  63: A1200: chipset ECS
-   " Chipset: AGA\n"        &    --  64: A1200: chipset AGA
-   " Gayle IDE controller\n" &  --  65: A1200: Gayle IDE toggle (was a Line)
-   " Chip RAM: 512 kB\n"    &    --  66: A1200: chip RAM 512 KB (row "Chip RAM")
-   " 1 MB\n"                &    --  67: A1200: chip RAM 1 MB
-   " 2 MB\n"                &    --  68: A1200: chip RAM 2 MB
-   " Slow RAM: None\n"      &    --  69: A1200: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
-   " 512 kB\n"              &    --  70: A1200: Slow RAM 512 KB (was a toggle)
-   " Fast RAM (8 MB)\n"     &    --  71: A1200: Zorro II Fast RAM toggle
-   " Zorro III RAM (16 MB)\n" &    --  72: A1200: Zorro III RAM toggle (68020)
-   " Zorro III RAM (32 MB)\n" &  --  73: A1200: Zorro III RAM (32 MB) toggle (68020; 0.7: was a Line)
-   " Monitor Cartridge: None\n" & --  74: A1200: no cartridge (row "Monitor Cartridge")
-   " HRTmon\n"              &    --  75: A1200: HRTmon cartridge
-   " AR3\n"                 &    --  76: A1200: Action Replay III cartridge
-   " CPU: 68000\n"          &    --  77: A4000: CPU 68000
-   " 68020\n"               &    --  78: A4000: CPU 68020 (row "CPU", menu-rows)
-   " 68040\n"               &    --  79: A4000: CPU 68040
-   " Chipset: OCS\n"        &    --  80: A4000: chipset OCS
-   " Chipset: ECS\n"        &    --  81: A4000: chipset ECS
-   " Chipset: AGA\n"        &    --  82: A4000: chipset AGA
-   " Gayle IDE controller\n" &  --  83: A4000: Gayle IDE toggle (was a Line)
-   " Chip RAM: 512 kB\n"    &    --  84: A4000: chip RAM 512 KB (row "Chip RAM")
-   " 1 MB\n"                &    --  85: A4000: chip RAM 1 MB
-   " 2 MB\n"                &    --  86: A4000: chip RAM 2 MB
-   " Slow RAM: None\n"      &    --  87: A4000: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
-   " 512 kB\n"              &    --  88: A4000: Slow RAM 512 KB (was a toggle)
-   " Fast RAM (8 MB)\n"     &    --  89: A4000: Zorro II Fast RAM toggle
-   " Zorro III RAM (16 MB)\n" &  --  90: A4000: Zorro III RAM toggle (68020)
-   " Zorro III RAM (32 MB)\n" &  --  91: A4000: Zorro III RAM (32 MB) toggle (68020; 0.7: was a Line)
-   " Monitor Cartridge: None\n" & --  92: A4000: no cartridge (row "Monitor Cartridge")
-   " HRTmon\n"              &    --  93: A4000: HRTmon cartridge
-   " AR3\n"                 &    --  94: A4000: Action Replay III cartridge
-   "\n"                     &    --  95: Line
-   " Back to main menu\n"   &    --  96: Close Profile Settings
-   " Drive Settings\n"      &    --  97: Drive Settings submenu head
-   " Drive Settings\n"      &    --  98: Headline "Drive Settings"
-   "\n"                     &    --  99: Line
-   " Drives\n"              &    -- 100: Headline "Drives"
-   "\n"                     &    -- 101: Line
-   " 1\n"                   &    -- 102: 1 (default)
-   " 2\n"                   &    -- 103: 2
-   " 3\n"                   &    -- 104: 3
-   "\n"                     &    -- 105: Line
-   " Drive df0\n"           &    -- 106: Headline "Drive df0"
-   "\n"                     &    -- 107: Line
-   " Disk Image\n"          &    -- 108: df0 Disk Image (default)
-   " Hardware Floppy\n"     &    -- 109: df0 Hardware Floppy
-   "\n"                     &    -- 110: Line
-   " Drive df1\n"           &    -- 111: Headline "Drive df1"
-   "\n"                     &    -- 112: Line
-   " Disk Image\n"          &    -- 113: df1 Disk Image
-   " Hardware Floppy\n"     &    -- 114: df1 Hardware Floppy
-   " Off\n"                 &    -- 115: df1 Off (only while Drives = 1; default)
-   "\n"                     &    -- 116: Line
-   " Drive df2\n"           &    -- 117: Headline "Drive df2"
-   "\n"                     &    -- 118: Line
-   " Disk Image\n"          &    -- 119: df2 Disk Image
-   " Hardware Floppy\n"     &    -- 120: df2 Hardware Floppy
-   " Off\n"                 &    -- 121: df2 Off (while Drives = 1 or 2; default)
-   "\n"                     &    -- 122: Line
-   " Drive spin-up delay\n" &    -- 123: Drive spin-up delay (single-select, default OFF)
-   "\n"                     &    -- 124: Line
-   " Back to main menu\n"   &    -- 125: Close submenu / back to main menu
-   " Settings\n"            &    -- 126: Settings submenu head (Display / Audio / Keyboard)
-   " Settings\n"            &    -- 127: Headline "Settings"
-   "\n"                     &    -- 128: Line
-   " Display\n"             &    -- 129: Headline "Display"
-   "\n"                     &    -- 130: Line
-   " HDMI: %s\n"            &    -- 131: HDMI submenu block: "HDMI: %s"
-   " HDMI Settings\n"       &    -- 132: Headline "HDMI Settings"
-   "\n"                     &    -- 133: Line
-   " 720p 50 Hz 16:9\n"     &    -- 134: 720p 50 Hz 16:9, default
-   " 576p 50 Hz 4:3\n"      &    -- 135: 576p 50 Hz 4:3
-   " 576p 50 Hz 5:4\n"      &    -- 136: 576p 50 Hz 5:4
-   "\n"                     &    -- 137: Line
-   " DVI (no sound)\n"      &    -- 138: DVI (no sound) (single-select, default OFF)
-   " RTG native resolution\n" &  -- 139: RTG native resolution (single-select, default ON; was a Line)
-   " Back to Settings\n"    &    -- 140: Close submenu / back to Settings
-   " HDMI: %s\n"            &    -- 141: HDMI Filter submenu block: "HDMI: %s"
-   " HDMI Filter\n"         &    -- 142: Headline "HDMI Filter"
-   "\n"                     &    -- 143: Line
-   " No Filter\n"           &    -- 144: No Filter
-   " Sharp Bilinear\n"      &    -- 145: Sharp Bilinear
-   " Bicubic\n"             &    -- 146: Bicubic
-   " Smooth\n"              &    -- 147: Smooth
-   " Lanczos\n"             &    -- 148: Lanczos (default)
-   " Scanlines\n"           &    -- 149: Scanlines
-   " CRT (S-Video)\n"       &    -- 150: CRT (S-Video)
-   " CRT (Composite)\n"     &    -- 151: CRT (Composite)
-   "\n"                     &    -- 152: Line
-   " Back to Settings\n"    &    -- 153: Close submenu / back to Settings
-   " HDMI: Flicker-free\n"  &    -- 154: HDMI: Flicker-free (single-select, default ON)
-   " VGA: %s\n"             &    -- 155: VGA submenu block: "VGA: %s"
-   " VGA Display Mode\n"    &    -- 156: Headline "VGA Display Mode"
-   "\n"                     &    -- 157: Line
-   " Standard\n"            &    -- 158: Standard (default)
-   "\n"                     &    -- 159: Line
-   " Retro 15 kHz mode\n"   &    -- 160: Text "Retro 15 kHz mode"
-   "\n"                     &    -- 161: Line
-   " 15 kHz with HS/VS\n"   &    -- 162: 15 kHz with HS/VS
-   " 15 kHz with CSYNC\n"   &    -- 163: 15 kHz with CSYNC
-   "\n"                     &    -- 164: Line
-   " Back to Settings\n"    &    -- 165: Close submenu / back to Settings
-   " Reload Screen Config\n" &    -- 166: Reload screen cfg (momentary action)
-   " OSM: %s\n"             &    -- 167: OSM Scaling submenu block: "OSM: %s"
-   " OSM Scaling\n"         &    -- 168: Headline "OSM Scaling"
-   "\n"                     &    -- 169: Line
-   " 100%\n"                &    -- 170: 100% (default)
-   " 94%\n"                 &    -- 171: 94%
-   " 88%\n"                 &    -- 172: 88%
-   " 81%\n"                 &    -- 173: 81%
-   " 75%\n"                 &    -- 174: 75%
-   " 69%\n"                 &    -- 175: 69%
-   " 63%\n"                 &    -- 176: 63%
-   " 56%\n"                 &    -- 177: 56%
-   " 50%\n"                 &    -- 178: 50%
-   "\n"                     &    -- 179: Line
-   " Back to Settings\n"    &    -- 180: Close submenu / back to Settings
-   "\n"                     &    -- 181: Line
-   " Audio\n"               &    -- 182: Headline "Audio"
-   "\n"                     &    -- 183: Line
-   " Volume: %s\n"          &    -- 184: Volume submenu block: "Volume: %s"
-   " Volume Control\n"      &    -- 185: Headline "Volume Control"
-   "\n"                     &    -- 186: Line
-   " 100%\n"                &    -- 187: 100% (default)
-   " 95%\n"                 &    -- 188: 95%
-   " 90%\n"                 &    -- 189: 90%
-   " 85%\n"                 &    -- 190: 85%
-   " 80%\n"                 &    -- 191: 80%
-   " 75%\n"                 &    -- 192: 75%
-   " 70%\n"                 &    -- 193: 70%
-   " 65%\n"                 &    -- 194: 65%
-   " 60%\n"                 &    -- 195: 60%
-   " 55%\n"                 &    -- 196: 55%
-   " 50%\n"                 &    -- 197: 50%
-   " 45%\n"                 &    -- 198: 45%
-   " 40%\n"                 &    -- 199: 40%
-   " 35%\n"                 &    -- 200: 35%
-   " 30%\n"                 &    -- 201: 30%
-   " 25%\n"                 &    -- 202: 25%
-   " 20%\n"                 &    -- 203: 20%
-   " 15%\n"                 &    -- 204: 15%
-   " 10%\n"                 &    -- 205: 10%
-   " 5%\n"                  &    -- 206: 5%
-   " 0%\n"                  &    -- 207: 0% (mute)
-   "\n"                     &    -- 208: Line
-   " Back to Settings\n"    &    -- 209: Close submenu / back to Settings
-   " Stereo: %s\n"          &    -- 210: Stereo Mix submenu block: "Stereo: %s"
-   " Stereo Mix\n"          &    -- 211: Headline "Stereo Mix"
-   "\n"                     &    -- 212: Line
-   " Full Stereo\n"         &    -- 213: Full Stereo (default)
-   " Wide Stereo\n"         &    -- 214: Wide Stereo
-   " Narrow Stereo\n"       &    -- 215: Narrow Stereo
-   " Mono\n"                &    -- 216: Mono
-   "\n"                     &    -- 217: Line
-   " Back to Settings\n"    &    -- 218: Close submenu / back to Settings
-   " A500 Filter\n"         &    -- 219: A500 Filter (single-select, default ON)
-   " LED Filter\n"          &    -- 220: LED Filter (single-select, default ON)
-   "\n"                     &    -- 221: Line
-   " Keyboard\n"            &    -- 222: Headline "Keyboard"
-   "\n"                     &    -- 223: Line
-   " Amiga\n"               &    -- 224: Amiga (pure positional)
-   " MEGA65\n"              &    -- 225: MEGA65 (semantic; default)
-   " OSM: %s\n"             &    -- 226: OSM-open key submenu block: "OSM: %s"
-   " Key to open the menu\n" &    -- 227: Headline "Key to open the menu"
-   "\n"                     &    -- 228: Line
-   " Help\n"                &    -- 229: Help (default opener)
-   " F11\n"                 &    -- 230: F11
-   " F13\n"                 &    -- 231: F13
-   " MEGA + Run/Stop\n"     &    -- 232: MEGA + Run/Stop
-   "\n"                     &    -- 233: Line
-   " Back to Settings\n"    &    -- 234: Close submenu / back to Settings
-   "\n"                     &    -- 235: Line
-   " Ports\n"               &    -- 236: Headline "Ports"
-   "\n"                     &    -- 237: Line
-   " Serial port on PMOD\n" &    -- 238: Serial port on PMOD1 (single-select, default OFF)
-   "\n"                     &    -- 239: Line
-   " Back to main menu\n"   &    -- 240: Close Settings
-   "\n"                     &    -- 241: Line
-   " Freeze cartridge\n"    &    -- 242: Freeze: the cartridge button (momentary)
-   "\n"                     &    -- 243: Line
-   " About & Help\n"        &    -- 244: About & Help (WHS(1))
-   " Close Menu\n"          &    -- 245: Close Menu (was 212; the Line moved below it)
-   "\n"                     &    -- 246: Line
-   " \n" ;                        -- 247: Text: empty; SD_STATUS_STEP (m2m-rom.asm) paints the live status of both SD cards on the bottom row of the main menu
+   " Megamiga\n"            &  --   0: Headline "Megamiga"
+   " df0:%s\n"              &  --   1: mount ADF into df0; cursor start
+   " df0:Hardware Floppy   \n" & --   2: Text: df0 is the hardware drive
+   " df1:%s\n"              &  --   3: mount ADF into df1
+   " df1:Hardware Floppy   \n" & --   4: Text: df1 is the hardware drive
+   " df2:%s\n"              &  --   5: mount ADF into df2
+   " df2:Hardware Floppy   \n" & --   6: Text: df2 is the hardware drive
+   " Mount SDCard\n"        &  --   7: Shared folder SDCard: mounted (toggle, default OFF, never saved)
+   "\n"                     &  --   8: Line
+   " A500 (OCS)\n"          &  --   9: Profile radio: A500 OCS (default)
+   " A600 (ECS)\n"          &  --  10: Profile radio: A600 ECS
+   " A1200 (AGA)\n"         &  --  11: Profile radio: A1200 AGA
+   " A4000 (AGA)\n"         &  --  12: Profile radio: A4000 AGA
+   "\n"                     &  --  13: Line
+   " Profile Settings\n"    &  --  14: Profile Settings submenu head
+   " Profile Settings\n"    &  --  15: Headline "Profile Settings"
+   " HDF 0:%s\n"            &  --  16: HDF master (unit 0) into the IDE board (manual CRT/ROM load 3)
+   " HDF 1:%s\n"            &  --  17: HDF slave (unit 1) into the IDE board (manual CRT/ROM load 4)
+   " Kickstart:%s\n"        &  --  18: Kickstart (manual CRT/ROM load 5)
+   " AR3 ROM:%s\n"          &  --  19: Action Replay III ROM (manual CRT/ROM load 6)
+   "\n"                     &  --  20: Line
+   " CPU: 68000\n"           & --  21: A500: CPU 68000 (row "CPU")
+   " 68020\n"                & --  22: A500: CPU 68020
+   " 68040\n"                & --  23: A500: CPU 68040
+   " Chipset: OCS\n"         & --  24: A500: chipset OCS (row "Chipset")
+   " ECS\n"                  & --  25: A500: chipset ECS
+   " AGA\n"                  & --  26: A500: chipset AGA
+   " Hard Disk Controller: None\n" & --  27: A500: no hard disk controller (row "Hard Disk Controller")
+   " Gayle\n"                & --  28: A500: the HDFs on the A600/A1200 Gayle IDE
+   " RIPPLE\n"               & --  29: A500: the HDFs on the RIPPLE-compatible Zorro II IDE board (lide.device)
+   " Chip RAM: 512 kB\n"     & --  30: A500: chip RAM 512 KB (row "Chip RAM")
+   " 1 MB\n"                 & --  31: A500: chip RAM 1 MB
+   " 2 MB\n"                 & --  32: A500: chip RAM 2 MB
+   " Slow RAM: None\n"       & --  33: A500: no Slow RAM (row "Slow RAM")
+   " 512 kB\n"               & --  34: A500: Slow RAM 512 KB
+   " Monitor Cartridge: None\n" & --  35: A500: no cartridge (row "Monitor Cartridge")
+   " HRTmon\n"               & --  36: A500: HRTmon cartridge (not with the 68040: greyed out)
+   " AR3\n"                  & --  37: A500: Action Replay III cartridge (68000 only: greyed out)
+   " Zorro Boards\n"         & --  38: A500: Headline "Zorro Boards"
+   " Zorro II RAM 8 MB\n"    & --  39: A500: Zorro II Fast RAM (8 MB) toggle
+   " Zorro III RAM 16 MB\n"  & --  40: A500: Zorro III RAM (16 MB) toggle (68020/68040: else greyed out)
+   " Zorro III RAM 32 MB\n"  & --  41: A500: Zorro III RAM (32 MB) toggle (68020/68040: else greyed out)
+   " Graphics Card\n"        & --  42: A500: RTG graphics card toggle (68020/68040: else greyed out)
+   " Network Card\n"         & --  43: A500: network card toggle
+   " CPU: 68000\n"           & --  44: A600: CPU 68000 (row "CPU")
+   " 68020\n"                & --  45: A600: CPU 68020
+   " 68040\n"                & --  46: A600: CPU 68040
+   " Chipset: OCS\n"         & --  47: A600: chipset OCS (row "Chipset")
+   " ECS\n"                  & --  48: A600: chipset ECS
+   " AGA\n"                  & --  49: A600: chipset AGA
+   " Hard Disk Controller: None\n" & --  50: A600: no hard disk controller (row "Hard Disk Controller")
+   " Gayle\n"                & --  51: A600: the HDFs on the A600/A1200 Gayle IDE
+   " RIPPLE\n"               & --  52: A600: the HDFs on the RIPPLE-compatible Zorro II IDE board (lide.device)
+   " Chip RAM: 512 kB\n"     & --  53: A600: chip RAM 512 KB (row "Chip RAM")
+   " 1 MB\n"                 & --  54: A600: chip RAM 1 MB
+   " 2 MB\n"                 & --  55: A600: chip RAM 2 MB
+   " Slow RAM: None\n"       & --  56: A600: no Slow RAM (row "Slow RAM")
+   " 512 kB\n"               & --  57: A600: Slow RAM 512 KB
+   " Monitor Cartridge: None\n" & --  58: A600: no cartridge (row "Monitor Cartridge")
+   " HRTmon\n"               & --  59: A600: HRTmon cartridge (not with the 68040: greyed out)
+   " AR3\n"                  & --  60: A600: Action Replay III cartridge (68000 only: greyed out)
+   " Zorro Boards\n"         & --  61: A600: Headline "Zorro Boards"
+   " Zorro II RAM 8 MB\n"    & --  62: A600: Zorro II Fast RAM (8 MB) toggle
+   " Zorro III RAM 16 MB\n"  & --  63: A600: Zorro III RAM (16 MB) toggle (68020/68040: else greyed out)
+   " Zorro III RAM 32 MB\n"  & --  64: A600: Zorro III RAM (32 MB) toggle (68020/68040: else greyed out)
+   " Graphics Card\n"        & --  65: A600: RTG graphics card toggle (68020/68040: else greyed out)
+   " Network Card\n"         & --  66: A600: network card toggle
+   " CPU: 68000\n"           & --  67: A1200: CPU 68000 (row "CPU")
+   " 68020\n"                & --  68: A1200: CPU 68020
+   " 68040\n"                & --  69: A1200: CPU 68040
+   " Chipset: OCS\n"         & --  70: A1200: chipset OCS (row "Chipset")
+   " ECS\n"                  & --  71: A1200: chipset ECS
+   " AGA\n"                  & --  72: A1200: chipset AGA
+   " Hard Disk Controller: None\n" & --  73: A1200: no hard disk controller (row "Hard Disk Controller")
+   " Gayle\n"                & --  74: A1200: the HDFs on the A600/A1200 Gayle IDE
+   " RIPPLE\n"               & --  75: A1200: the HDFs on the RIPPLE-compatible Zorro II IDE board (lide.device)
+   " Chip RAM: 512 kB\n"     & --  76: A1200: chip RAM 512 KB (row "Chip RAM")
+   " 1 MB\n"                 & --  77: A1200: chip RAM 1 MB
+   " 2 MB\n"                 & --  78: A1200: chip RAM 2 MB
+   " Slow RAM: None\n"       & --  79: A1200: no Slow RAM (row "Slow RAM")
+   " 512 kB\n"               & --  80: A1200: Slow RAM 512 KB
+   " Monitor Cartridge: None\n" & --  81: A1200: no cartridge (row "Monitor Cartridge")
+   " HRTmon\n"               & --  82: A1200: HRTmon cartridge (not with the 68040: greyed out)
+   " AR3\n"                  & --  83: A1200: Action Replay III cartridge (68000 only: greyed out)
+   " Zorro Boards\n"         & --  84: A1200: Headline "Zorro Boards"
+   " Zorro II RAM 8 MB\n"    & --  85: A1200: Zorro II Fast RAM (8 MB) toggle
+   " Zorro III RAM 16 MB\n"  & --  86: A1200: Zorro III RAM (16 MB) toggle (68020/68040: else greyed out)
+   " Zorro III RAM 32 MB\n"  & --  87: A1200: Zorro III RAM (32 MB) toggle (68020/68040: else greyed out)
+   " Graphics Card\n"        & --  88: A1200: RTG graphics card toggle (68020/68040: else greyed out)
+   " Network Card\n"         & --  89: A1200: network card toggle
+   " CPU: 68000\n"           & --  90: A4000: CPU 68000 (row "CPU")
+   " 68020\n"                & --  91: A4000: CPU 68020
+   " 68040\n"                & --  92: A4000: CPU 68040
+   " Chipset: OCS\n"         & --  93: A4000: chipset OCS (row "Chipset")
+   " ECS\n"                  & --  94: A4000: chipset ECS
+   " AGA\n"                  & --  95: A4000: chipset AGA
+   " Hard Disk Controller: None\n" & --  96: A4000: no hard disk controller (row "Hard Disk Controller")
+   " Gayle\n"                & --  97: A4000: the HDFs on the A600/A1200 Gayle IDE
+   " RIPPLE\n"               & --  98: A4000: the HDFs on the RIPPLE-compatible Zorro II IDE board (lide.device)
+   " Chip RAM: 512 kB\n"     & --  99: A4000: chip RAM 512 KB (row "Chip RAM")
+   " 1 MB\n"                 & -- 100: A4000: chip RAM 1 MB
+   " 2 MB\n"                 & -- 101: A4000: chip RAM 2 MB
+   " Slow RAM: None\n"       & -- 102: A4000: no Slow RAM (row "Slow RAM")
+   " 512 kB\n"               & -- 103: A4000: Slow RAM 512 KB
+   " Monitor Cartridge: None\n" & -- 104: A4000: no cartridge (row "Monitor Cartridge")
+   " HRTmon\n"               & -- 105: A4000: HRTmon cartridge (not with the 68040: greyed out)
+   " AR3\n"                  & -- 106: A4000: Action Replay III cartridge (68000 only: greyed out)
+   " Zorro Boards\n"         & -- 107: A4000: Headline "Zorro Boards"
+   " Zorro II RAM 8 MB\n"    & -- 108: A4000: Zorro II Fast RAM (8 MB) toggle
+   " Zorro III RAM 16 MB\n"  & -- 109: A4000: Zorro III RAM (16 MB) toggle (68020/68040: else greyed out)
+   " Zorro III RAM 32 MB\n"  & -- 110: A4000: Zorro III RAM (32 MB) toggle (68020/68040: else greyed out)
+   " Graphics Card\n"        & -- 111: A4000: RTG graphics card toggle (68020/68040: else greyed out)
+   " Network Card\n"         & -- 112: A4000: network card toggle
+   "\n"                     &  -- 113: Line
+   " Back to main menu\n"   &  -- 114: Close Profile Settings
+   " Drive Settings\n"      &  -- 115: Drive Settings submenu head
+   " Drive Settings\n"      &  -- 116: Headline "Drive Settings"
+   " Drives\n"              &  -- 117: Headline "Drives"
+   " 1\n"                   &  -- 118: 1 (default)
+   " 2\n"                   &  -- 119: 2
+   " 3\n"                   &  -- 120: 3
+   "\n"                     &  -- 121: Line
+   " Drive df0\n"           &  -- 122: Headline "Drive df0"
+   " Disk Image\n"          &  -- 123: df0 Disk Image (default)
+   " Hardware Floppy\n"     &  -- 124: df0 Hardware Floppy
+   "\n"                     &  -- 125: Line
+   " Drive df1\n"           &  -- 126: Headline "Drive df1"
+   " Disk Image\n"          &  -- 127: df1 Disk Image
+   " Hardware Floppy\n"     &  -- 128: df1 Hardware Floppy
+   " Off\n"                 &  -- 129: df1 Off (only while Drives = 1; default)
+   "\n"                     &  -- 130: Line
+   " Drive df2\n"           &  -- 131: Headline "Drive df2"
+   " Disk Image\n"          &  -- 132: df2 Disk Image
+   " Hardware Floppy\n"     &  -- 133: df2 Hardware Floppy
+   " Off\n"                 &  -- 134: df2 Off (while Drives = 1 or 2; default)
+   "\n"                     &  -- 135: Line
+   " Drive spin-up delay\n" &  -- 136: Drive spin-up delay (single-select, default OFF)
+   " Virtual Drive Sound: On\n" &  -- 137: Virtual Drive Sound: On (row; the internal drive sounds the disk image drives, default)
+   " Noclick\n"              &  -- 138: Virtual Drive Sound: Noclick (only with a motor on: no click of an empty drive)
+   " Off\n"                  &  -- 139: Virtual Drive Sound: Off
+   "\n"                     &  -- 140: Line
+   " Back to main menu\n"   &  -- 141: Close submenu / back to main menu
+   " Settings\n"            &  -- 142: Settings submenu head (Display / Audio / Keyboard)
+   " Settings\n"            &  -- 143: Headline "Settings"
+   " Display\n"             &  -- 144: Headline "Display"
+   " HDMI: %s\n"            &  -- 145: HDMI submenu block: "HDMI: %s"
+   " HDMI Settings\n"       &  -- 146: Headline "HDMI Settings"
+   " 720p 50 Hz 16:9\n"     &  -- 147: 720p 50 Hz 16:9, default
+   " 576p 50 Hz 4:3\n"      &  -- 148: 576p 50 Hz 4:3
+   " 576p 50 Hz 5:4\n"      &  -- 149: 576p 50 Hz 5:4
+   "\n"                     &  -- 150: Line
+   " DVI (no sound)\n"      &  -- 151: DVI (no sound) (single-select, default OFF)
+   " RTG native resolution\n" & -- 152: RTG native resolution (single-select, default ON; was a Line)
+   " Back to Settings\n"    &  -- 153: Close submenu / back to Settings
+   " HDMI: %s\n"            &  -- 154: HDMI Filter submenu block: "HDMI: %s"
+   " HDMI Filter\n"         &  -- 155: Headline "HDMI Filter"
+   " No Filter\n"           &  -- 156: No Filter
+   " Sharp Bilinear\n"      &  -- 157: Sharp Bilinear
+   " Bicubic\n"             &  -- 158: Bicubic
+   " Smooth\n"              &  -- 159: Smooth
+   " Lanczos\n"             &  -- 160: Lanczos (default)
+   " Scanlines\n"           &  -- 161: Scanlines
+   " CRT (S-Video)\n"       &  -- 162: CRT (S-Video)
+   " CRT (Composite)\n"     &  -- 163: CRT (Composite)
+   "\n"                     &  -- 164: Line
+   " Back to Settings\n"    &  -- 165: Close submenu / back to Settings
+   " HDMI: Flicker-free\n"  &  -- 166: HDMI: Flicker-free (single-select, default ON)
+   " VGA: %s\n"             &  -- 167: VGA submenu block: "VGA: %s"
+   " VGA Display Mode\n"    &  -- 168: Headline "VGA Display Mode"
+   " Standard\n"            &  -- 169: Standard (default)
+   "\n"                     &  -- 170: Line
+   " Retro 15 kHz mode\n"   &  -- 171: Text "Retro 15 kHz mode"
+   "\n"                     &  -- 172: Line
+   " 15 kHz with HS/VS\n"   &  -- 173: 15 kHz with HS/VS
+   " 15 kHz with CSYNC\n"   &  -- 174: 15 kHz with CSYNC
+   "\n"                     &  -- 175: Line
+   " Back to Settings\n"    &  -- 176: Close submenu / back to Settings
+   " Reload Screen Config\n" & -- 177: Reload screen cfg (momentary action)
+   " OSM: %s\n"             &  -- 178: OSM Scaling submenu block: "OSM: %s"
+   " OSM Scaling\n"         &  -- 179: Headline "OSM Scaling"
+   " 100%\n"                &  -- 180: 100% (default)
+   " 94%\n"                 &  -- 181: 94%
+   " 88%\n"                 &  -- 182: 88%
+   " 81%\n"                 &  -- 183: 81%
+   " 75%\n"                 &  -- 184: 75%
+   " 69%\n"                 &  -- 185: 69%
+   " 63%\n"                 &  -- 186: 63%
+   " 56%\n"                 &  -- 187: 56%
+   " 50%\n"                 &  -- 188: 50%
+   "\n"                     &  -- 189: Line
+   " Back to Settings\n"    &  -- 190: Close submenu / back to Settings
+   "\n"                     &  -- 191: Line
+   " Audio\n"               &  -- 192: Headline "Audio"
+   " Volume: %s\n"          &  -- 193: Volume submenu block: "Volume: %s"
+   " Volume Control\n"      &  -- 194: Headline "Volume Control"
+   " 100%\n"                &  -- 195: 100% (default)
+   " 95%\n"                 &  -- 196: 95%
+   " 90%\n"                 &  -- 197: 90%
+   " 85%\n"                 &  -- 198: 85%
+   " 80%\n"                 &  -- 199: 80%
+   " 75%\n"                 &  -- 200: 75%
+   " 70%\n"                 &  -- 201: 70%
+   " 65%\n"                 &  -- 202: 65%
+   " 60%\n"                 &  -- 203: 60%
+   " 55%\n"                 &  -- 204: 55%
+   " 50%\n"                 &  -- 205: 50%
+   " 45%\n"                 &  -- 206: 45%
+   " 40%\n"                 &  -- 207: 40%
+   " 35%\n"                 &  -- 208: 35%
+   " 30%\n"                 &  -- 209: 30%
+   " 25%\n"                 &  -- 210: 25%
+   " 20%\n"                 &  -- 211: 20%
+   " 15%\n"                 &  -- 212: 15%
+   " 10%\n"                 &  -- 213: 10%
+   " 5%\n"                  &  -- 214: 5%
+   " 0%\n"                  &  -- 215: 0% (mute)
+   "\n"                     &  -- 216: Line
+   " Back to Settings\n"    &  -- 217: Close submenu / back to Settings
+   " Stereo: %s\n"          &  -- 218: Stereo Mix submenu block: "Stereo: %s"
+   " Stereo Mix\n"          &  -- 219: Headline "Stereo Mix"
+   " Full Stereo\n"         &  -- 220: Full Stereo (default)
+   " Wide Stereo\n"         &  -- 221: Wide Stereo
+   " Narrow Stereo\n"       &  -- 222: Narrow Stereo
+   " Mono\n"                &  -- 223: Mono
+   "\n"                     &  -- 224: Line
+   " Back to Settings\n"    &  -- 225: Close submenu / back to Settings
+   " A500 Filter\n"         &  -- 226: A500 Filter (single-select, default ON)
+   " LED Filter\n"          &  -- 227: LED Filter (single-select, default ON)
+   "\n"                     &  -- 228: Line
+   " Keyboard\n"            &  -- 229: Headline "Keyboard"
+   " Amiga\n"               &  -- 230: Amiga (pure positional)
+   " MEGA65\n"              &  -- 231: MEGA65 (semantic; default)
+   " OSM: %s\n"             &  -- 232: OSM-open key submenu block: "OSM: %s"
+   " Key to open the menu\n" & -- 233: Headline "Key to open the menu"
+   " Help\n"                &  -- 234: Help (default opener)
+   " F11\n"                 &  -- 235: F11
+   " F13\n"                 &  -- 236: F13
+   " MEGA + Run/Stop\n"     &  -- 237: MEGA + Run/Stop
+   "\n"                     &  -- 238: Line
+   " Back to Settings\n"    &  -- 239: Close submenu / back to Settings
+   "\n"                     &  -- 240: Line
+   " Ports\n"               &  -- 241: Headline "Ports"
+   " Serial port on PMOD\n" &  -- 242: Serial port on PMOD1 (single-select, default OFF)
+   "\n"                     &  -- 243: Line
+   " Back to main menu\n"   &  -- 244: Close Settings
+   "\n"                     &  -- 245: Line
+   " Freeze cartridge\n"    &  -- 246: Freeze: the cartridge button (momentary)
+   "\n"                     &  -- 247: Line
+   " About & Help\n"        &  -- 248: About & Help (WHS(1))
+   " Close Menu\n"          &  -- 249: Close Menu (was 212; the Line moved below it)
+   "\n"                     &  -- 250: Line
+   " \n" ;                     -- 251: Text: empty; SD_STATUS_STEP (m2m-rom.asm) paints the live status of both SD cards on the bottom row of the main menu
 -- also make sure that your group numbers are monotonic increasing (e.g. 1, 2, 3, 4, ...)
 -- single-select items and therefore also drive mount items need to have unique identifiers
 constant OPTM_G_ADF0       : integer := 1;   -- mount ADF for df0 (manual CRT/ROM load 0)
@@ -952,14 +956,23 @@ constant OPTM_G_P4SLOW     : integer := 61;  -- A4000 profile: Slow RAM radio No
 constant OPTM_G_P4FAST     : integer := 62;  -- A4000 profile: Zorro II Fast RAM toggle
 constant OPTM_G_P4Z3       : integer := 63;  -- A4000 profile: Zorro III RAM toggle
 constant OPTM_G_P4CART     : integer := 64;  -- A4000 profile: cartridge radio None / HRTmon / Action Replay III
-constant OPTM_G_P1GAYLE    : integer := 65;  -- A500 profile: Gayle IDE controller toggle (Megamiga 0.7)
-constant OPTM_G_P2GAYLE    : integer := 66;  -- A600 profile: Gayle IDE controller toggle
-constant OPTM_G_P3GAYLE    : integer := 67;  -- A1200 profile: Gayle IDE controller toggle
-constant OPTM_G_P4GAYLE    : integer := 68;  -- A4000 profile: Gayle IDE controller toggle (off by default)
+constant OPTM_G_P1HDC      : integer := 65;  -- A500 profile: hard disk controller radio None / Gayle / RIPPLE (a row; was the Gayle toggle)
+constant OPTM_G_P2HDC      : integer := 66;  -- A600 profile: hard disk controller radio None / Gayle / RIPPLE (a row; was the Gayle toggle)
+constant OPTM_G_P3HDC      : integer := 67;  -- A1200 profile: hard disk controller radio None / Gayle / RIPPLE (a row; was the Gayle toggle)
+constant OPTM_G_P4HDC      : integer := 68;  -- A4000 profile: hard disk controller radio None / Gayle / RIPPLE (a row; was the Gayle toggle)
 constant OPTM_G_P1Z3B      : integer := 69;  -- A500 profile: Zorro III RAM (32 MB) toggle (Megamiga 0.7)
 constant OPTM_G_P2Z3B      : integer := 70;  -- A600 profile: Zorro III RAM (32 MB) toggle
 constant OPTM_G_P3Z3B      : integer := 71;  -- A1200 profile: Zorro III RAM (32 MB) toggle
 constant OPTM_G_P4Z3B      : integer := 72;  -- A4000 profile: Zorro III RAM (32 MB) toggle
+constant OPTM_G_P1GFX      : integer := 73;  -- A500 profile: graphics card (RTG, Zorro III) toggle (Megamiga 0.7)
+constant OPTM_G_P2GFX      : integer := 74;  -- A600 profile: graphics card (RTG, Zorro III) toggle (Megamiga 0.7)
+constant OPTM_G_P3GFX      : integer := 75;  -- A1200 profile: graphics card (RTG, Zorro III) toggle (Megamiga 0.7)
+constant OPTM_G_P4GFX      : integer := 76;  -- A4000 profile: graphics card (RTG, Zorro III) toggle (Megamiga 0.7)
+constant OPTM_G_P1NET      : integer := 77;  -- A500 profile: network card (Zorro II) toggle (Megamiga 0.7)
+constant OPTM_G_P2NET      : integer := 78;  -- A600 profile: network card (Zorro II) toggle (Megamiga 0.7)
+constant OPTM_G_P3NET      : integer := 79;  -- A1200 profile: network card (Zorro II) toggle (Megamiga 0.7)
+constant OPTM_G_P4NET      : integer := 80;  -- A4000 profile: network card (Zorro II) toggle (Megamiga 0.7)
+constant OPTM_G_DRVSOUND   : integer := 81;  -- Drive Settings: Virtual Drive Sound radio On / Off (a row); read in HDL (mega65.vhd)
 
 -- Smart dependencies (M2M-UPSTREAM osm-deps): tag a line so that it is only visible
 -- while one of the items of a "mother" group is selected. This is a pure VISIBILITY
@@ -1005,17 +1018,42 @@ end function OPTM_DEP2;
 -- other items only carry their option (" 68020"); a first item without ": " gives a
 -- row without a label line (the Drives row under its headline). Left/right move the
 -- cursor between the options, Return/Space select. Every option stays its own menu
--- item, so the line numbers, the settings file and mega65.vhd do not change. The
--- items of a row group must be consecutive, a row group is a radio group (no
+-- item. The items of a row group must be consecutive, a row group is a radio group (no
 -- OPTM_G_SINGLESEL), and the row must fit inside the frame (OPTM_DX - 2 columns).
 type OPTM_RTYPE is array (natural range <>) of natural;
 constant OPTM_ROWS : OPTM_RTYPE := (
-   OPTM_G_P1CPU, OPTM_G_P1CHIP, OPTM_G_P1SLOW, OPTM_G_P1CART,
-   OPTM_G_P2CPU, OPTM_G_P2CHIP, OPTM_G_P2SLOW, OPTM_G_P2CART,
-   OPTM_G_P3CPU, OPTM_G_P3CHIP, OPTM_G_P3SLOW, OPTM_G_P3CART,
-   OPTM_G_P4CPU, OPTM_G_P4CHIP, OPTM_G_P4SLOW, OPTM_G_P4CART,
-   OPTM_G_DRIVES
+   OPTM_G_P1CPU, OPTM_G_P1CS, OPTM_G_P1HDC, OPTM_G_P1CHIP, OPTM_G_P1SLOW, OPTM_G_P1CART,
+   OPTM_G_P2CPU, OPTM_G_P2CS, OPTM_G_P2HDC, OPTM_G_P2CHIP, OPTM_G_P2SLOW, OPTM_G_P2CART,
+   OPTM_G_P3CPU, OPTM_G_P3CS, OPTM_G_P3HDC, OPTM_G_P3CHIP, OPTM_G_P3SLOW, OPTM_G_P3CART,
+   OPTM_G_P4CPU, OPTM_G_P4CS, OPTM_G_P4HDC, OPTM_G_P4CHIP, OPTM_G_P4SLOW, OPTM_G_P4CART,
+   OPTM_G_DRIVES, OPTM_G_DRVSOUND
 );
+
+-- Greyed out (M2M-UPSTREAM menu-rows): an item of group "grp" whose position in the
+-- group is in the bit mask "items" (bit 0 = the group's first item; single-select: 1)
+-- is drawn dimmed and the cursor skips it unless an item in the bit mask "mask" of the
+-- radio group "mother" is selected (items 0..3). The setting itself is kept; mega65.vhd
+-- ignores it in that state (the HDL rules this mirrors are in prof_decode).
+type OPTM_AREC is record
+   grp, items, mother, mask : natural;
+end record;
+type OPTM_ATYPE is array (natural range <>) of OPTM_AREC;
+constant OPTM_AVAIL : OPTM_ATYPE := (
+   -- the Zorro III boards and the graphics card need a 68020 or 68040
+   (OPTM_G_P1Z3, 1, OPTM_G_P1CPU, 6), (OPTM_G_P1Z3B, 1, OPTM_G_P1CPU, 6), (OPTM_G_P1GFX, 1, OPTM_G_P1CPU, 6),
+   (OPTM_G_P2Z3, 1, OPTM_G_P2CPU, 6), (OPTM_G_P2Z3B, 1, OPTM_G_P2CPU, 6), (OPTM_G_P2GFX, 1, OPTM_G_P2CPU, 6),
+   (OPTM_G_P3Z3, 1, OPTM_G_P3CPU, 6), (OPTM_G_P3Z3B, 1, OPTM_G_P3CPU, 6), (OPTM_G_P3GFX, 1, OPTM_G_P3CPU, 6),
+   (OPTM_G_P4Z3, 1, OPTM_G_P4CPU, 6), (OPTM_G_P4Z3B, 1, OPTM_G_P4CPU, 6), (OPTM_G_P4GFX, 1, OPTM_G_P4CPU, 6),
+   -- HRTmon: 68000 and 68020; the Action Replay III: 68000 only
+   (OPTM_G_P1CART, 2, OPTM_G_P1CPU, 3), (OPTM_G_P1CART, 4, OPTM_G_P1CPU, 1),
+   (OPTM_G_P2CART, 2, OPTM_G_P2CPU, 3), (OPTM_G_P2CART, 4, OPTM_G_P2CPU, 1),
+   (OPTM_G_P3CART, 2, OPTM_G_P3CPU, 3), (OPTM_G_P3CART, 4, OPTM_G_P3CPU, 1),
+   (OPTM_G_P4CART, 2, OPTM_G_P4CPU, 3), (OPTM_G_P4CART, 4, OPTM_G_P4CPU, 1)
+);
+
+-- A headline gets a separator line drawn below it (M2M-UPSTREAM menu-rows): the
+-- separator is no menu item of its own, which saves an item per headline.
+constant OPTM_HEADLINE_LINE : boolean := true;
 
 -- !!! DO NOT TOUCH !!!
 type OPTM_GTYPE is array (0 to OPTM_SIZE - 1) of integer range 0 to 2**OPTM_GTC- 1;
@@ -1027,255 +1065,292 @@ type OPTM_GTYPE is array (0 to OPTM_SIZE - 1) of integer range 0 to 2**OPTM_GTC-
 -- mount/hardware twin pairs at 2..7, Drive Settings submenu at 8..34. Only the
 -- VISIBILITY of the twins follows the drive modes (OPTM_DEP), and only the
 -- status text of the hardware lines is firmware-rewritten in place.
-constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,                            --   0: Headline "Megamiga"
-                                              OPTM_G_LINE,                                              --   1: Line
-                                              OPTM_G_ADF0 + OPTM_G_LOAD_ROM + OPTM_G_START + OPTM_DEP(OPTM_G_DF0MODE, 0),--   2: mount ADF into df0; cursor start
-                                              OPTM_G_TEXT + OPTM_DEP(OPTM_G_DF0MODE, 1),                --   3: Text: df0 is the hardware drive
-                                              OPTM_G_ADF1 + OPTM_G_LOAD_ROM + OPTM_DEP(OPTM_G_DF1MODE, 0),--   4: mount ADF into df1
-                                              OPTM_G_TEXT + OPTM_DEP(OPTM_G_DF1MODE, 1),                --   5: Text: df1 is the hardware drive
-                                              OPTM_G_ADF2 + OPTM_G_LOAD_ROM + OPTM_DEP(OPTM_G_DF2MODE, 0),--   6: mount ADF into df2
-                                              OPTM_G_TEXT + OPTM_DEP(OPTM_G_DF2MODE, 1),                --   7: Text: df2 is the hardware drive
-                                              OPTM_G_SHARE + OPTM_G_SINGLESEL,                         --   8: Shared folder SDCard: mounted (toggle, default OFF)
-                                              OPTM_G_LINE,                                              --   9: Line
-                                              OPTM_G_PROFILE + OPTM_G_STDSEL,                           --  10: Profile radio: A500 OCS (default)
-                                              OPTM_G_PROFILE,                                           --  11: Profile radio: A600 ECS
-                                              OPTM_G_PROFILE,                                           --  12: Profile radio: A1200 AGA
-                                              OPTM_G_PROFILE,                                           --  13: Profile radio: A4000 AGA
-                                              OPTM_G_LINE,                                              --  14: Line
-                                              OPTM_G_SUBMENU,                                           --  15: Profile Settings submenu head
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            --  16: Headline "Profile Settings"
-                                              OPTM_G_LINE,                                              --  17: Line
-                                              OPTM_G_HDF + OPTM_G_LOAD_ROM,                             --  18: HDF master (unit 0) into the IDE board (manual CRT/ROM load 3)
-                                              OPTM_G_HDF1 + OPTM_G_LOAD_ROM,                            --  19: HDF slave (unit 1) into the IDE board (manual CRT/ROM load 4)
-                                              OPTM_G_KICK + OPTM_G_LOAD_ROM,                            --  20: Kickstart (manual CRT/ROM load 5)
-                                              OPTM_G_AR3ROM + OPTM_G_LOAD_ROM,                          --  21: Action Replay III ROM (manual CRT/ROM load 6)
-                                              OPTM_G_LINE,                                              --  22: Line
-                                              OPTM_G_P1CPU + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  23: A500: CPU 68000
-                                              OPTM_G_P1CPU + OPTM_DEP(OPTM_G_PROFILE, 0),               --  24: A500: CPU 68020
-                                              OPTM_G_P1CPU + OPTM_DEP(OPTM_G_PROFILE, 0),               --  25: A500: CPU 68040
-                                              OPTM_G_P1CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  26: A500: chipset OCS
-                                              OPTM_G_P1CS + OPTM_DEP(OPTM_G_PROFILE, 0),                --  27: A500: chipset ECS
-                                              OPTM_G_P1CS + OPTM_DEP(OPTM_G_PROFILE, 0),                --  28: A500: chipset AGA
-                                              OPTM_G_P1GAYLE + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  29: A500: Gayle IDE toggle
-                                              OPTM_G_P1CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  30: A500: chip RAM 512 KB
-                                              OPTM_G_P1CHIP + OPTM_DEP(OPTM_G_PROFILE, 0),              --  31: A500: chip RAM 1 MB
-                                              OPTM_G_P1CHIP + OPTM_DEP(OPTM_G_PROFILE, 0),              --  32: A500: chip RAM 2 MB
-                                              OPTM_G_P1SLOW + OPTM_DEP(OPTM_G_PROFILE, 0),              --  33: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
-                                              OPTM_G_P1SLOW + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  34: Slow RAM 512 KB (menu-rows: was a toggle)
-                                              OPTM_G_P1FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  35: A500: Zorro II Fast RAM toggle
-                                              OPTM_G_P1Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  36: A500: Zorro III RAM toggle (68020)
-                                              OPTM_G_P1Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  37: A500: Zorro III RAM (32 MB) toggle (68020)
-                                              OPTM_G_P1CART + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  38: A500: no cartridge
-                                              OPTM_G_P1CART + OPTM_DEP(OPTM_G_PROFILE, 0),              --  39: A500: HRTmon cartridge
-                                              OPTM_G_P1CART + OPTM_DEP(OPTM_G_PROFILE, 0),              --  40: A500: Action Replay III cartridge
-                                              OPTM_G_P2CPU + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  41: A600: CPU 68000
-                                              OPTM_G_P2CPU + OPTM_DEP(OPTM_G_PROFILE, 1),               --  42: A600: CPU 68020
-                                              OPTM_G_P2CPU + OPTM_DEP(OPTM_G_PROFILE, 1),               --  43: A600: CPU 68040
-                                              OPTM_G_P2CS + OPTM_DEP(OPTM_G_PROFILE, 1),                --  44: A600: chipset OCS
-                                              OPTM_G_P2CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  45: A600: chipset ECS
-                                              OPTM_G_P2CS + OPTM_DEP(OPTM_G_PROFILE, 1),                --  46: A600: chipset AGA
-                                              OPTM_G_P2GAYLE + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  47: A600: Gayle IDE toggle
-                                              OPTM_G_P2CHIP + OPTM_DEP(OPTM_G_PROFILE, 1),              --  48: A600: chip RAM 512 KB
-                                              OPTM_G_P2CHIP + OPTM_DEP(OPTM_G_PROFILE, 1),              --  49: A600: chip RAM 1 MB
-                                              OPTM_G_P2CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  50: A600: chip RAM 2 MB
-                                              OPTM_G_P2SLOW + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  51: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
-                                              OPTM_G_P2SLOW + OPTM_DEP(OPTM_G_PROFILE, 1),              --  52: Slow RAM 512 KB (menu-rows: was a toggle)
-                                              OPTM_G_P2FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  53: A600: Zorro II Fast RAM toggle
-                                              OPTM_G_P2Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  54: A600: Zorro III RAM toggle (68020)
-                                              OPTM_G_P2Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  55: A600: Zorro III RAM (32 MB) toggle (68020)
-                                              OPTM_G_P2CART + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  56: A600: no cartridge
-                                              OPTM_G_P2CART + OPTM_DEP(OPTM_G_PROFILE, 1),              --  57: A600: HRTmon cartridge
-                                              OPTM_G_P2CART + OPTM_DEP(OPTM_G_PROFILE, 1),              --  58: A600: Action Replay III cartridge
-                                              OPTM_G_P3CPU + OPTM_DEP(OPTM_G_PROFILE, 2),               --  59: A1200: CPU 68000
-                                              OPTM_G_P3CPU + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  60: A1200: CPU 68020
-                                              OPTM_G_P3CPU + OPTM_DEP(OPTM_G_PROFILE, 2),               --  61: A1200: CPU 68040
-                                              OPTM_G_P3CS + OPTM_DEP(OPTM_G_PROFILE, 2),                --  62: A1200: chipset OCS
-                                              OPTM_G_P3CS + OPTM_DEP(OPTM_G_PROFILE, 2),                --  63: A1200: chipset ECS
-                                              OPTM_G_P3CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  64: A1200: chipset AGA
-                                              OPTM_G_P3GAYLE + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  65: A1200: Gayle IDE toggle
-                                              OPTM_G_P3CHIP + OPTM_DEP(OPTM_G_PROFILE, 2),              --  66: A1200: chip RAM 512 KB
-                                              OPTM_G_P3CHIP + OPTM_DEP(OPTM_G_PROFILE, 2),              --  67: A1200: chip RAM 1 MB
-                                              OPTM_G_P3CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  68: A1200: chip RAM 2 MB
-                                              OPTM_G_P3SLOW + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  69: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
-                                              OPTM_G_P3SLOW + OPTM_DEP(OPTM_G_PROFILE, 2),              --  70: Slow RAM 512 KB (menu-rows: was a toggle)
-                                              OPTM_G_P3FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  71: A1200: Zorro II Fast RAM toggle
-                                              OPTM_G_P3Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  72: A1200: Zorro III RAM toggle (68020)
-                                              OPTM_G_P3Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  73: A1200: Zorro III RAM (32 MB) toggle (68020)
-                                              OPTM_G_P3CART + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  74: A1200: no cartridge
-                                              OPTM_G_P3CART + OPTM_DEP(OPTM_G_PROFILE, 2),              --  75: A1200: HRTmon cartridge
-                                              OPTM_G_P3CART + OPTM_DEP(OPTM_G_PROFILE, 2),              --  76: A1200: Action Replay III cartridge
-                                              OPTM_G_P4CPU + OPTM_DEP(OPTM_G_PROFILE, 3),                 --  77: A4000: CPU 68000
-                                              OPTM_G_P4CPU + OPTM_DEP(OPTM_G_PROFILE, 3),                 --  78: A4000: CPU 68020
-                                              OPTM_G_P4CPU + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3), --  79: A4000: CPU 68040
-                                              OPTM_G_P4CS + OPTM_DEP(OPTM_G_PROFILE, 3),                  --  80: A4000: chipset OCS
-                                              OPTM_G_P4CS + OPTM_DEP(OPTM_G_PROFILE, 3),                  --  81: A4000: chipset ECS
-                                              OPTM_G_P4CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3),  --  82: A4000: chipset AGA
-                                              OPTM_G_P4GAYLE + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  83: A4000: Gayle IDE toggle
-                                              OPTM_G_P4CHIP + OPTM_DEP(OPTM_G_PROFILE, 3),                --  84: A4000: chip RAM 512 KB
-                                              OPTM_G_P4CHIP + OPTM_DEP(OPTM_G_PROFILE, 3),                --  85: A4000: chip RAM 1 MB
-                                              OPTM_G_P4CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  86: A4000: chip RAM 2 MB
-                                              OPTM_G_P4SLOW + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  87: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
-                                              OPTM_G_P4SLOW + OPTM_DEP(OPTM_G_PROFILE, 3),              --  88: Slow RAM 512 KB (menu-rows: was a toggle)
-                                              OPTM_G_P4FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  89: A4000: Zorro II Fast RAM toggle
-                                              OPTM_G_P4Z3 + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  90: A4000: Zorro III RAM toggle (68020)
-                                              OPTM_G_P4Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  91: A4000: Zorro III RAM (32 MB) toggle (68020)
-                                              OPTM_G_P4CART + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  92: A4000: no cartridge
-                                              OPTM_G_P4CART + OPTM_DEP(OPTM_G_PROFILE, 3),                --  93: A4000: HRTmon cartridge
-                                              OPTM_G_P4CART + OPTM_DEP(OPTM_G_PROFILE, 3),                --  94: A4000: Action Replay III cartridge
-                                              OPTM_G_LINE,                                              --  95: Line
-                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                            --  96: Close Profile Settings
-                                              OPTM_G_SUBMENU,                                           --  97: Drive Settings submenu head
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            --  98: Headline "Drive Settings"
-                                              OPTM_G_LINE,                                              --  99: Line
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 100: Headline "Drives"
-                                              OPTM_G_LINE,                                              -- 101: Line
-                                              OPTM_G_DRIVES + OPTM_G_STDSEL,                            -- 102: 1 (default)
-                                              OPTM_G_DRIVES,                                            -- 103: 2
-                                              OPTM_G_DRIVES,                                            -- 104: 3
-                                              OPTM_G_LINE,                                              -- 105: Line
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 106: Headline "Drive df0"
-                                              OPTM_G_LINE,                                              -- 107: Line
-                                              OPTM_G_DF0MODE + OPTM_G_STDSEL,                           -- 108: df0 Disk Image (default)
-                                              OPTM_G_DF0MODE,                                           -- 109: df0 Hardware Floppy
-                                              OPTM_G_LINE,                                              -- 110: Line
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 111: Headline "Drive df1"
-                                              OPTM_G_LINE,                                              -- 112: Line
-                                              OPTM_G_DF1MODE + OPTM_DEP2(OPTM_G_DRIVES, 1, 2),          -- 113: df1 Disk Image
-                                              OPTM_G_DF1MODE + OPTM_DEP2(OPTM_G_DRIVES, 1, 2),          -- 114: df1 Hardware Floppy
-                                              OPTM_G_DF1MODE + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_DRIVES, 0),-- 115: df1 Off (only while Drives = 1; default)
-                                              OPTM_G_LINE,                                              -- 116: Line
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 117: Headline "Drive df2"
-                                              OPTM_G_LINE,                                              -- 118: Line
-                                              OPTM_G_DF2MODE + OPTM_DEP(OPTM_G_DRIVES, 2),              -- 119: df2 Disk Image
-                                              OPTM_G_DF2MODE + OPTM_DEP(OPTM_G_DRIVES, 2),              -- 120: df2 Hardware Floppy
-                                              OPTM_G_DF2MODE + OPTM_G_STDSEL + OPTM_DEP2(OPTM_G_DRIVES, 0, 1),-- 121: df2 Off (while Drives = 1 or 2; default)
-                                              OPTM_G_LINE,                                              -- 122: Line
-                                              OPTM_G_SPINUP + OPTM_G_SINGLESEL,                         -- 123: Drive spin-up delay (single-select, default OFF)
-                                              OPTM_G_LINE,                                              -- 124: Line
-                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                            -- 125: Close submenu / back to main menu
-                                              OPTM_G_SUBMENU,                                           -- 126: Settings submenu head (Display / Audio / Keyboard)
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 127: Headline "Settings"
-                                              OPTM_G_LINE,                                              -- 128: Line
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 129: Headline "Display"
-                                              OPTM_G_LINE,                                              -- 130: Line
-                                              OPTM_G_SUBMENU,                                           -- 131: HDMI submenu block: "HDMI: %s"
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 132: Headline "HDMI Settings"
-                                              OPTM_G_LINE,                                              -- 133: Line
-                                              OPTM_G_HDMI + OPTM_G_STDSEL,                              -- 134: 720p 50 Hz 16:9, default
-                                              OPTM_G_HDMI,                                              -- 135: 576p 50 Hz 4:3
-                                              OPTM_G_HDMI,                                              -- 136: 576p 50 Hz 5:4
-                                              OPTM_G_LINE,                                              -- 137: Line
-                                              OPTM_G_HDMIDVI + OPTM_G_SINGLESEL,                        -- 138: DVI (no sound) (single-select, default OFF)
-                                              OPTM_G_RTGNATIVE + OPTM_G_SINGLESEL + OPTM_G_STDSEL,      -- 139: RTG native resolution (single-select, default ON; was a Line)
-                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                            -- 140: Close submenu / back to Settings
-                                              OPTM_G_SUBMENU,                                           -- 141: HDMI Filter submenu block: "HDMI: %s"
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 142: Headline "HDMI Filter"
-                                              OPTM_G_LINE,                                              -- 143: Line
-                                              OPTM_G_FILTER,                                            -- 144: No Filter
-                                              OPTM_G_FILTER,                                            -- 145: Sharp Bilinear
-                                              OPTM_G_FILTER,                                            -- 146: Bicubic
-                                              OPTM_G_FILTER,                                            -- 147: Smooth
-                                              OPTM_G_FILTER + OPTM_G_STDSEL,                            -- 148: Lanczos (default)
-                                              OPTM_G_FILTER,                                            -- 149: Scanlines
-                                              OPTM_G_FILTER,                                            -- 150: CRT (S-Video)
-                                              OPTM_G_FILTER,                                            -- 151: CRT (Composite)
-                                              OPTM_G_LINE,                                              -- 152: Line
-                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                            -- 153: Close submenu / back to Settings
-                                              OPTM_G_HDMIFF + OPTM_G_SINGLESEL + OPTM_G_STDSEL,         -- 154: HDMI: Flicker-free (single-select, default ON)
-                                              OPTM_G_SUBMENU,                                           -- 155: VGA submenu block: "VGA: %s"
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 156: Headline "VGA Display Mode"
-                                              OPTM_G_LINE,                                              -- 157: Line
-                                              OPTM_G_VGA + OPTM_G_STDSEL,                               -- 158: Standard (default)
-                                              OPTM_G_LINE,                                              -- 159: Line
-                                              OPTM_G_TEXT,                                              -- 160: Text "Retro 15 kHz mode"
-                                              OPTM_G_LINE,                                              -- 161: Line
-                                              OPTM_G_VGA,                                               -- 162: 15 kHz with HS/VS
-                                              OPTM_G_VGA,                                               -- 163: 15 kHz with CSYNC
-                                              OPTM_G_LINE,                                              -- 164: Line
-                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                            -- 165: Close submenu / back to Settings
-                                              OPTM_G_SCRRELOAD + OPTM_G_SINGLESEL,                      -- 166: Reload screen cfg (momentary action)
-                                              OPTM_G_SUBMENU,                                           -- 167: OSM Scaling submenu block: "OSM: %s"
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 168: Headline "OSM Scaling"
-                                              OPTM_G_LINE,                                              -- 169: Line
-                                              OPTM_G_OSM_MODE + OPTM_G_STDSEL,                          -- 170: 100% (default)
-                                              OPTM_G_OSM_MODE,                                          -- 171: 94%
-                                              OPTM_G_OSM_MODE,                                          -- 172: 88%
-                                              OPTM_G_OSM_MODE,                                          -- 173: 81%
-                                              OPTM_G_OSM_MODE,                                          -- 174: 75%
-                                              OPTM_G_OSM_MODE,                                          -- 175: 69%
-                                              OPTM_G_OSM_MODE,                                          -- 176: 63%
-                                              OPTM_G_OSM_MODE,                                          -- 177: 56%
-                                              OPTM_G_OSM_MODE,                                          -- 178: 50%
-                                              OPTM_G_LINE,                                              -- 179: Line
-                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                            -- 180: Close submenu / back to Settings
-                                              OPTM_G_LINE,                                              -- 181: Line
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 182: Headline "Audio"
-                                              OPTM_G_LINE,                                              -- 183: Line
-                                              OPTM_G_SUBMENU,                                           -- 184: Volume submenu block: "Volume: %s"
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 185: Headline "Volume Control"
-                                              OPTM_G_LINE,                                              -- 186: Line
-                                              OPTM_G_VOLUME + OPTM_G_STDSEL,                            -- 187: 100% (default)
-                                              OPTM_G_VOLUME,                                            -- 188: 95%
-                                              OPTM_G_VOLUME,                                            -- 189: 90%
-                                              OPTM_G_VOLUME,                                            -- 190: 85%
-                                              OPTM_G_VOLUME,                                            -- 191: 80%
-                                              OPTM_G_VOLUME,                                            -- 192: 75%
-                                              OPTM_G_VOLUME,                                            -- 193: 70%
-                                              OPTM_G_VOLUME,                                            -- 194: 65%
-                                              OPTM_G_VOLUME,                                            -- 195: 60%
-                                              OPTM_G_VOLUME,                                            -- 196: 55%
-                                              OPTM_G_VOLUME,                                            -- 197: 50%
-                                              OPTM_G_VOLUME,                                            -- 198: 45%
-                                              OPTM_G_VOLUME,                                            -- 199: 40%
-                                              OPTM_G_VOLUME,                                            -- 200: 35%
-                                              OPTM_G_VOLUME,                                            -- 201: 30%
-                                              OPTM_G_VOLUME,                                            -- 202: 25%
-                                              OPTM_G_VOLUME,                                            -- 203: 20%
-                                              OPTM_G_VOLUME,                                            -- 204: 15%
-                                              OPTM_G_VOLUME,                                            -- 205: 10%
-                                              OPTM_G_VOLUME,                                            -- 206: 5%
-                                              OPTM_G_VOLUME,                                            -- 207: 0% (mute)
-                                              OPTM_G_LINE,                                              -- 208: Line
-                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                            -- 209: Close submenu / back to Settings
-                                              OPTM_G_SUBMENU,                                           -- 210: Stereo Mix submenu block: "Stereo: %s"
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 211: Headline "Stereo Mix"
-                                              OPTM_G_LINE,                                              -- 212: Line
-                                              OPTM_G_STEREO + OPTM_G_STDSEL,                            -- 213: Full Stereo (default)
-                                              OPTM_G_STEREO,                                            -- 214: Wide Stereo
-                                              OPTM_G_STEREO,                                            -- 215: Narrow Stereo
-                                              OPTM_G_STEREO,                                            -- 216: Mono
-                                              OPTM_G_LINE,                                              -- 217: Line
-                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                            -- 218: Close submenu / back to Settings
-                                              OPTM_G_A500FILT + OPTM_G_SINGLESEL + OPTM_G_STDSEL,       -- 219: A500 Filter (single-select, default ON)
-                                              OPTM_G_LEDFILT + OPTM_G_SINGLESEL + OPTM_G_STDSEL,        -- 220: LED Filter (single-select, default ON)
-                                              OPTM_G_LINE,                                              -- 221: Line
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 222: Headline "Keyboard"
-                                              OPTM_G_LINE,                                              -- 223: Line
-                                              OPTM_G_KBD,                                               -- 224: Amiga (pure positional)
-                                              OPTM_G_KBD + OPTM_G_STDSEL,                               -- 225: MEGA65 (semantic; default)
-                                              OPTM_G_SUBMENU,                                           -- 226: OSM-open key submenu block: "OSM: %s"
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 227: Headline "Key to open the menu"
-                                              OPTM_G_LINE,                                              -- 228: Line
-                                              OPTM_G_OSMKEY + OPTM_G_STDSEL,                            -- 229: Help (default opener)
-                                              OPTM_G_OSMKEY,                                            -- 230: F11
-                                              OPTM_G_OSMKEY,                                            -- 231: F13
-                                              OPTM_G_OSMKEY,                                            -- 232: MEGA + Run/Stop
-                                              OPTM_G_LINE,                                              -- 233: Line
-                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                            -- 234: Close submenu / back to Settings
-                                              OPTM_G_LINE,                                              -- 235: Line
-                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                            -- 236: Headline "Ports"
-                                              OPTM_G_LINE,                                              -- 237: Line
-                                              OPTM_G_SERIAL + OPTM_G_SINGLESEL,                         -- 238: Serial port on PMOD1 (single-select, default OFF)
-                                              OPTM_G_LINE,                                              -- 239: Line
-                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                            -- 240: Close Settings
-                                              OPTM_G_LINE,                                              -- 241: Line
-                                              OPTM_G_FREEZE + OPTM_G_SINGLESEL,                         -- 242: Freeze: the cartridge button (momentary)
-                                              OPTM_G_LINE,                                              -- 243: Line
-                                              OPTM_G_About + OPTM_G_HELP,                               -- 244: About & Help (WHS(1))
-                                              OPTM_G_CLOSE,                                             -- 245: Close Menu
-                                              OPTM_G_LINE,                                              -- 246: Line
-                                              OPTM_G_TEXT                                               -- 247: Text: empty (the SD card status is painted on the bottom row)
+constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE, --   0: Headline "Megamiga"
+                                              OPTM_G_ADF0 + OPTM_G_LOAD_ROM + OPTM_G_START + OPTM_DEP(OPTM_G_DF0MODE, 0), --   1: mount ADF into df0; cursor start
+                                              OPTM_G_TEXT + OPTM_DEP(OPTM_G_DF0MODE, 1),               --   2: Text: df0 is the hardware drive
+                                              OPTM_G_ADF1 + OPTM_G_LOAD_ROM + OPTM_DEP(OPTM_G_DF1MODE, 0), --   3: mount ADF into df1
+                                              OPTM_G_TEXT + OPTM_DEP(OPTM_G_DF1MODE, 1),               --   4: Text: df1 is the hardware drive
+                                              OPTM_G_ADF2 + OPTM_G_LOAD_ROM + OPTM_DEP(OPTM_G_DF2MODE, 0), --   5: mount ADF into df2
+                                              OPTM_G_TEXT + OPTM_DEP(OPTM_G_DF2MODE, 1),               --   6: Text: df2 is the hardware drive
+                                              OPTM_G_SHARE + OPTM_G_SINGLESEL,                         --   7: Shared folder SDCard: mounted (toggle, default OFF)
+                                              OPTM_G_LINE,                                             --   8: Line
+                                              OPTM_G_PROFILE + OPTM_G_STDSEL,                          --   9: Profile radio: A500 OCS (default)
+                                              OPTM_G_PROFILE,                                          --  10: Profile radio: A600 ECS
+                                              OPTM_G_PROFILE,                                          --  11: Profile radio: A1200 AGA
+                                              OPTM_G_PROFILE,                                          --  12: Profile radio: A4000 AGA
+                                              OPTM_G_LINE,                                             --  13: Line
+                                              OPTM_G_SUBMENU,                                          --  14: Profile Settings submenu head
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           --  15: Headline "Profile Settings"
+                                              OPTM_G_HDF + OPTM_G_LOAD_ROM,                            --  16: HDF master (unit 0) into the IDE board (manual CRT/ROM load 3)
+                                              OPTM_G_HDF1 + OPTM_G_LOAD_ROM,                           --  17: HDF slave (unit 1) into the IDE board (manual CRT/ROM load 4)
+                                              OPTM_G_KICK + OPTM_G_LOAD_ROM,                           --  18: Kickstart (manual CRT/ROM load 5)
+                                              OPTM_G_AR3ROM + OPTM_G_LOAD_ROM,                         --  19: Action Replay III ROM (manual CRT/ROM load 6)
+                                              OPTM_G_LINE,                                             --  20: Line
+                                              OPTM_G_P1CPU + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0), --  21: A500: CPU 68000 (row "CPU")
+                                              OPTM_G_P1CPU + OPTM_DEP(OPTM_G_PROFILE, 0),              --  22: A500: CPU 68020
+                                              OPTM_G_P1CPU + OPTM_DEP(OPTM_G_PROFILE, 0),              --  23: A500: CPU 68040
+                                              OPTM_G_P1CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0), --  24: A500: chipset OCS (row "Chipset")
+                                              OPTM_G_P1CS + OPTM_DEP(OPTM_G_PROFILE, 0),               --  25: A500: chipset ECS
+                                              OPTM_G_P1CS + OPTM_DEP(OPTM_G_PROFILE, 0),               --  26: A500: chipset AGA
+                                              OPTM_G_P1HDC + OPTM_DEP(OPTM_G_PROFILE, 0),              --  27: A500: no hard disk controller (row "Hard Disk Controller")
+                                              OPTM_G_P1HDC + OPTM_DEP(OPTM_G_PROFILE, 0),              --  28: A500: the HDFs on the A600/A1200 Gayle IDE
+                                              OPTM_G_P1HDC + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0), --  29: A500: the HDFs on the RIPPLE-compatible Zorro II IDE board (lide.device)
+                                              OPTM_G_P1CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0), --  30: A500: chip RAM 512 KB (row "Chip RAM")
+                                              OPTM_G_P1CHIP + OPTM_DEP(OPTM_G_PROFILE, 0),             --  31: A500: chip RAM 1 MB
+                                              OPTM_G_P1CHIP + OPTM_DEP(OPTM_G_PROFILE, 0),             --  32: A500: chip RAM 2 MB
+                                              OPTM_G_P1SLOW + OPTM_DEP(OPTM_G_PROFILE, 0),             --  33: A500: no Slow RAM (row "Slow RAM")
+                                              OPTM_G_P1SLOW + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0), --  34: A500: Slow RAM 512 KB
+                                              OPTM_G_P1CART + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0), --  35: A500: no cartridge (row "Monitor Cartridge")
+                                              OPTM_G_P1CART + OPTM_DEP(OPTM_G_PROFILE, 0),             --  36: A500: HRTmon cartridge (not with the 68040: greyed out)
+                                              OPTM_G_P1CART + OPTM_DEP(OPTM_G_PROFILE, 0),             --  37: A500: Action Replay III cartridge (68000 only: greyed out)
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE + OPTM_DEP(OPTM_G_PROFILE, 0), --  38: A500: Headline "Zorro Boards"
+                                              OPTM_G_P1FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0), --  39: A500: Zorro II Fast RAM (8 MB) toggle
+                                              OPTM_G_P1Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0), --  40: A500: Zorro III RAM (16 MB) toggle (68020/68040: else greyed out)
+                                              OPTM_G_P1Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0), --  41: A500: Zorro III RAM (32 MB) toggle (68020/68040: else greyed out)
+                                              OPTM_G_P1GFX + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0), --  42: A500: RTG graphics card toggle (68020/68040: else greyed out)
+                                              OPTM_G_P1NET + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0), --  43: A500: network card toggle
+                                              OPTM_G_P2CPU + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1), --  44: A600: CPU 68000 (row "CPU")
+                                              OPTM_G_P2CPU + OPTM_DEP(OPTM_G_PROFILE, 1),              --  45: A600: CPU 68020
+                                              OPTM_G_P2CPU + OPTM_DEP(OPTM_G_PROFILE, 1),              --  46: A600: CPU 68040
+                                              OPTM_G_P2CS + OPTM_DEP(OPTM_G_PROFILE, 1),               --  47: A600: chipset OCS (row "Chipset")
+                                              OPTM_G_P2CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1), --  48: A600: chipset ECS
+                                              OPTM_G_P2CS + OPTM_DEP(OPTM_G_PROFILE, 1),               --  49: A600: chipset AGA
+                                              OPTM_G_P2HDC + OPTM_DEP(OPTM_G_PROFILE, 1),              --  50: A600: no hard disk controller (row "Hard Disk Controller")
+                                              OPTM_G_P2HDC + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1), --  51: A600: the HDFs on the A600/A1200 Gayle IDE
+                                              OPTM_G_P2HDC + OPTM_DEP(OPTM_G_PROFILE, 1),              --  52: A600: the HDFs on the RIPPLE-compatible Zorro II IDE board (lide.device)
+                                              OPTM_G_P2CHIP + OPTM_DEP(OPTM_G_PROFILE, 1),             --  53: A600: chip RAM 512 KB (row "Chip RAM")
+                                              OPTM_G_P2CHIP + OPTM_DEP(OPTM_G_PROFILE, 1),             --  54: A600: chip RAM 1 MB
+                                              OPTM_G_P2CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1), --  55: A600: chip RAM 2 MB
+                                              OPTM_G_P2SLOW + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1), --  56: A600: no Slow RAM (row "Slow RAM")
+                                              OPTM_G_P2SLOW + OPTM_DEP(OPTM_G_PROFILE, 1),             --  57: A600: Slow RAM 512 KB
+                                              OPTM_G_P2CART + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1), --  58: A600: no cartridge (row "Monitor Cartridge")
+                                              OPTM_G_P2CART + OPTM_DEP(OPTM_G_PROFILE, 1),             --  59: A600: HRTmon cartridge (not with the 68040: greyed out)
+                                              OPTM_G_P2CART + OPTM_DEP(OPTM_G_PROFILE, 1),             --  60: A600: Action Replay III cartridge (68000 only: greyed out)
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE + OPTM_DEP(OPTM_G_PROFILE, 1), --  61: A600: Headline "Zorro Boards"
+                                              OPTM_G_P2FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1), --  62: A600: Zorro II Fast RAM (8 MB) toggle
+                                              OPTM_G_P2Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1), --  63: A600: Zorro III RAM (16 MB) toggle (68020/68040: else greyed out)
+                                              OPTM_G_P2Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1), --  64: A600: Zorro III RAM (32 MB) toggle (68020/68040: else greyed out)
+                                              OPTM_G_P2GFX + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1), --  65: A600: RTG graphics card toggle (68020/68040: else greyed out)
+                                              OPTM_G_P2NET + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1), --  66: A600: network card toggle
+                                              OPTM_G_P3CPU + OPTM_DEP(OPTM_G_PROFILE, 2),              --  67: A1200: CPU 68000 (row "CPU")
+                                              OPTM_G_P3CPU + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2), --  68: A1200: CPU 68020
+                                              OPTM_G_P3CPU + OPTM_DEP(OPTM_G_PROFILE, 2),              --  69: A1200: CPU 68040
+                                              OPTM_G_P3CS + OPTM_DEP(OPTM_G_PROFILE, 2),               --  70: A1200: chipset OCS (row "Chipset")
+                                              OPTM_G_P3CS + OPTM_DEP(OPTM_G_PROFILE, 2),               --  71: A1200: chipset ECS
+                                              OPTM_G_P3CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2), --  72: A1200: chipset AGA
+                                              OPTM_G_P3HDC + OPTM_DEP(OPTM_G_PROFILE, 2),              --  73: A1200: no hard disk controller (row "Hard Disk Controller")
+                                              OPTM_G_P3HDC + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2), --  74: A1200: the HDFs on the A600/A1200 Gayle IDE
+                                              OPTM_G_P3HDC + OPTM_DEP(OPTM_G_PROFILE, 2),              --  75: A1200: the HDFs on the RIPPLE-compatible Zorro II IDE board (lide.device)
+                                              OPTM_G_P3CHIP + OPTM_DEP(OPTM_G_PROFILE, 2),             --  76: A1200: chip RAM 512 KB (row "Chip RAM")
+                                              OPTM_G_P3CHIP + OPTM_DEP(OPTM_G_PROFILE, 2),             --  77: A1200: chip RAM 1 MB
+                                              OPTM_G_P3CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2), --  78: A1200: chip RAM 2 MB
+                                              OPTM_G_P3SLOW + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2), --  79: A1200: no Slow RAM (row "Slow RAM")
+                                              OPTM_G_P3SLOW + OPTM_DEP(OPTM_G_PROFILE, 2),             --  80: A1200: Slow RAM 512 KB
+                                              OPTM_G_P3CART + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2), --  81: A1200: no cartridge (row "Monitor Cartridge")
+                                              OPTM_G_P3CART + OPTM_DEP(OPTM_G_PROFILE, 2),             --  82: A1200: HRTmon cartridge (not with the 68040: greyed out)
+                                              OPTM_G_P3CART + OPTM_DEP(OPTM_G_PROFILE, 2),             --  83: A1200: Action Replay III cartridge (68000 only: greyed out)
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE + OPTM_DEP(OPTM_G_PROFILE, 2), --  84: A1200: Headline "Zorro Boards"
+                                              OPTM_G_P3FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2), --  85: A1200: Zorro II Fast RAM (8 MB) toggle
+                                              OPTM_G_P3Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2), --  86: A1200: Zorro III RAM (16 MB) toggle (68020/68040: else greyed out)
+                                              OPTM_G_P3Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2), --  87: A1200: Zorro III RAM (32 MB) toggle (68020/68040: else greyed out)
+                                              OPTM_G_P3GFX + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2), --  88: A1200: RTG graphics card toggle (68020/68040: else greyed out)
+                                              OPTM_G_P3NET + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2), --  89: A1200: network card toggle
+                                              OPTM_G_P4CPU + OPTM_DEP(OPTM_G_PROFILE, 3),              --  90: A4000: CPU 68000 (row "CPU")
+                                              OPTM_G_P4CPU + OPTM_DEP(OPTM_G_PROFILE, 3),              --  91: A4000: CPU 68020
+                                              OPTM_G_P4CPU + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3), --  92: A4000: CPU 68040
+                                              OPTM_G_P4CS + OPTM_DEP(OPTM_G_PROFILE, 3),               --  93: A4000: chipset OCS (row "Chipset")
+                                              OPTM_G_P4CS + OPTM_DEP(OPTM_G_PROFILE, 3),               --  94: A4000: chipset ECS
+                                              OPTM_G_P4CS + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3), --  95: A4000: chipset AGA
+                                              OPTM_G_P4HDC + OPTM_DEP(OPTM_G_PROFILE, 3),              --  96: A4000: no hard disk controller (row "Hard Disk Controller")
+                                              OPTM_G_P4HDC + OPTM_DEP(OPTM_G_PROFILE, 3),              --  97: A4000: the HDFs on the A600/A1200 Gayle IDE
+                                              OPTM_G_P4HDC + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3), --  98: A4000: the HDFs on the RIPPLE-compatible Zorro II IDE board (lide.device)
+                                              OPTM_G_P4CHIP + OPTM_DEP(OPTM_G_PROFILE, 3),             --  99: A4000: chip RAM 512 KB (row "Chip RAM")
+                                              OPTM_G_P4CHIP + OPTM_DEP(OPTM_G_PROFILE, 3),             -- 100: A4000: chip RAM 1 MB
+                                              OPTM_G_P4CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3), -- 101: A4000: chip RAM 2 MB
+                                              OPTM_G_P4SLOW + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3), -- 102: A4000: no Slow RAM (row "Slow RAM")
+                                              OPTM_G_P4SLOW + OPTM_DEP(OPTM_G_PROFILE, 3),             -- 103: A4000: Slow RAM 512 KB
+                                              OPTM_G_P4CART + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3), -- 104: A4000: no cartridge (row "Monitor Cartridge")
+                                              OPTM_G_P4CART + OPTM_DEP(OPTM_G_PROFILE, 3),             -- 105: A4000: HRTmon cartridge (not with the 68040: greyed out)
+                                              OPTM_G_P4CART + OPTM_DEP(OPTM_G_PROFILE, 3),             -- 106: A4000: Action Replay III cartridge (68000 only: greyed out)
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE + OPTM_DEP(OPTM_G_PROFILE, 3), -- 107: A4000: Headline "Zorro Boards"
+                                              OPTM_G_P4FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 3), -- 108: A4000: Zorro II Fast RAM (8 MB) toggle
+                                              OPTM_G_P4Z3 + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3), -- 109: A4000: Zorro III RAM (16 MB) toggle (68020/68040: else greyed out)
+                                              OPTM_G_P4Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 3), -- 110: A4000: Zorro III RAM (32 MB) toggle (68020/68040: else greyed out)
+                                              OPTM_G_P4GFX + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3), -- 111: A4000: RTG graphics card toggle (68020/68040: else greyed out)
+                                              OPTM_G_P4NET + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3), -- 112: A4000: network card toggle
+                                              OPTM_G_LINE,                                             -- 113: Line
+                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                           -- 114: Close Profile Settings
+                                              OPTM_G_SUBMENU,                                          -- 115: Drive Settings submenu head
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 116: Headline "Drive Settings"
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 117: Headline "Drives"
+                                              OPTM_G_DRIVES + OPTM_G_STDSEL,                           -- 118: 1 (default)
+                                              OPTM_G_DRIVES,                                           -- 119: 2
+                                              OPTM_G_DRIVES,                                           -- 120: 3
+                                              OPTM_G_LINE,                                             -- 121: Line
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 122: Headline "Drive df0"
+                                              OPTM_G_DF0MODE + OPTM_G_STDSEL,                          -- 123: df0 Disk Image (default)
+                                              OPTM_G_DF0MODE,                                          -- 124: df0 Hardware Floppy
+                                              OPTM_G_LINE,                                             -- 125: Line
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 126: Headline "Drive df1"
+                                              OPTM_G_DF1MODE + OPTM_DEP2(OPTM_G_DRIVES, 1, 2),         -- 127: df1 Disk Image
+                                              OPTM_G_DF1MODE + OPTM_DEP2(OPTM_G_DRIVES, 1, 2),         -- 128: df1 Hardware Floppy
+                                              OPTM_G_DF1MODE + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_DRIVES, 0), -- 129: df1 Off (only while Drives = 1; default)
+                                              OPTM_G_LINE,                                             -- 130: Line
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 131: Headline "Drive df2"
+                                              OPTM_G_DF2MODE + OPTM_DEP(OPTM_G_DRIVES, 2),             -- 132: df2 Disk Image
+                                              OPTM_G_DF2MODE + OPTM_DEP(OPTM_G_DRIVES, 2),             -- 133: df2 Hardware Floppy
+                                              OPTM_G_DF2MODE + OPTM_G_STDSEL + OPTM_DEP2(OPTM_G_DRIVES, 0, 1), -- 134: df2 Off (while Drives = 1 or 2; default)
+                                              OPTM_G_LINE,                                             -- 135: Line
+                                              OPTM_G_SPINUP + OPTM_G_SINGLESEL,                        -- 136: Drive spin-up delay (single-select, default OFF)
+                                              OPTM_G_DRVSOUND + OPTM_G_STDSEL,                         -- 137: Virtual Drive Sound: On (row; the internal drive sounds the disk image drives, default)
+                                              OPTM_G_DRVSOUND,                                         -- 138: Virtual Drive Sound: Noclick (only with a motor on: no click of an empty drive)
+                                              OPTM_G_DRVSOUND,                                         -- 139: Virtual Drive Sound: Off
+                                              OPTM_G_LINE,                                             -- 140: Line
+                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                           -- 141: Close submenu / back to main menu
+                                              OPTM_G_SUBMENU,                                          -- 142: Settings submenu head (Display / Audio / Keyboard)
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 143: Headline "Settings"
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 144: Headline "Display"
+                                              OPTM_G_SUBMENU,                                          -- 145: HDMI submenu block: "HDMI: %s"
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 146: Headline "HDMI Settings"
+                                              OPTM_G_HDMI + OPTM_G_STDSEL,                             -- 147: 720p 50 Hz 16:9, default
+                                              OPTM_G_HDMI,                                             -- 148: 576p 50 Hz 4:3
+                                              OPTM_G_HDMI,                                             -- 149: 576p 50 Hz 5:4
+                                              OPTM_G_LINE,                                             -- 150: Line
+                                              OPTM_G_HDMIDVI + OPTM_G_SINGLESEL,                       -- 151: DVI (no sound) (single-select, default OFF)
+                                              OPTM_G_RTGNATIVE + OPTM_G_SINGLESEL + OPTM_G_STDSEL,     -- 152: RTG native resolution (single-select, default ON; was a Line)
+                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                           -- 153: Close submenu / back to Settings
+                                              OPTM_G_SUBMENU,                                          -- 154: HDMI Filter submenu block: "HDMI: %s"
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 155: Headline "HDMI Filter"
+                                              OPTM_G_FILTER,                                           -- 156: No Filter
+                                              OPTM_G_FILTER,                                           -- 157: Sharp Bilinear
+                                              OPTM_G_FILTER,                                           -- 158: Bicubic
+                                              OPTM_G_FILTER,                                           -- 159: Smooth
+                                              OPTM_G_FILTER + OPTM_G_STDSEL,                           -- 160: Lanczos (default)
+                                              OPTM_G_FILTER,                                           -- 161: Scanlines
+                                              OPTM_G_FILTER,                                           -- 162: CRT (S-Video)
+                                              OPTM_G_FILTER,                                           -- 163: CRT (Composite)
+                                              OPTM_G_LINE,                                             -- 164: Line
+                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                           -- 165: Close submenu / back to Settings
+                                              OPTM_G_HDMIFF + OPTM_G_SINGLESEL + OPTM_G_STDSEL,        -- 166: HDMI: Flicker-free (single-select, default ON)
+                                              OPTM_G_SUBMENU,                                          -- 167: VGA submenu block: "VGA: %s"
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 168: Headline "VGA Display Mode"
+                                              OPTM_G_VGA + OPTM_G_STDSEL,                              -- 169: Standard (default)
+                                              OPTM_G_LINE,                                             -- 170: Line
+                                              OPTM_G_TEXT,                                             -- 171: Text "Retro 15 kHz mode"
+                                              OPTM_G_LINE,                                             -- 172: Line
+                                              OPTM_G_VGA,                                              -- 173: 15 kHz with HS/VS
+                                              OPTM_G_VGA,                                              -- 174: 15 kHz with CSYNC
+                                              OPTM_G_LINE,                                             -- 175: Line
+                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                           -- 176: Close submenu / back to Settings
+                                              OPTM_G_SCRRELOAD + OPTM_G_SINGLESEL,                     -- 177: Reload screen cfg (momentary action)
+                                              OPTM_G_SUBMENU,                                          -- 178: OSM Scaling submenu block: "OSM: %s"
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 179: Headline "OSM Scaling"
+                                              OPTM_G_OSM_MODE + OPTM_G_STDSEL,                         -- 180: 100% (default)
+                                              OPTM_G_OSM_MODE,                                         -- 181: 94%
+                                              OPTM_G_OSM_MODE,                                         -- 182: 88%
+                                              OPTM_G_OSM_MODE,                                         -- 183: 81%
+                                              OPTM_G_OSM_MODE,                                         -- 184: 75%
+                                              OPTM_G_OSM_MODE,                                         -- 185: 69%
+                                              OPTM_G_OSM_MODE,                                         -- 186: 63%
+                                              OPTM_G_OSM_MODE,                                         -- 187: 56%
+                                              OPTM_G_OSM_MODE,                                         -- 188: 50%
+                                              OPTM_G_LINE,                                             -- 189: Line
+                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                           -- 190: Close submenu / back to Settings
+                                              OPTM_G_LINE,                                             -- 191: Line
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 192: Headline "Audio"
+                                              OPTM_G_SUBMENU,                                          -- 193: Volume submenu block: "Volume: %s"
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 194: Headline "Volume Control"
+                                              OPTM_G_VOLUME + OPTM_G_STDSEL,                           -- 195: 100% (default)
+                                              OPTM_G_VOLUME,                                           -- 196: 95%
+                                              OPTM_G_VOLUME,                                           -- 197: 90%
+                                              OPTM_G_VOLUME,                                           -- 198: 85%
+                                              OPTM_G_VOLUME,                                           -- 199: 80%
+                                              OPTM_G_VOLUME,                                           -- 200: 75%
+                                              OPTM_G_VOLUME,                                           -- 201: 70%
+                                              OPTM_G_VOLUME,                                           -- 202: 65%
+                                              OPTM_G_VOLUME,                                           -- 203: 60%
+                                              OPTM_G_VOLUME,                                           -- 204: 55%
+                                              OPTM_G_VOLUME,                                           -- 205: 50%
+                                              OPTM_G_VOLUME,                                           -- 206: 45%
+                                              OPTM_G_VOLUME,                                           -- 207: 40%
+                                              OPTM_G_VOLUME,                                           -- 208: 35%
+                                              OPTM_G_VOLUME,                                           -- 209: 30%
+                                              OPTM_G_VOLUME,                                           -- 210: 25%
+                                              OPTM_G_VOLUME,                                           -- 211: 20%
+                                              OPTM_G_VOLUME,                                           -- 212: 15%
+                                              OPTM_G_VOLUME,                                           -- 213: 10%
+                                              OPTM_G_VOLUME,                                           -- 214: 5%
+                                              OPTM_G_VOLUME,                                           -- 215: 0% (mute)
+                                              OPTM_G_LINE,                                             -- 216: Line
+                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                           -- 217: Close submenu / back to Settings
+                                              OPTM_G_SUBMENU,                                          -- 218: Stereo Mix submenu block: "Stereo: %s"
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 219: Headline "Stereo Mix"
+                                              OPTM_G_STEREO + OPTM_G_STDSEL,                           -- 220: Full Stereo (default)
+                                              OPTM_G_STEREO,                                           -- 221: Wide Stereo
+                                              OPTM_G_STEREO,                                           -- 222: Narrow Stereo
+                                              OPTM_G_STEREO,                                           -- 223: Mono
+                                              OPTM_G_LINE,                                             -- 224: Line
+                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                           -- 225: Close submenu / back to Settings
+                                              OPTM_G_A500FILT + OPTM_G_SINGLESEL + OPTM_G_STDSEL,      -- 226: A500 Filter (single-select, default ON)
+                                              OPTM_G_LEDFILT + OPTM_G_SINGLESEL + OPTM_G_STDSEL,       -- 227: LED Filter (single-select, default ON)
+                                              OPTM_G_LINE,                                             -- 228: Line
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 229: Headline "Keyboard"
+                                              OPTM_G_KBD,                                              -- 230: Amiga (pure positional)
+                                              OPTM_G_KBD + OPTM_G_STDSEL,                              -- 231: MEGA65 (semantic; default)
+                                              OPTM_G_SUBMENU,                                          -- 232: OSM-open key submenu block: "OSM: %s"
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 233: Headline "Key to open the menu"
+                                              OPTM_G_OSMKEY + OPTM_G_STDSEL,                           -- 234: Help (default opener)
+                                              OPTM_G_OSMKEY,                                           -- 235: F11
+                                              OPTM_G_OSMKEY,                                           -- 236: F13
+                                              OPTM_G_OSMKEY,                                           -- 237: MEGA + Run/Stop
+                                              OPTM_G_LINE,                                             -- 238: Line
+                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                           -- 239: Close submenu / back to Settings
+                                              OPTM_G_LINE,                                             -- 240: Line
+                                              OPTM_G_TEXT + OPTM_G_HEADLINE,                           -- 241: Headline "Ports"
+                                              OPTM_G_SERIAL + OPTM_G_SINGLESEL,                        -- 242: Serial port on PMOD1 (single-select, default OFF)
+                                              OPTM_G_LINE,                                             -- 243: Line
+                                              OPTM_G_CLOSE + OPTM_G_SUBMENU,                           -- 244: Close Settings
+                                              OPTM_G_LINE,                                             -- 245: Line
+                                              OPTM_G_FREEZE + OPTM_G_SINGLESEL,                        -- 246: Freeze: the cartridge button (momentary)
+                                              OPTM_G_LINE,                                             -- 247: Line
+                                              OPTM_G_About + OPTM_G_HELP,                              -- 248: About & Help (WHS(1))
+                                              OPTM_G_CLOSE,                                            -- 249: Close Menu
+                                              OPTM_G_LINE,                                             -- 250: Line
+                                              OPTM_G_TEXT                                              -- 251: Text: empty (the SD card status is painted on the bottom row)
                                            );
+
+-- M2M-UPSTREAM menu-rows: the layout word of every item (SEL_OPTM_ROWS):
+-- bit 0 = option of a row (OPTM_ROWS), bit 1 = greyed-out rule (OPTM_AVAIL) with
+-- bits 5..2 = mother item mask and bits 13..6 = mother group, bit 14 = separator line
+-- below the item (a headline, OPTM_HEADLINE_LINE)
+type OPTM_LTYPE is array (0 to OPTM_SIZE - 1) of natural;
+function optmLayout return OPTM_LTYPE is
+   type cnt_t is array (0 to 255) of natural;
+   variable cnt : cnt_t := (others => 0);
+   variable r   : OPTM_LTYPE := (others => 0);
+   variable g   : natural;
+begin
+   for i in 0 to OPTM_SIZE - 1 loop
+      g := OPTM_GROUPS(i) mod 256;
+      for k in OPTM_ROWS'range loop
+         if g = OPTM_ROWS(k) then
+            r(i) := r(i) + 1;
+         end if;
+      end loop;
+      for k in OPTM_AVAIL'range loop
+         if g = OPTM_AVAIL(k).grp and (OPTM_AVAIL(k).items / 2 ** cnt(g)) mod 2 = 1 then
+            r(i) := r(i) + 2 + OPTM_AVAIL(k).mask * 4 + OPTM_AVAIL(k).mother * 64;
+         end if;
+      end loop;
+      if OPTM_HEADLINE_LINE and (OPTM_GROUPS(i) / 16#1000#) mod 2 = 1 and g = 0 and
+         (OPTM_GROUPS(i) / 16#4000#) mod 2 = 0 then
+         r(i) := r(i) + 16#4000#;
+      end if;
+      cnt(g) := cnt(g) + 1;
+   end loop;
+   return r;
+end function optmLayout;
+constant OPTM_LAYOUT : OPTM_LTYPE := optmLayout;
 
 --------------------------------------------------------------------------------------------------------------------
 -- !!! CAUTION: M2M FRAMEWORK CODE !!! DO NOT TOUCH ANYTHING BELOW THIS LINE !!!
@@ -1343,18 +1418,6 @@ addr_decode : process(clk_i)
       end case;
    end function getGenConf;
 
-   -- M2M-UPSTREAM menu-rows: '1' when menu item i belongs to a group listed in OPTM_ROWS
-   function optmRow(i : natural) return std_logic is
-   begin
-      if i < OPTM_SIZE then
-         for k in OPTM_ROWS'range loop
-            if OPTM_GROUPS(i) mod 256 = OPTM_ROWS(k) then
-               return '1';
-            end if;
-         end loop;
-      end if;
-      return '0';
-   end function optmRow;
 
    variable index           : integer;
    variable whs_page_index  : integer;
@@ -1433,13 +1496,15 @@ begin
                                                 std_logic_vector(to_unsigned(OPTM_GROUPS(index), OPTM_GTC)(24 downto 17));
                                           end if;
 
-            -- Rows (M2M-UPSTREAM menu-rows): 1 = the item is an option of a row (OPTM_ROWS).
-            -- Index 4095 is the feature probe (x"2D52"); without this arm the firmware reads
-            -- the x"EEEE" pre-assignment and draws every item on a line of its own.
+            -- Rows (M2M-UPSTREAM menu-rows): the layout word of the item (OPTM_LAYOUT). Index
+            -- 4095 is the feature probe (x"2D52"); without this arm the firmware reads the
+            -- x"EEEE" pre-assignment and draws the classic menu.
             when SEL_OPTM_ROWS         => if index = 4095 then
                                              data_o <= x"2D52";
+                                          elsif index < OPTM_SIZE then
+                                             data_o <= std_logic_vector(to_unsigned(OPTM_LAYOUT(index), 16));
                                           else
-                                             data_o <= x"000" & "000" & optmRow(index);
+                                             data_o <= x"0000";
                                           end if;
 
             when others                => null;
