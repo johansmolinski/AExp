@@ -412,7 +412,7 @@ _HLP_CA_1       MOVE    LOG_STR_CFG_ON, R8
                 ; settings file is looked for on the external card first,
                 ; then on the internal one; it is saved back to the card it
                 ; came from (SDC_HOME, see ROSM_INTEGRITY)
-                MOVE    1, R6                   ; R6: slot
+_HLP_CA_SL0     MOVE    1, R6                   ; R6: slot
 _HLP_CA_SL      MOVE    R6, R8
                 RSUB    SDC$MOUNT, 1            ; R8: device, R9: 0 = OK
                 CMP     0, R9                   ; R9=error code; 0=OK
@@ -434,6 +434,8 @@ _HLP_CA_4       MOVE    M2M$RAMROM_DEV, R10     ; (the name in the config
                 RBRA    _HLP_CA_HOME, Z         ; yes
 _HLP_CA_NX      SUB     1, R6                   ; the next card
                 RBRA    _HLP_CA_SL, !N
+                RSUB    _HLP_CREATE, 1          ; M2M-UPSTREAM cfg-create: no
+                RBRA    _HLP_CA_SL0, C          ; file: create one, look again
                 MOVE    M2M$RAMROM_DEV, R10
                 MOVE    M2M$CONFIG, @R10
                 MOVE    M2M$CFG_CFG_FILE, @R0
@@ -756,6 +758,108 @@ _HLP_DEPFAT     MOVE    R0, R9                  ; R9: offending line as err code
 
 _HLP_DEPS_RET   SYSCALL(leave, 1)
                 RET
+
+; ----------------------------------------------------------------------------
+; M2M-UPSTREAM cfg-create
+; _HLP_CREATE: there is no settings file on any card: create CFG_FILE on the
+; first card that mounts (the back card first, like the lookup) in its
+; directory, which has to exist. The file gets OPTM_SIZE bytes, the first one
+; 0xFF ("use the standard selectors"), so the lookup that follows finds it and
+; the menu saves into it from then on. An existing file (FAT32$ERR_EXISTS) or a
+; full card is no error here, just no new file.
+; Output: C=1 a file was created; all registers preserved
+; ----------------------------------------------------------------------------
+
+_HLP_CREATE     SYSCALL(enter, 1)
+
+                MOVE    M2M$RAMROM_DEV, R0      ; the path out of the config
+                MOVE    M2M$CONFIG, @R0         ; window into CFGS_BUF (no
+                MOVE    M2M$RAMROM_4KWIN, R0    ; text is loaded yet)
+                MOVE    M2M$CFG_CFG_FILE, @R0
+                MOVE    M2M$RAMROM_DATA, R8
+                MOVE    CFGS_BUF, R9
+                SYSCALL(strcpy, 1)
+                MOVE    CFGS_BUF, R0            ; R1: the last "/"
+                XOR     R1, R1
+_HLP_CR_1       CMP     0, @R0
+                RBRA    _HLP_CR_2, Z
+                CMP     0x002F, @R0
+                RBRA    _HLP_CR_1A, !Z
+                MOVE    R0, R1
+_HLP_CR_1A      ADD     1, R0
+                RBRA    _HLP_CR_1, 1
+_HLP_CR_2       CMP     0, R1
+                RBRA    _HLP_CR_NO, Z
+                MOVE    0, @R1                  ; CFGS_BUF: the directory,
+                ADD     1, R1                   ; R1: the name
+
+                MOVE    1, R6                   ; R6: slot
+_HLP_CR_SL      MOVE    R6, R8
+                RSUB    SDC$MOUNT, 1            ; R8: device, R9: 0 = OK
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    R8, R2                  ; R2: device
+                MOVE    CFGS_BUF, R9
+                CMP     0, @R9                  ; "/name": the root
+                RBRA    _HLP_CR_3, !Z
+                MOVE    _HLP_CR_ROOT, R9
+_HLP_CR_3       XOR     R10, R10
+                SYSCALL(f32_cd, 1)              ; the directory current
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    CFGS_PB, R8             ; the parameter block: zeros,
+                MOVE    FAT32$PB_SIZE, R9       ; device, directory, name,
+                XOR     R10, R10                ; 1980-01-01
+                SYSCALL(memset, 1)
+                MOVE    CFGS_PB, R3
+                MOVE    R2, @R3++               ; PB_DEV
+                MOVE    R2, R4
+                ADD     FAT32$DEV_AD_1STCLUS_LO, R4
+                MOVE    @R4++, @R3++            ; PB_DIR
+                MOVE    @R4, @R3++
+                MOVE    R1, @R3++               ; PB_NAME
+                MOVE    FAT32$FA_ARCHIVE, @R3++ ; PB_ATTR
+                MOVE    0x0021, @R3             ; PB_DATE
+                MOVE    CFGS_PB, R8
+                RSUB    FAT32$W_CREATE, 1
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    CFGS_PB, R8             ; open it, OPTM_SIZE bytes
+                MOVE    CONFIG_FILE, R9
+                RSUB    FAT32$W_FDH, 1
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    CONFIG_FILE, R8
+                MOVE    CFGS_PB, R9
+                MOVE    OPTM_ICOUNT, R10
+                MOVE    @R10, R10
+                XOR     R11, R11
+                RSUB    FAT32$W_SETSIZE, 1
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    CONFIG_FILE, R8         ; byte 0: 0xFF
+                MOVE    0x00FF, R9
+                SYSCALL(f32_fwrite, 1)
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    CONFIG_FILE, R8
+                SYSCALL(f32_fflush, 1)
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    LOG_STR_CFG_NEW, R8
+                SYSCALL(puts, 1)
+                MOVE    CFGS_BUF, R8            ; (CFGS_BUF: no text again)
+                MOVE    0, @R8
+                OR      0x0004, SR
+                RBRA    _HLP_CR_RET, 1
+_HLP_CR_NX      SUB     1, R6                   ; the next card
+                RBRA    _HLP_CR_SL, !N
+_HLP_CR_NO      MOVE    CFGS_BUF, R8
+                MOVE    0, @R8
+                AND     0xFFFB, SR
+_HLP_CR_RET     SYSCALL(leave, 1)
+                RET
+_HLP_CR_ROOT    .ASCII_W "/"
 
 ; ----------------------------------------------------------------------------
 ; M2M-UPSTREAM osm-deps

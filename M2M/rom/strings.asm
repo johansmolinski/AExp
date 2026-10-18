@@ -93,6 +93,7 @@ LOG_STR_CFG_ON  .ASCII_W "ON  "
 LOG_STR_CFG_OFF .ASCII_W "OFF  " 
 LOG_STR_CFG_E1  .ASCII_W "Unable to mount SD card.  "
 LOG_STR_CFG_E2  .ASCII_W "Config file not found: "
+LOG_STR_CFG_NEW .ASCII_W "Config file created\n"      ; M2M-UPSTREAM cfg-create
 LOG_STR_CFG_E3  .ASCII_W "New config file found: "
 LOG_STR_CFG_E4  .ASCII_W "Corrupt config file: "
 LOG_STR_CFG_OLD .ASCII_W "Config file from a shorter menu: new items get their defaults\n" ; M2M-UPSTREAM cfg-strings
