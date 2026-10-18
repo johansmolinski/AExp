@@ -1510,5 +1510,6 @@ FRAME_FULLSCR   SYSCALL(enter, 1)
 #include "sdcards.asm"
 #include "keyboard.asm"
 #include "menu.asm"
+#include "menu_rows.asm"                        ; M2M-UPSTREAM menu-rows
 #include "screen.asm"
 #include "tools.asm"

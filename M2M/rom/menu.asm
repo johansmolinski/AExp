@@ -32,6 +32,8 @@ OPTM_KEY_SELECT .EQU 3                          ; normally this is Return
 OPTM_KEY_CLOSE  .EQU 4                          ; normally this is Help
 OPTM_KEY_SELALT .EQU 5                          ; normally this is Space
 OPTM_KEY_MENUUP .EQU 6                          ; normally this is Run/Stop
+OPTM_KEY_LEFT   .EQU 7                          ; M2M-UPSTREAM menu-rows: the
+OPTM_KEY_RIGHT  .EQU 8                          ; options of a row (cursor keys)
 
 ; ----------------------------------------------------------------------------
 ; Action codes for the OPTM_FP_SELECT function
@@ -525,8 +527,9 @@ _OPTM_SHOW_1B   MOVE    OPTM_X, R9              ; R9: current x-pos
                 MOVE    @SP++, R11              ; restore R11
                 RBRA    _OPTM_SHOW_3, 1
 
-_OPTM_SHOW_2    CMP     0, @R3                  ; horiz. line here?
-                RBRA    _OPTM_SHOW_3, Z         ; no
+_OPTM_SHOW_2    MOVE    @R3, R7                 ; horiz. line here? (bit 0;
+                AND     1, R7                   ; M2M-UPSTREAM menu-rows: bit 1
+                RBRA    _OPTM_SHOW_3, Z         ; marks the options of a row)
                 MOVE    R6, R8                  ; yes: R8: y-pos of line
                 SUB     R12, R8                 ; adjust for skipped items
                 MOVE    OPTM_FP_LINE, R7        ; draw line
@@ -712,8 +715,17 @@ _OPTM_KU_WA     MOVE    @R7, R7
 
                 AND     0x00FF, R6              ; mask flags such as headline
                 CMP     0, R6                   ; menu item found?
-                RBRA    _OPTM_RUN_2, !Z         ; yes: unselect cur. and go on
+                RBRA    _OPTM_RUN_UF, !Z        ; yes: unselect cur. and go on
                 RBRA    _OPTM_RUN_1, 1          ; no: continue searching
+
+                ; M2M-UPSTREAM menu-rows: the other options of the row the
+                ; cursor is on are no lines of their own: skip them; entering
+                ; a row puts the cursor on its selected option
+_OPTM_RUN_UF    MOVE    R2, R8
+                MOVE    R3, R9
+                RSUB    _OPTM_ROWSKIP, 1
+                RBRA    _OPTM_RUN_1, C          ; same row: continue searching
+                MOVE    R8, R2
 
                 ; Unselect old item and select current item
 _OPTM_RUN_2     MOVE    OPTM_FP_SELECT, R7      ; unselect old item
@@ -760,8 +772,15 @@ _OPTM_KD_WA     MOVE    @R7, R7
 
                 AND     0x00FF, R6              ; mask out any flags
                 CMP     0, R6                   ; menu item found?
-                RBRA    _OPTM_RUN_2, !Z         ; yes: unselect cur. and go on
+                RBRA    _OPTM_RUN_DF, !Z        ; yes: unselect cur. and go on
                 RBRA    _OPTM_RUN_4, 1          ; no: continue searching
+
+_OPTM_RUN_DF    MOVE    R2, R8                  ; M2M-UPSTREAM menu-rows: as
+                MOVE    R3, R9                  ; _OPTM_RUN_UF
+                RSUB    _OPTM_ROWSKIP, 1
+                RBRA    _OPTM_RUN_4, C
+                MOVE    R8, R2
+                RBRA    _OPTM_RUN_2, 1
 
                 ; Close menu key
 _OPTM_RUN_5A    CMP     OPTM_KEY_CLOSE, R8      ; key: close?
@@ -784,7 +803,21 @@ _OPTM_RUN_5C    CMP     OPTM_KEY_MENUUP, R8     ; key: menu up?
 _OPTM_RUN_6A    CMP     OPTM_KEY_SELECT, R8     ; key: select?
                 RBRA    _OPTM_RUN_6C, Z         ; yes
 _OPTM_RUN_6B    CMP     OPTM_KEY_SELALT, R8     ; key: alternative select?
-                RBRA    _OPTM_RUN_SEL, !Z       ; no: ignore key
+                RBRA    _OPTM_RUN_6C, Z         ; yes
+
+                ; M2M-UPSTREAM menu-rows: left/right move the cursor to the
+                ; previous/next option of the row (shown ones only)
+                MOVE    1, R9
+                CMP     OPTM_KEY_RIGHT, R8
+                RBRA    _OPTM_RUN_LR, Z
+                MOVE    0xFFFF, R9
+                CMP     OPTM_KEY_LEFT, R8
+                RBRA    _OPTM_RUN_SEL, !Z       ; any other key: ignore
+_OPTM_RUN_LR    MOVE    R2, R8
+                RSUB    _OPTM_ROWSTEP, 1
+                RBRA    _OPTM_RUN_SEL, C        ; no option there
+                MOVE    R8, R2
+                RBRA    _OPTM_RUN_2, 1          ; unselect old, select new
 
                 ; avoid "double-firing" of already selected items by
                 ; ignoring the selection key in this case
@@ -1630,6 +1663,135 @@ _OPTM_R_F2M_O2  MOVE    R2, R7
                 MOVE    R0, SP                  ; restore stack
                 MOVE    @SP++, @R7              ; restore overwritten ret addr
 
+                DECRB
+                RET
+
+; ----------------------------------------------------------------------------
+; M2M-UPSTREAM menu-rows: cursor movement in rows (see menu_rows.asm)
+;
+; The options of a row are the consecutive items of a radio group whose lines
+; word carries bit 1 (options.asm sets it from config.vhd's OPTM_ROWS). These
+; helpers only run while OPTM_RUN runs: _OPTM_VIS reads the menu structure
+; behind OPTM_STRUCT.
+; ----------------------------------------------------------------------------
+
+; _OPTM_ROWID: R8 = flat index -> R8 = 0x0100 + group id for an option of a
+; row, else 0 (also for an index outside the menu)
+_OPTM_ROWID     INCRB
+                MOVE    OPTM_DATA, R0
+                MOVE    @R0, R0
+                MOVE    R0, R1
+                ADD     OPTM_IR_SIZE, R1
+                CMP     @R1, R8                 ; outside the menu?
+                RBRA    _OPTM_RID_0, !N
+                MOVE    R0, R1
+                ADD     OPTM_IR_LINES, R1
+                MOVE    @R1, R1
+                ADD     R8, R1
+                MOVE    @R1, R1
+                AND     2, R1                   ; an option of a row?
+                RBRA    _OPTM_RID_0, Z
+                ADD     OPTM_IR_GROUPS, R0
+                MOVE    @R0, R0
+                ADD     R8, R0
+                MOVE    @R0, R8
+                AND     0x00FF, R8
+                ADD     0x0100, R8
+                DECRB
+                RET
+_OPTM_RID_0     XOR     R8, R8
+                DECRB
+                RET
+
+; _OPTM_VIS: C=1 when the flat index R8 is shown on the current level
+_OPTM_VIS       INCRB
+                MOVE    OPTM_STRUCT, R0
+                MOVE    @R0, R0
+                ADD     3, R0
+                ADD     R8, R0
+                MOVE    @R0, R0
+                SHL     1, R0                   ; bit 15 into C
+                DECRB
+                RET
+
+; _OPTM_ROWSTEP: R8 = flat index, R9 = direction (1 / 0xFFFF)
+; -> C=0: R8 = the next shown option of the same row in that direction
+;    C=1: there is none (or R8 is no option of a row)
+_OPTM_ROWSTEP   INCRB
+                MOVE    R8, R0                  ; R0: position
+                MOVE    R9, R1                  ; R1: direction
+                RSUB    _OPTM_ROWID, 1
+                MOVE    R8, R2                  ; R2: the row
+                RBRA    _OPTM_RST_NO, Z
+_OPTM_RST_1     ADD     R1, R0
+                MOVE    R0, R8
+                RSUB    _OPTM_ROWID, 1
+                CMP     R8, R2                  ; still the same row?
+                RBRA    _OPTM_RST_NO, !Z
+                MOVE    R0, R8
+                RSUB    _OPTM_VIS, 1
+                RBRA    _OPTM_RST_1, !C         ; hidden: skip it
+                MOVE    R0, R8
+                AND     0xFFFB, SR              ; found: clear Carry
+                DECRB
+                RET
+_OPTM_RST_NO    OR      0x0004, SR              ; none: set Carry
+                DECRB
+                RET
+
+; _OPTM_ROWSKIP: R8 = the item up/down found, R9 = the item the cursor is on
+; -> C=1: R8 is another option of the row the cursor is on: search on
+;    C=0: R8 = where the cursor goes: the item found, or when it is an option
+;         of a row, the selected (shown) option of that row
+_OPTM_ROWSKIP   INCRB
+                MOVE    R8, R0                  ; R0: the item found
+                CMP     R8, R9                  ; back at the start: take it
+                RBRA    _OPTM_RSK_GO, Z
+                MOVE    R9, R8
+                RSUB    _OPTM_ROWID, 1
+                MOVE    R8, R1                  ; R1: row of the cursor
+                MOVE    R0, R8
+                RSUB    _OPTM_ROWID, 1
+                MOVE    R8, R2                  ; R2: row of the item found
+                RBRA    _OPTM_RSK_GO, Z         ; no row: take it
+                CMP     R1, R2
+                RBRA    _OPTM_RSK_SN, !Z        ; another row: its selection
+                OR      0x0004, SR              ; the same row: search on
+                DECRB
+                RET
+
+_OPTM_RSK_SN    MOVE    R0, R3                  ; R3: the first option
+_OPTM_RSK_1     CMP     0, R3
+                RBRA    _OPTM_RSK_2, Z
+                MOVE    R3, R8
+                SUB     1, R8
+                RSUB    _OPTM_ROWID, 1
+                CMP     R8, R2
+                RBRA    _OPTM_RSK_2, !Z
+                SUB     1, R3
+                RBRA    _OPTM_RSK_1, 1
+_OPTM_RSK_2     MOVE    OPTM_DATA, R4           ; R4: selected items
+                MOVE    @R4, R4
+                ADD     OPTM_IR_STDSEL, R4
+                MOVE    @R4, R4
+_OPTM_RSK_3     MOVE    R3, R8                  ; walk the row
+                RSUB    _OPTM_ROWID, 1
+                CMP     R8, R2
+                RBRA    _OPTM_RSK_GO, !Z        ; none selected: the item found
+                MOVE    R4, R5
+                ADD     R3, R5
+                CMP     0, @R5
+                RBRA    _OPTM_RSK_4, Z
+                MOVE    R3, R8
+                RSUB    _OPTM_VIS, 1
+                RBRA    _OPTM_RSK_4, !C
+                MOVE    R3, R0                  ; the selected option
+                RBRA    _OPTM_RSK_GO, 1
+_OPTM_RSK_4     ADD     1, R3
+                RBRA    _OPTM_RSK_3, 1
+
+_OPTM_RSK_GO    MOVE    R0, R8
+                AND     0xFFFB, SR              ; clear Carry
                 DECRB
                 RET
 

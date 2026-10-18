@@ -464,6 +464,7 @@ constant SEL_OPTM_HELP        : std_logic_vector(15 downto 0) := x"0310";
 constant SEL_OPTM_CRTROM      : std_logic_vector(15 downto 0) := x"0311";
 constant SEL_OPTM_CRTROM_STR  : std_logic_vector(15 downto 0) := x"0312";
 constant SEL_OPTM_DEPS        : std_logic_vector(15 downto 0) := x"0313";   -- M2M-UPSTREAM osm-deps
+constant SEL_OPTM_ROWS        : std_logic_vector(15 downto 0) := x"0314";   -- M2M-UPSTREAM menu-rows
 
 -- !!! DO NOT TOUCH !!! Configuration constants for OPTM_GROUPS (shell.asm and menu.asm expect them to be like this)
 constant OPTM_G_TEXT       : integer := 16#00000#;         -- text that cannot be selected
@@ -659,77 +660,77 @@ constant OPTM_ITEMS        : string :=
    " AR3 ROM:%s\n"          &    --  21: Action Replay III ROM (manual CRT/ROM load 6)
    "\n"                     &    --  22: Line
    " CPU: 68000\n"          &    --  23: A500: CPU 68000
-   " CPU: 68020\n"          &    --  24: A500: CPU 68020
-   " CPU: 68040\n"          &    --  25: A500: CPU 68040 (was a Line)
+   " 68020\n"               &    --  24: A500: CPU 68020 (row "CPU", menu-rows)
+   " 68040\n"               &    --  25: A500: CPU 68040 (was a Line)
    " Chipset: OCS\n"        &    --  26: A500: chipset OCS
    " Chipset: ECS\n"        &    --  27: A500: chipset ECS
    " Chipset: AGA\n"        &    --  28: A500: chipset AGA
    " Gayle IDE controller\n" &  --  29: A500: Gayle IDE toggle (was a Line)
-   " Chip RAM: 512 KB\n"    &    --  30: A500: chip RAM 512 KB
-   " Chip RAM: 1 MB\n"      &    --  31: A500: chip RAM 1 MB
-   " Chip RAM: 2 MB\n"      &    --  32: A500: chip RAM 2 MB
-   "\n"                     &    --  33: Line (this profile)
-   " Slow RAM (512 KB)\n"   &    --  34: A500: Slow RAM toggle
+   " Chip RAM: 512 kB\n"    &    --  30: A500: chip RAM 512 KB (row "Chip RAM")
+   " 1 MB\n"                &    --  31: A500: chip RAM 1 MB
+   " 2 MB\n"                &    --  32: A500: chip RAM 2 MB
+   " Slow RAM: None\n"      &    --  33: A500: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
+   " 512 kB\n"              &    --  34: A500: Slow RAM 512 KB (was a toggle)
    " Fast RAM (8 MB)\n"     &    --  35: A500: Zorro II Fast RAM toggle
    " Zorro III RAM (16 MB)\n" &    --  36: A500: Zorro III RAM toggle (68020)
    " Zorro III RAM (32 MB)\n" &  --  37: A500: Zorro III RAM (32 MB) toggle (68020; 0.7: was a Line)
-   " Cart: None\n"          &    --  38: A500: no cartridge
-   " Cart: HRTmon\n"        &    --  39: A500: HRTmon cartridge
-   " Cart: Action Replay 3\n" &    --  40: A500: Action Replay III cartridge
+   " Monitor Cartridge: None\n" & --  38: A500: no cartridge (row "Monitor Cartridge")
+   " HRTmon\n"              &    --  39: A500: HRTmon cartridge
+   " AR3\n"                 &    --  40: A500: Action Replay III cartridge
    " CPU: 68000\n"          &    --  41: A600: CPU 68000
-   " CPU: 68020\n"          &    --  42: A600: CPU 68020
-   " CPU: 68040\n"          &    --  43: A600: CPU 68040 (was a Line)
+   " 68020\n"               &    --  42: A600: CPU 68020 (row "CPU", menu-rows)
+   " 68040\n"               &    --  43: A600: CPU 68040 (was a Line)
    " Chipset: OCS\n"        &    --  44: A600: chipset OCS
    " Chipset: ECS\n"        &    --  45: A600: chipset ECS
    " Chipset: AGA\n"        &    --  46: A600: chipset AGA
    " Gayle IDE controller\n" &  --  47: A600: Gayle IDE toggle (was a Line)
-   " Chip RAM: 512 KB\n"    &    --  48: A600: chip RAM 512 KB
-   " Chip RAM: 1 MB\n"      &    --  49: A600: chip RAM 1 MB
-   " Chip RAM: 2 MB\n"      &    --  50: A600: chip RAM 2 MB
-   "\n"                     &    --  51: Line (this profile)
-   " Slow RAM (512 KB)\n"   &    --  52: A600: Slow RAM toggle
+   " Chip RAM: 512 kB\n"    &    --  48: A600: chip RAM 512 KB (row "Chip RAM")
+   " 1 MB\n"                &    --  49: A600: chip RAM 1 MB
+   " 2 MB\n"                &    --  50: A600: chip RAM 2 MB
+   " Slow RAM: None\n"      &    --  51: A600: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
+   " 512 kB\n"              &    --  52: A600: Slow RAM 512 KB (was a toggle)
    " Fast RAM (8 MB)\n"     &    --  53: A600: Zorro II Fast RAM toggle
    " Zorro III RAM (16 MB)\n" &    --  54: A600: Zorro III RAM toggle (68020)
    " Zorro III RAM (32 MB)\n" &  --  55: A600: Zorro III RAM (32 MB) toggle (68020; 0.7: was a Line)
-   " Cart: None\n"          &    --  56: A600: no cartridge
-   " Cart: HRTmon\n"        &    --  57: A600: HRTmon cartridge
-   " Cart: Action Replay 3\n" &    --  58: A600: Action Replay III cartridge
+   " Monitor Cartridge: None\n" & --  56: A600: no cartridge (row "Monitor Cartridge")
+   " HRTmon\n"              &    --  57: A600: HRTmon cartridge
+   " AR3\n"                 &    --  58: A600: Action Replay III cartridge
    " CPU: 68000\n"          &    --  59: A1200: CPU 68000
-   " CPU: 68020\n"          &    --  60: A1200: CPU 68020
-   " CPU: 68040\n"          &    --  61: A1200: CPU 68040 (was a Line)
+   " 68020\n"               &    --  60: A1200: CPU 68020 (row "CPU", menu-rows)
+   " 68040\n"               &    --  61: A1200: CPU 68040 (was a Line)
    " Chipset: OCS\n"        &    --  62: A1200: chipset OCS
    " Chipset: ECS\n"        &    --  63: A1200: chipset ECS
    " Chipset: AGA\n"        &    --  64: A1200: chipset AGA
    " Gayle IDE controller\n" &  --  65: A1200: Gayle IDE toggle (was a Line)
-   " Chip RAM: 512 KB\n"    &    --  66: A1200: chip RAM 512 KB
-   " Chip RAM: 1 MB\n"      &    --  67: A1200: chip RAM 1 MB
-   " Chip RAM: 2 MB\n"      &    --  68: A1200: chip RAM 2 MB
-   "\n"                     &    --  69: Line (this profile)
-   " Slow RAM (512 KB)\n"   &    --  70: A1200: Slow RAM toggle
+   " Chip RAM: 512 kB\n"    &    --  66: A1200: chip RAM 512 KB (row "Chip RAM")
+   " 1 MB\n"                &    --  67: A1200: chip RAM 1 MB
+   " 2 MB\n"                &    --  68: A1200: chip RAM 2 MB
+   " Slow RAM: None\n"      &    --  69: A1200: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
+   " 512 kB\n"              &    --  70: A1200: Slow RAM 512 KB (was a toggle)
    " Fast RAM (8 MB)\n"     &    --  71: A1200: Zorro II Fast RAM toggle
    " Zorro III RAM (16 MB)\n" &    --  72: A1200: Zorro III RAM toggle (68020)
    " Zorro III RAM (32 MB)\n" &  --  73: A1200: Zorro III RAM (32 MB) toggle (68020; 0.7: was a Line)
-   " Cart: None\n"          &    --  74: A1200: no cartridge
-   " Cart: HRTmon\n"        &    --  75: A1200: HRTmon cartridge
-   " Cart: Action Replay 3\n" &    --  76: A1200: Action Replay III cartridge
+   " Monitor Cartridge: None\n" & --  74: A1200: no cartridge (row "Monitor Cartridge")
+   " HRTmon\n"              &    --  75: A1200: HRTmon cartridge
+   " AR3\n"                 &    --  76: A1200: Action Replay III cartridge
    " CPU: 68000\n"          &    --  77: A4000: CPU 68000
-   " CPU: 68020\n"          &    --  78: A4000: CPU 68020
-   " CPU: 68040\n"          &    --  79: A4000: CPU 68040
+   " 68020\n"               &    --  78: A4000: CPU 68020 (row "CPU", menu-rows)
+   " 68040\n"               &    --  79: A4000: CPU 68040
    " Chipset: OCS\n"        &    --  80: A4000: chipset OCS
    " Chipset: ECS\n"        &    --  81: A4000: chipset ECS
    " Chipset: AGA\n"        &    --  82: A4000: chipset AGA
    " Gayle IDE controller\n" &  --  83: A4000: Gayle IDE toggle (was a Line)
-   " Chip RAM: 512 KB\n"    &    --  84: A4000: chip RAM 512 KB
-   " Chip RAM: 1 MB\n"      &    --  85: A4000: chip RAM 1 MB
-   " Chip RAM: 2 MB\n"      &    --  86: A4000: chip RAM 2 MB
-   "\n"                     &    --  87: Line (this profile)
-   " Slow RAM (512 KB)\n"   &    --  88: A4000: Slow RAM toggle
+   " Chip RAM: 512 kB\n"    &    --  84: A4000: chip RAM 512 KB (row "Chip RAM")
+   " 1 MB\n"                &    --  85: A4000: chip RAM 1 MB
+   " 2 MB\n"                &    --  86: A4000: chip RAM 2 MB
+   " Slow RAM: None\n"      &    --  87: A4000: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
+   " 512 kB\n"              &    --  88: A4000: Slow RAM 512 KB (was a toggle)
    " Fast RAM (8 MB)\n"     &    --  89: A4000: Zorro II Fast RAM toggle
    " Zorro III RAM (16 MB)\n" &  --  90: A4000: Zorro III RAM toggle (68020)
    " Zorro III RAM (32 MB)\n" &  --  91: A4000: Zorro III RAM (32 MB) toggle (68020; 0.7: was a Line)
-   " Cart: None\n"          &    --  92: A4000: no cartridge
-   " Cart: HRTmon\n"        &    --  93: A4000: HRTmon cartridge
-   " Cart: Action Replay 3\n" &  --  94: A4000: Action Replay III cartridge
+   " Monitor Cartridge: None\n" & --  92: A4000: no cartridge (row "Monitor Cartridge")
+   " HRTmon\n"              &    --  93: A4000: HRTmon cartridge
+   " AR3\n"                 &    --  94: A4000: Action Replay III cartridge
    "\n"                     &    --  95: Line
    " Back to main menu\n"   &    --  96: Close Profile Settings
    " Drive Settings\n"      &    --  97: Drive Settings submenu head
@@ -920,19 +921,19 @@ constant OPTM_G_PROFILE    : integer := 30;  -- machine profile radio A500 / A60
 constant OPTM_G_P1CPU      : integer := 31;  -- A500 profile: CPU radio 68000 / 68020 / 68040
 constant OPTM_G_P1CS       : integer := 32;  -- A500 profile: chipset radio OCS / ECS / AGA
 constant OPTM_G_P1CHIP     : integer := 33;  -- A500 profile: chip RAM radio 512 KB / 1 MB / 2 MB
-constant OPTM_G_P1SLOW     : integer := 34;  -- A500 profile: Slow RAM toggle
+constant OPTM_G_P1SLOW     : integer := 34;  -- A500 profile: Slow RAM radio None / 512 KB (a row; was a toggle)
 constant OPTM_G_P1FAST     : integer := 35;  -- A500 profile: Zorro II Fast RAM toggle
 constant OPTM_G_P1Z3       : integer := 36;  -- A500 profile: Zorro III RAM toggle
 constant OPTM_G_P2CPU      : integer := 37;  -- A600 profile: CPU radio 68000 / 68020 / 68040
 constant OPTM_G_P2CS       : integer := 38;  -- A600 profile: chipset radio OCS / ECS / AGA
 constant OPTM_G_P2CHIP     : integer := 39;  -- A600 profile: chip RAM radio 512 KB / 1 MB / 2 MB
-constant OPTM_G_P2SLOW     : integer := 40;  -- A600 profile: Slow RAM toggle
+constant OPTM_G_P2SLOW     : integer := 40;  -- A600 profile: Slow RAM radio None / 512 KB (a row; was a toggle)
 constant OPTM_G_P2FAST     : integer := 41;  -- A600 profile: Zorro II Fast RAM toggle
 constant OPTM_G_P2Z3       : integer := 42;  -- A600 profile: Zorro III RAM toggle
 constant OPTM_G_P3CPU      : integer := 43;  -- A1200 profile: CPU radio 68000 / 68020 / 68040
 constant OPTM_G_P3CS       : integer := 44;  -- A1200 profile: chipset radio OCS / ECS / AGA
 constant OPTM_G_P3CHIP     : integer := 45;  -- A1200 profile: chip RAM radio 512 KB / 1 MB / 2 MB
-constant OPTM_G_P3SLOW     : integer := 46;  -- A1200 profile: Slow RAM toggle
+constant OPTM_G_P3SLOW     : integer := 46;  -- A1200 profile: Slow RAM radio None / 512 KB (a row; was a toggle)
 constant OPTM_G_P3FAST     : integer := 47;  -- A1200 profile: Zorro II Fast RAM toggle
 constant OPTM_G_P3Z3       : integer := 48;  -- A1200 profile: Zorro III RAM toggle
 constant OPTM_G_HDF1       : integer := 49;  -- HDF slave (unit 1) into the IDE board (manual CRT/ROM load 4)
@@ -947,7 +948,7 @@ constant OPTM_G_RTGNATIVE  : integer := 57;  -- RTG native resolution toggle: HD
 constant OPTM_G_P4CPU      : integer := 58;  -- A4000 profile: CPU radio 68000 / 68020 / 68040
 constant OPTM_G_P4CS       : integer := 59;  -- A4000 profile: chipset radio OCS / ECS / AGA
 constant OPTM_G_P4CHIP     : integer := 60;  -- A4000 profile: chip RAM radio 512 KB / 1 MB / 2 MB
-constant OPTM_G_P4SLOW     : integer := 61;  -- A4000 profile: Slow RAM toggle
+constant OPTM_G_P4SLOW     : integer := 61;  -- A4000 profile: Slow RAM radio None / 512 KB (a row; was a toggle)
 constant OPTM_G_P4FAST     : integer := 62;  -- A4000 profile: Zorro II Fast RAM toggle
 constant OPTM_G_P4Z3       : integer := 63;  -- A4000 profile: Zorro III RAM toggle
 constant OPTM_G_P4CART     : integer := 64;  -- A4000 profile: cartridge radio None / HRTmon / Action Replay III
@@ -994,6 +995,28 @@ begin
    return OPTM_G_DEPENDENT + ((2 ** item_a + 2 ** item_b) * 16#02000000#) + (mother * 16#00020000#);
 end function OPTM_DEP2;
 
+-- Rows (M2M-UPSTREAM menu-rows, M2M/rom/menu_rows.asm): the radio groups listed here
+-- are drawn side by side on one line, under a label line of their own:
+--
+--    CPU
+--     *68000  68020  68040
+--
+-- The label is the text before ": " in the group's FIRST item ("CPU: 68000"), the
+-- other items only carry their option (" 68020"); a first item without ": " gives a
+-- row without a label line (the Drives row under its headline). Left/right move the
+-- cursor between the options, Return/Space select. Every option stays its own menu
+-- item, so the line numbers, the settings file and mega65.vhd do not change. The
+-- items of a row group must be consecutive, a row group is a radio group (no
+-- OPTM_G_SINGLESEL), and the row must fit inside the frame (OPTM_DX - 2 columns).
+type OPTM_RTYPE is array (natural range <>) of natural;
+constant OPTM_ROWS : OPTM_RTYPE := (
+   OPTM_G_P1CPU, OPTM_G_P1CHIP, OPTM_G_P1SLOW, OPTM_G_P1CART,
+   OPTM_G_P2CPU, OPTM_G_P2CHIP, OPTM_G_P2SLOW, OPTM_G_P2CART,
+   OPTM_G_P3CPU, OPTM_G_P3CHIP, OPTM_G_P3SLOW, OPTM_G_P3CART,
+   OPTM_G_P4CPU, OPTM_G_P4CHIP, OPTM_G_P4SLOW, OPTM_G_P4CART,
+   OPTM_G_DRIVES
+);
+
 -- !!! DO NOT TOUCH !!!
 type OPTM_GTYPE is array (0 to OPTM_SIZE - 1) of integer range 0 to 2**OPTM_GTC- 1;
 
@@ -1037,8 +1060,8 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P1CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  30: A500: chip RAM 512 KB
                                               OPTM_G_P1CHIP + OPTM_DEP(OPTM_G_PROFILE, 0),              --  31: A500: chip RAM 1 MB
                                               OPTM_G_P1CHIP + OPTM_DEP(OPTM_G_PROFILE, 0),              --  32: A500: chip RAM 2 MB
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 0),                --  33: Line (this profile)
-                                              OPTM_G_P1SLOW + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  34: A500: Slow RAM toggle
+                                              OPTM_G_P1SLOW + OPTM_DEP(OPTM_G_PROFILE, 0),              --  33: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
+                                              OPTM_G_P1SLOW + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  34: Slow RAM 512 KB (menu-rows: was a toggle)
                                               OPTM_G_P1FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  35: A500: Zorro II Fast RAM toggle
                                               OPTM_G_P1Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  36: A500: Zorro III RAM toggle (68020)
                                               OPTM_G_P1Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 0),--  37: A500: Zorro III RAM (32 MB) toggle (68020)
@@ -1055,8 +1078,8 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P2CHIP + OPTM_DEP(OPTM_G_PROFILE, 1),              --  48: A600: chip RAM 512 KB
                                               OPTM_G_P2CHIP + OPTM_DEP(OPTM_G_PROFILE, 1),              --  49: A600: chip RAM 1 MB
                                               OPTM_G_P2CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  50: A600: chip RAM 2 MB
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 1),                --  51: Line (this profile)
-                                              OPTM_G_P2SLOW + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  52: A600: Slow RAM toggle
+                                              OPTM_G_P2SLOW + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  51: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
+                                              OPTM_G_P2SLOW + OPTM_DEP(OPTM_G_PROFILE, 1),              --  52: Slow RAM 512 KB (menu-rows: was a toggle)
                                               OPTM_G_P2FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  53: A600: Zorro II Fast RAM toggle
                                               OPTM_G_P2Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  54: A600: Zorro III RAM toggle (68020)
                                               OPTM_G_P2Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 1),--  55: A600: Zorro III RAM (32 MB) toggle (68020)
@@ -1073,8 +1096,8 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P3CHIP + OPTM_DEP(OPTM_G_PROFILE, 2),              --  66: A1200: chip RAM 512 KB
                                               OPTM_G_P3CHIP + OPTM_DEP(OPTM_G_PROFILE, 2),              --  67: A1200: chip RAM 1 MB
                                               OPTM_G_P3CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  68: A1200: chip RAM 2 MB
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 2),                --  69: Line (this profile)
-                                              OPTM_G_P3SLOW + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  70: A1200: Slow RAM toggle
+                                              OPTM_G_P3SLOW + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  69: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
+                                              OPTM_G_P3SLOW + OPTM_DEP(OPTM_G_PROFILE, 2),              --  70: Slow RAM 512 KB (menu-rows: was a toggle)
                                               OPTM_G_P3FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  71: A1200: Zorro II Fast RAM toggle
                                               OPTM_G_P3Z3 + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  72: A1200: Zorro III RAM toggle (68020)
                                               OPTM_G_P3Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 2),--  73: A1200: Zorro III RAM (32 MB) toggle (68020)
@@ -1091,8 +1114,8 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE,     
                                               OPTM_G_P4CHIP + OPTM_DEP(OPTM_G_PROFILE, 3),                --  84: A4000: chip RAM 512 KB
                                               OPTM_G_P4CHIP + OPTM_DEP(OPTM_G_PROFILE, 3),                --  85: A4000: chip RAM 1 MB
                                               OPTM_G_P4CHIP + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  86: A4000: chip RAM 2 MB
-                                              OPTM_G_LINE + OPTM_DEP(OPTM_G_PROFILE, 3),                  --  87: Line (this profile)
-                                              OPTM_G_P4SLOW + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  88: A4000: Slow RAM toggle
+                                              OPTM_G_P4SLOW + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  87: no Slow RAM (row "Slow RAM"; menu-rows: was a Line)
+                                              OPTM_G_P4SLOW + OPTM_DEP(OPTM_G_PROFILE, 3),              --  88: Slow RAM 512 KB (menu-rows: was a toggle)
                                               OPTM_G_P4FAST + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  89: A4000: Zorro II Fast RAM toggle
                                               OPTM_G_P4Z3 + OPTM_G_SINGLESEL + OPTM_G_STDSEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  90: A4000: Zorro III RAM toggle (68020)
                                               OPTM_G_P4Z3B + OPTM_G_SINGLESEL + OPTM_DEP(OPTM_G_PROFILE, 3),--  91: A4000: Zorro III RAM (32 MB) toggle (68020)
@@ -1320,6 +1343,19 @@ addr_decode : process(clk_i)
       end case;
    end function getGenConf;
 
+   -- M2M-UPSTREAM menu-rows: '1' when menu item i belongs to a group listed in OPTM_ROWS
+   function optmRow(i : natural) return std_logic is
+   begin
+      if i < OPTM_SIZE then
+         for k in OPTM_ROWS'range loop
+            if OPTM_GROUPS(i) mod 256 = OPTM_ROWS(k) then
+               return '1';
+            end if;
+         end loop;
+      end if;
+      return '0';
+   end function optmRow;
+
    variable index           : integer;
    variable whs_page_index  : integer;
    variable whs_array_index : integer;
@@ -1395,6 +1431,15 @@ begin
                                                 std_logic(to_unsigned(OPTM_GROUPS(index), OPTM_GTC)(29)) &
                                                 std_logic_vector(to_unsigned(OPTM_GROUPS(index), OPTM_GTC)(28 downto 25)) &
                                                 std_logic_vector(to_unsigned(OPTM_GROUPS(index), OPTM_GTC)(24 downto 17));
+                                          end if;
+
+            -- Rows (M2M-UPSTREAM menu-rows): 1 = the item is an option of a row (OPTM_ROWS).
+            -- Index 4095 is the feature probe (x"2D52"); without this arm the firmware reads
+            -- the x"EEEE" pre-assignment and draws every item on a line of its own.
+            when SEL_OPTM_ROWS         => if index = 4095 then
+                                             data_o <= x"2D52";
+                                          else
+                                             data_o <= x"000" & "000" & optmRow(index);
                                           end if;
 
             when others                => null;

@@ -299,6 +299,10 @@ M2M$CFG_OPTM_DEPS   .EQU 0x0313     ; Per-line menu dependency word (OPTM_DEP);
                                     ; index 4095 = feature probe, see
                                     ; OPTM_DEPS_PROBE in options.asm
                                     ; (M2M-UPSTREAM osm-deps)
+M2M$CFG_OPTM_ROWS   .EQU 0x0314     ; 1 = option of a row (OPTM_ROWS); index
+                                    ; 4095 = OPTM_ROWS_MAGIC: feature probe
+                                    ; (M2M-UPSTREAM menu-rows)
+OPTM_ROWS_MAGIC     .EQU 0x2D52
 
 ; M2M$CFG_WHS
 

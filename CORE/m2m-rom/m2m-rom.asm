@@ -1177,7 +1177,8 @@ _OSM_SP_SCR2    CMP     AEXP_OPTM_G_SCRRELOAD, R8
                 ADD     1, R9                   ; R9 = screen x (+1 for frame)
                 MOVE    SCR_LOADING_STR, R8     ; (read-only data device:
                 RSUB    RODATA_STR, 1           ;  copied to RAM)
-                RSUB    SCR$PRINTSTRXY, 1
+                RSUB    OPTR_PRINTXY, 1         ; (M2M menu-rows: y = the row
+                                                ;  of the classic layout)
 
                 ; The user may have pulled the SD card to write a new file with
                 ; the python tool. M2M-UPSTREAM sd-host (two slots): that is a
@@ -9135,7 +9136,12 @@ SHR_RNOBJ       .BLOCK 8                        ; RENAME: the object
 ; Megamiga 0.7 48 MB Zorro III: the blank line after the "Zorro III RAM (16 MB)"
 ; toggle of each profile became " Zorro III RAM (32 MB)" (+88 characters, still
 ; 248 items): demand 4408, MENU_HEAP_SIZE 4416, headroom 8, release HEAP_SIZE -96.
-MENU_HEAP_SIZE  .EQU 4416
+;MENU_HEAP_SIZE  .EQU 4416
+; Megamiga 0.7 menu rows (M2M-UPSTREAM menu-rows): the options of CPU, Chip RAM,
+; Slow RAM and Monitor Cartridge carry only their option text, the Slow RAM
+; separator became "Slow RAM: None" (-148 characters, still 248 items): demand
+; 4260, MENU_HEAP_SIZE 4288, headroom 28, release HEAP_SIZE +128.
+MENU_HEAP_SIZE  .EQU 4288
 
 #ifndef RELEASE
 
@@ -9194,7 +9200,8 @@ HEAP            .BLOCK 1
 ;HEAP_SIZE       .EQU 14624                      ; 18528 - 3904 = 14624
 ;HEAP_SIZE       .EQU 14272                      ; 18528 - 4256 = 14272
 ;HEAP_SIZE       .EQU 14208                      ; 18528 - 4320 = 14208
-HEAP_SIZE       .EQU 14112                      ; 18528 - 4416 = 14112
+;HEAP_SIZE       .EQU 14112                      ; 18528 - 4416 = 14112
+HEAP_SIZE       .EQU 14240                      ; 18528 - 4288 = 14240
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

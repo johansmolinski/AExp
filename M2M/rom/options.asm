@@ -126,6 +126,25 @@ _HLP_SSIC1      SUB     1, R4                   ; one less menu item to go
                 ADD     OPTM_IR_LINES, R8
                 MOVE    R9, @R8
 
+                ; M2M-UPSTREAM menu-rows: bit 1 of the lines word marks the
+                ; options of a row (config.vhd: OPTM_ROWS; menu_rows.asm). A
+                ; config.vhd without rows does not serve the probe word.
+                MOVE    M2M$CFG_OPTM_ROWS, @R0
+                MOVE    M2M$RAMROM_DATA, R8
+                MOVE    R8, R6
+                ADD     0x0FFF, R6
+                CMP     OPTM_ROWS_MAGIC, @R6
+                RBRA    _HLP_ROWS_E, !Z
+                MOVE    R9, R6                  ; R6: lines array
+                MOVE    R3, R7                  ; R7: amount of menu items
+_HLP_ROWS_1     MOVE    @R8++, R5
+                AND     1, R5
+                ADD     R5, R5
+                OR      R5, @R6++
+                SUB     1, R7
+                RBRA    _HLP_ROWS_1, !Z
+_HLP_ROWS_E
+
                 ; M2M-UPSTREAM osm-deps
                 ; Copy the per-line dependency array to the heap and resolve it
                 ; in place, so that OPTM_DEP_OK can evaluate it cheaply while
@@ -635,7 +654,8 @@ _HLP_S2         SUB     1, R3                   ; one less menu item to go
                 ; fatal if the amount is an odd number, because this indicates
                 ; that at least one "opened" OPTM_G_SUBMENU in config.vhd is
                 ; not "closed" by another instance of OPTM_G_SUBMENU
-_HLP_S3         MOVE    M2M$RAMROM_DEV, R0
+_HLP_S3         RSUB    _HLP_RADIOFIX, 1        ; M2M-UPSTREAM menu-rows
+                MOVE    M2M$RAMROM_DEV, R0
                 MOVE    M2M$CONFIG, @R0
                 MOVE    M2M$RAMROM_4KWIN, R0
                 MOVE    M2M$CFG_OPTM_GROUPS, @R0
@@ -736,6 +756,80 @@ _HLP_DEPFAT     MOVE    R0, R9                  ; R9: offending line as err code
                 RBRA    FATAL, 1
 
 _HLP_DEPS_RET   SYSCALL(leave, 1)
+                RET
+
+; ----------------------------------------------------------------------------
+; M2M-UPSTREAM menu-rows
+; _HLP_RADIOFIX: a radio group without a selected item gets its FIRST item
+; selected, in M2M$CFM_DATA, so that the menu and the core agree. This happens
+; with a settings file of a menu in which that first item did not belong to
+; the group yet: Megamiga's "Slow RAM: None" was a separator line before the
+; Slow RAM toggle became a row (an old file says "off" by not having the
+; toggle set). Groups with a selection are not touched.
+; Input/Output: none, all registers are preserved
+; ----------------------------------------------------------------------------
+
+_HLP_RADIOFIX   SYSCALL(enter, 1)
+
+                MOVE    M2M$RAMROM_DEV, R0
+                MOVE    M2M$CONFIG, @R0
+                MOVE    M2M$RAMROM_4KWIN, R0
+                MOVE    M2M$CFG_OPTM_GROUPS, @R0
+                MOVE    OPTM_ICOUNT, R1
+                MOVE    @R1, R1                 ; R1: amount of menu items
+                XOR     R2, R2                  ; R2: item
+_HLP_RF_1       MOVE    M2M$RAMROM_DATA, R3
+                ADD     R2, R3
+                MOVE    @R3, R3                 ; R3: its (masked) group word
+                MOVE    R3, R4                  ; a radio item: no single-
+                AND     0xD000, R4              ; select, submenu or headline,
+                RBRA    _HLP_RF_N, !Z           ; group id 1..254
+                MOVE    R3, R4
+                AND     0x00FF, R4
+                RBRA    _HLP_RF_N, Z
+                CMP     OPTM_CLOSE, R4
+                RBRA    _HLP_RF_N, Z
+                XOR     R5, R5                  ; is any item of it selected?
+_HLP_RF_2       MOVE    M2M$RAMROM_DATA, R6
+                ADD     R5, R6
+                CMP     @R6, R3
+                RBRA    _HLP_RF_3, !Z
+                MOVE    R5, R8
+                RSUB    _HLP_RF_BIT, 1
+                RBRA    _HLP_RF_N, C            ; yes: nothing to do
+_HLP_RF_3       ADD     1, R5
+                CMP     R5, R1
+                RBRA    _HLP_RF_2, !Z
+                MOVE    R2, R8                  ; no: select this one, the
+                RSUB    _HLP_RF_BIT, 1          ; first item of its group
+                MOVE    M2M$CFM_DATA, R6
+                OR      R9, @R6
+_HLP_RF_N       ADD     1, R2
+                CMP     R2, R1
+                RBRA    _HLP_RF_1, !Z
+
+                SYSCALL(leave, 1)
+                RET
+
+; R8: item -> M2M$CFM_ADDR selects its window, R9: its bit, C=1: it is set
+; (R10 changed)
+_HLP_RF_BIT     MOVE    R8, R9
+                AND     0xFFFB, SR              ; clear Carry (fills SHR)
+                SHR     4, R9
+                MOVE    M2M$CFM_ADDR, R10
+                MOVE    R9, @R10
+                MOVE    R8, R10
+                AND     0x000F, R10
+                MOVE    1, R9
+                AND     0xFFFD, SR              ; clear X (fills SHL)
+                SHL     R10, R9
+                MOVE    M2M$CFM_DATA, R10
+                MOVE    @R10, R10
+                AND     R9, R10
+                RBRA    _HLP_RF_B0, Z
+                OR      0x0004, SR
+                RET
+_HLP_RF_B0      AND     0xFFFB, SR
                 RET
 
 ; ----------------------------------------------------------------------------
@@ -1047,7 +1141,10 @@ _ROSMS_RET      SYSCALL(leave, 1)
 ; Menu initialization record (needed by OPTM_INIT)
 ; Will be copied to the HEAP, together with the configuration data from
 ; config.vhd and then modified to point to the right addresses on the heap
-OPT_MENU_DATA   .DW     SCR$CLR, SCR$PRINTFRAME, OPT_PRINTSTR, SCR$PRINTSTRXY
+; M2M-UPSTREAM menu-rows: OPTR_PRINT / OPTR_PRINTXY (menu_rows.asm) draw the
+; options of a row side by side; without rows they draw the classic menu
+;OPT_MENU_DATA   .DW     SCR$CLR, SCR$PRINTFRAME, OPT_PRINTSTR, SCR$PRINTSTRXY
+OPT_MENU_DATA   .DW     SCR$CLR, SCR$PRINTFRAME, OPTR_PRINT, OPTR_PRINTXY
                 .DW     OPT_PRINTLINE, OPT_SELECT, OPT_MENU_GETKEY
                 .DW     OPTM_CB_SEL, OPTM_CB_SHOW, FATAL,
                 .DW     M2M$OPT_SEL_MULTI, 0    ; selection char + zero term.:
@@ -1056,66 +1153,22 @@ OPT_MENU_DATA   .DW     SCR$CLR, SCR$PRINTFRAME, OPT_PRINTSTR, SCR$PRINTSTRXY
                                                 ; (the last one is OPTM_IR_DEPS,
                                                 ; M2M-UPSTREAM osm-deps)
 
-; Print function that handles everything incl. cursor pos and \n by itself
-; R8 contains the string that shall be printed
-; R9 contains a pointer to a mask array: the first word is the size of the
-;    array (and therefore the amount of menu items) and then we have one entry
-;    (word) per menu line: If the highest bit is one, then OPTM_FP_PRINT will
-;    print the line otherwise it will skip the line
-OPT_PRINTSTR    SYSCALL(enter, 1)
-
-                MOVE    @R9++, R0               ; R0: size of menu
-                MOVE    R9, R1                  ; R1: pointer to mask array
-                MOVE    R8, R2                  ; R2: current string segment
-                MOVE    SP, R3                  ; R3: remember stack pointer
-                XOR     R4, R4                  ; R4: item counter
-
-_OPT_PRINTSTR_1 MOVE    R2, R8                  ; treat current seg. as start
-
-                MOVE    OPTM_NL, R9             ; string containing \n
-                SYSCALL(strstr, 1)              ; search in input string
-                CMP     0, R10                  ; \n found?
-                RBRA    _OPT_PRINTSTR_F, Z      ; no: fatal
-
-                MOVE    R10, R6                 ; R6: length of segment..
-                SUB     R2, R6                  
-                ADD     2, R6                   ; ..including \n                              
-
-                CMP     @R1++, 0x7FFF           ; print current item?
-                RBRA    _OPT_PRINTSTR_2, !N     ; no: next iteration
-
-                ; copy current segment to the stack so that we can add a
-                ; zero terminator so that SCR$PRINTSTR can print it
-                SUB     R6, SP                  ; reserve space on stack
-                SUB     1, SP                   ; add space for zero term.
-                MOVE    R2, R8                  ; copy string segment
-                MOVE    SP, R9
-                MOVE    R6, R10
-                SYSCALL(memcpy, 1)
-                ADD     R6, R9
-                MOVE    0, @R9                  ; add zero terminator
-                MOVE    SP, R8                  ; print current segment
-                RSUB    SCR$PRINTSTR, 1
-
-                MOVE    R3, SP                  ; restore stack pointer
-
-_OPT_PRINTSTR_2 ADD     R6, R2                  ; skip current segment
-                ADD     1, R4                   ; next item
-                CMP     R0, R4                  ; done?
-                RBRA    _OPT_PRINTSTR_1, !Z     ; no: iterate
-
-                SYSCALL(leave, 1)               ; yes, done: return
-                RET
-
-_OPT_PRINTSTR_F MOVE    ERR_F_NEWLINE, R8      ; fatal due to missing newline
-                XOR     R9, R9
-                RBRA    FATAL, 1                
+; M2M-UPSTREAM menu-rows: OPT_PRINTSTR, the OPTM_FP_PRINT function, is
+; OPTR_PRINT in menu_rows.asm now (it prints each item at its position of the
+; row layout with SCR$PRINTSTRXY instead of the running cursor)
 
 ; Draws a horizontal line/menu separator at the y-pos given in R8, dx in R9
 OPT_PRINTLINE   INCRB
 
                 MOVE    SP, R0                  ; R0: use to restore stack
-                MOVE    R8, R1                  ; R1: y-pos
+                ; M2M-UPSTREAM menu-rows: R8 is the classic row of the line
+                ; (OPTM_Y + 1 + ordinal): use its row of the layout
+                ;MOVE    R8, R1                  ; R1: y-pos
+                MOVE    OPTM_Y, R1
+                SUB     @R1, R8
+                SUB     1, R8
+                RSUB    OPTR_POS, 1
+                MOVE    R9, R1                  ; R1: y-pos
                 MOVE    OPTM_DX, R2             ; R2: width minus left/right..
                 MOVE    @R2, R2                 ; ..boundary
                 SUB     2, R2                   
@@ -1150,16 +1203,24 @@ _PRINTLN_L      MOVE    M2M$NC_SH, @R3++
 ; R9=3: select highlighted headline/title
 OPT_SELECT      INCRB
 
-                MOVE    OPTM_X, R0              ; R0: x start coordinate
-                MOVE    @R0, R0
-                ADD     1, R0
-                MOVE    OPTM_Y, R1              ; R1: y start coordinate
-                MOVE    @R1, R1
-                ADD     1, R1
-                ADD     R8, R1
-                MOVE    OPTM_DX, R2             ; R2: width of selection
-                MOVE    @R2, R2
-                SUB     2, R2
+                ; M2M-UPSTREAM menu-rows: position and width from the layout
+                ; (an option of a row: just its marker and text)
+                ;MOVE    OPTM_X, R0              ; R0: x start coordinate
+                ;MOVE    @R0, R0
+                ;ADD     1, R0
+                ;MOVE    OPTM_Y, R1              ; R1: y start coordinate
+                ;MOVE    @R1, R1
+                ;ADD     1, R1
+                ;ADD     R8, R1
+                ;MOVE    OPTM_DX, R2             ; R2: width of selection
+                ;MOVE    @R2, R2
+                ;SUB     2, R2
+                MOVE    R9, R3
+                RSUB    OPTR_POS, 1
+                MOVE    R8, R0                  ; R0: x start coordinate
+                MOVE    R9, R1                  ; R1: y start coordinate
+                MOVE    R10, R2                 ; R2: width of selection
+                MOVE    R3, R9
 
                 ; define attribute to apply
                 MOVE    M2M$SA_COL_STD, R3      ; unselect = standard text
@@ -1258,8 +1319,17 @@ _OPTM_GK_3      CMP     M2M$KEY_HELP, R8        ; Help (close menu)
                 RBRA    _OPTMGK_RET, 1
 
 _OPTM_GK_4      CMP     M2M$KEY_RUNSTOP, R8     ; Run/Stop (one menu level up)
-                RBRA    _OPTMGK_LOOP, !Z        ; other key: ignore
+                RBRA    _OPTM_GK_5, !Z
                 MOVE    OPTM_KEY_MENUUP, R8
+                RBRA    _OPTMGK_RET, 1
+
+_OPTM_GK_5      CMP     M2M$KEY_LEFT, R8        ; M2M-UPSTREAM menu-rows:
+                RBRA    _OPTM_GK_6, !Z          ; left/right: the options of
+                MOVE    OPTM_KEY_LEFT, R8       ; a row
+                RBRA    _OPTMGK_RET, 1
+_OPTM_GK_6      CMP     M2M$KEY_RIGHT, R8
+                RBRA    _OPTMGK_LOOP, !Z        ; other key: ignore
+                MOVE    OPTM_KEY_RIGHT, R8
 
 _OPTMGK_RET     DECRB
                 RET

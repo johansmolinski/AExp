@@ -39,3 +39,12 @@ OPTM_STRUCT     .BLOCK 1
 
 ; temporary variable
 OPTM_TEMP       .BLOCK 1
+
+; M2M-UPSTREAM menu-rows (menu_rows.asm): the screen layout of the visible
+; items that OPTR_PRINT drew last, two words per ordinal (OPTR_MAX = 40):
+; row | column << 8, highlight width (0 = full); and its drawing state
+OPTR_LAY        .BLOCK 80
+OPTR_GRP        .BLOCK 1                        ; group id of the open row
+OPTR_COL        .BLOCK 1                        ; its next marker column
+OPTR_LBL        .BLOCK 1                        ; its label text..
+OPTR_LBLN       .BLOCK 1                        ; ..and its length (0: none)
