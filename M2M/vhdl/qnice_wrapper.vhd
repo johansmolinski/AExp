@@ -21,6 +21,9 @@ generic (
 );
 port (
    clk_i                     : in  std_logic;
+   -- M2M-UPSTREAM sd-host (Megamiga 0.7): 100 MHz, same MMCM as clk_i, phase 0 (the SD
+   -- host controllers' clock: 50 MHz SD clock)
+   clk100_i                  : in  std_logic;
    rst_i                     : in  std_logic;
 
    -- Serial communication (rxd, txd only; rts/cts are not available)
@@ -217,6 +220,7 @@ begin
       )
       port map (
          clk50_i                 => clk_i,
+         clk100_i                => clk100_i,      -- M2M-UPSTREAM sd-host (Megamiga 0.7)
          reset_n_i               => not rst_i,
 
          -- serial communication (rxd, txd only; rts/cts are not available)

@@ -37,10 +37,11 @@ use work.sdhost_pkg.all;
 entity sdslots is
    generic (
       G_ABSENT    : natural := 65535;    -- clocks without a card before the reset
-      G_MS        : natural := 50_000    -- clocks per millisecond (sdhost.vhd)
+      G_MS        : natural := 100_000   -- clk2x_i clocks per millisecond (sdhost.vhd)
    );
    port (
       clk_i       : in  std_logic;       -- QNICE clock (50 MHz)
+      clk2x_i     : in  std_logic;       -- the controllers' clock (100 MHz, sdhost.vhd)
       reset_i     : in  std_logic;       -- QNICE reset
 
       -- QNICE registers 0xFF20..0xFF27 (writes on the falling edge, data_o
@@ -192,6 +193,7 @@ begin
          generic map (G_MS => G_MS)
          port map (
             clk_i       => clk_i,
+            clk2x_i     => clk2x_i,
             reset_i     => rst(i),
             en_i        => en_c(i),
             we_i        => we_i,

@@ -642,6 +642,7 @@ begin
    )
    port map (
       clk_i                     => qnice_clk,
+      clk100_i                  => hr_clk,        -- M2M-UPSTREAM sd-host (Megamiga 0.7): SD at 50 MHz
       rst_i                     => qnice_rst,
       uart_rxd_i                => uart_rxd_i,
       uart_txd_o                => uart_txd_o,

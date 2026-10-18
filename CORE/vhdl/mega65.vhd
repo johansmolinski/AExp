@@ -502,6 +502,17 @@ signal main_ids_we            : std_logic;
 signal main_ids_data          : std_logic_vector(15 downto 0);
 signal main_ids_last          : std_logic;
 signal main_ids_cons          : std_logic_vector(1 downto 0);
+-- Megamiga 0.7: IDE DMA - the Fast RAM map and the board's client of the fp_* slots
+signal main_fmap_z2           : std_logic;
+signal main_fmap_z3           : std_logic;
+signal main_fmap_z3base       : std_logic_vector(7 downto 0);
+signal ide_dm_req             : std_logic;
+signal ide_dm_we              : std_logic;
+signal ide_dm_line            : std_logic;
+signal ide_dm_addr            : std_logic_vector(24 downto 2);
+signal ide_dm_be              : std_logic_vector(3 downto 0);
+signal ide_dm_wdata           : std_logic_vector(31 downto 0);
+signal ide_dm_ack             : std_logic;
 signal main_hd_led            : std_logic := '0';         -- stretched for the drive LED
 signal main_hd_led_cnt        : unsigned(20 downto 0) := (others => '0');
 constant C_HD_LED_HOLD        : natural := CORE_CLK_SPEED / 20;  -- 50 ms
@@ -1636,6 +1647,9 @@ begin
          ids_data_i           => main_ids_data,
          ids_last_i           => main_ids_last,
          ids_cons_o           => main_ids_cons,
+         fmap_z2_o            => main_fmap_z2,
+         fmap_z3_o            => main_fmap_z3,
+         fmap_z3base_o        => main_fmap_z3base,
          eth_ena_i            => '1',              -- the network card is always there
          eth_sel_o            => main_eth_sel,
          eth_data_i           => main_eth_rddata,
@@ -1888,6 +1902,13 @@ begin
          fp_data_i      => main_fp_wdata,
          fp_data_o      => main_fp_rdata,
          fp_ack_o       => main_fp_ack,
+         dm_req_i       => ide_dm_req,
+         dm_we_i        => ide_dm_we,
+         dm_line_i      => ide_dm_line,
+         dm_addr_i      => ide_dm_addr,
+         dm_be_i        => ide_dm_be,
+         dm_data_i      => ide_dm_wdata,
+         dm_ack_o       => ide_dm_ack,
          scrub_i        => amiga_chip_scrub,
          scrub_addr_i   => amiga_chip_scrub_addr,
          qnice_clk_i    => qnice_clk_i,
@@ -1965,6 +1986,18 @@ begin
          ids_data_o              => main_ids_data,
          ids_last_o              => main_ids_last,
          ids_cons_i              => main_ids_cons,
+         fmap_z2_i               => main_fmap_z2,
+         fmap_ar3_i              => main_cart_ar3,
+         fmap_z3_i               => main_fmap_z3,
+         fmap_z3base_i           => main_fmap_z3base,
+         dm_req_o                => ide_dm_req,
+         dm_we_o                 => ide_dm_we,
+         dm_line_o               => ide_dm_line,
+         dm_addr_o               => ide_dm_addr,
+         dm_be_o                 => ide_dm_be,
+         dm_data_o               => ide_dm_wdata,
+         dm_rdata_i              => main_fp_rdata,
+         dm_ack_i                => ide_dm_ack,
 
          rom_avm_read_o          => main_iderom_avm_read,
          rom_avm_address_o       => main_iderom_avm_address,
