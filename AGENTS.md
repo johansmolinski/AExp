@@ -423,6 +423,25 @@ the dated facts.
   Lowres arrives one output line (32 us) earlier. Bench
   `CORE/sim/video/run_scandoubler.sh` (upstream's, on the real Minimig raster).
   Added in the JS fork 2026-10-16.
+  (21) `menu-rows` — radio groups side by side: a group listed in config.vhd's
+  `OPTM_ROWS` is drawn as a ROW, the text before ": " of its first item on a
+  label line, the options (" 68020", without the label) on the next line, each
+  behind its marker. New `M2M/rom/menu_rows.asm`: `OPTR_PRINT` (FP_PRINT) draws
+  the menu and records where each visible item is (`OPTR_LAY`, 40 ordinals),
+  `OPTR_PRINTXY` (FP_PRINTXY) / `OPTR_POS` translate the classic position
+  (OPTM_Y + 1 + ordinal) menu.asm still computes; `OPT_SELECT` highlights just
+  the option, `OPT_PRINTLINE` uses the layout too. menu.asm: `OPTM_KEY_LEFT/
+  RIGHT` (7/8; options.asm maps the cursor keys) step through a row, up/down
+  skip its other options and land on the selected option of a row
+  (`_OPTM_ROWSKIP`); the separator test reads bit 0 of the lines word, bit 1 =
+  option of a row (HELP_MENU sets it from `SEL_OPTM_ROWS` 0x0314; index 4095 =
+  probe 0x2D52, missing = classic menu). `_HLP_RADIOFIX` (HELP_MENU_INIT): a
+  radio group without a selection gets its FIRST item - a settings file from
+  before Megamiga's "Slow RAM: None" existed. Every option stays its own item:
+  line numbers, settings file, OPTM_SIZE, mega65.vhd unchanged. Rules: row items
+  consecutive, radio (no SINGLESEL), the row fits OPTM_DX - 2. TBs
+  `~/aexp-work/menu-rows` (`run.sh`, `radiofix/run.sh`, `cfg/run.sh` + render.py,
+  `mut.py`). Added in the JS fork 2026-10-18.
   All other framework fixes
   go into `CORE/CORE.xdc` (constraints) or get documented for upstreaming.
   Git remote `upstream` = sy2002/MiSTer2MEGA65 (master = V2.0.1).

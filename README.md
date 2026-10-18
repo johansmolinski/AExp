@@ -147,7 +147,10 @@ board, see Hard disks below), Chip RAM, Slow RAM, 8 MB Zorro II Fast RAM
 and Zorro III Fast RAM (68020 and 68040 only): **Zorro III RAM (16 MB)** and
 **Zorro III RAM (32 MB)** are two boards, switch on one or both (48 MB). The
 CPU is 68000, 68020 or 68040. Every profile keeps its own
-settings. The hard disk lines (**HDF 0** = master, **HDF 1** = slave) and the
+settings. CPU, Chip RAM, Slow RAM and the Monitor Cartridge (like the number of
+drives in Drive Settings) show their choices side by side on one line:
+<kbd>Left</kbd>/<kbd>Right</kbd> move to a choice, <kbd>Return</kbd> or
+<kbd>Space</kbd> selects it. The hard disk lines (**HDF 0** = master, **HDF 1** = slave) and the
 **Kickstart** line there pick the profile's files: the file is loaded at once
 (the Amiga restarts) and the profile keeps it, also after a power-off.
 <kbd>Space</kbd> on a mounted HDF line ejects the disk and the profile
@@ -221,11 +224,11 @@ expansion memory, which the Amiga's custom chips cannot display. **Rogue**
 is a well-known example: with Slow RAM switched on it fails to draw the
 dungeon and the player. On a real A500 the fix was to pull the trapdoor
 card out of the machine; here it is a menu item. Open the menu with
-<kbd>Help</kbd>, go to **Profile Settings** and deselect
-**Slow RAM (512 KB)** (the A500 profile has it on): the Amiga automatically
+<kbd>Help</kbd>, go to **Profile Settings** and set **Slow RAM** to
+**None** (the A500 profile has 512 kB): the Amiga automatically
 reboots as a 512 KB chip-RAM-only A500, authentic down to the detail that
 the expansion memory area behaves exactly like on a machine without the
-trapdoor card. The setting is remembered, so switch it back on for
+trapdoor card. The setting is remembered, so set it back to 512 kB for
 software that wants the full 1 MB. The battery-backed real-time clock —
 on real hardware a part of the A501 — stays available either way.
 

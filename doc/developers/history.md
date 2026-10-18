@@ -2816,6 +2816,34 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     first run was void: parallel `ghdl -e` overwrote one ./tb_ide_g, each mutant now has its
     own directory). Build `z3-48-a` (ea36094): WNS +0.025, WHS +0.016, 117.7k LUTs (88%).
     Hardware-confirmed by the user on 2026-10-18 (z3-48-a on the MEGA65 R6).
+  - **Menu rows (branch `hmenu` from main 50b43ce, 2026-10-18; M2M exception 21
+    `menu-rows`).** The user wanted radio options side by side: CPU (68000 68020
+    68040), Chip RAM (512 kB 1 MB 2 MB), Slow RAM (None 512 kB), Monitor Cartridge
+    (None HRTmon AR3) in every profile and Drive Settings > Drives (1 2 3); a fourth
+    drive was offered by the user "if not too much" and left for later (new menu lines,
+    a fourth entry in every per-drive table, a fourth image channel). A row: label line
+    (the text before ": " of the group's first item), then the options, each behind its
+    marker; the cursor highlights one option, left/right move inside the row, up/down
+    skip the rest of it and land on the selected option of the next row, Return/Space
+    select. Design: every option stays its own menu item (line numbers, settings file,
+    OPTM_SIZE, prof_decode unchanged); only screen positions change, so menu.asm keeps
+    computing the classic position (ordinal = position among the visible items) and the
+    screen callbacks translate it through the layout `OPTR_PRINT` recorded while drawing
+    (`M2M/rom/menu_rows.asm`). Slow RAM was a toggle: the separator in front of it
+    (offset 10 of each profile block: lines 33/51/69/87) became "Slow RAM: None" and the
+    toggle (offset 11, `C_PROF_SLOW`) its second item, so the HDL still reads the same
+    bit; an old settings file has neither set, and `_HLP_RADIOFIX` gives any radio group
+    without a selection its first item (no single-item radio group exists, checked by
+    `cfg/check.py`). The Profile Settings page went from 27 to 24 rows. Firmware: ROM
+    31694 -> 32296/32768 words, 84 variable words (stack margin 252 -> 168),
+    MENU_HEAP_SIZE 4416 -> 4288 (demand 4260, 148 characters fewer), release HEAP_SIZE
+    14240. Tests `~/aexp-work/menu-rows`: `run.sh` (real OPTM_SHOW/OPTM_RUN + menu_rows
+    into a RAM screen: 25 scripted keys over three rows, a submenu row without a label,
+    a classic radio and a single-select; screen and attributes checked at each step,
+    callbacks checked), `radiofix/run.sh` (_HLP_RADIOFIX extracted from options.asm,
+    16 settings banks in RAM, a group across a bank boundary), `cfg/run.sh` (ghdl dump
+    of config.vhd as the firmware reads it: row rules, widths, defaults; `render.py`
+    draws a level), `mut.py` 20/20 mutants killed; `~/aexp-work/menu-nest` still PASS.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
