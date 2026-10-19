@@ -2290,6 +2290,8 @@ HWF_OSM_INIT    INCRB
                 MOVE    HWF_DRV_NONE, @R0
                 MOVE    HWF_LAST_CNT, R0
                 MOVE    0, @R0
+                MOVE    PRF_DIRTY, R0           ; 0.7: nothing to write back
+                MOVE    0, @R0                  ; before PRF_BOOT (PRF_STEP)
                 MOVE    IO$CYC_MID, R0
                 MOVE    HWF_OSM_TICK, R1
                 MOVE    @R0, @R1
