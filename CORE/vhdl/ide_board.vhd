@@ -534,6 +534,14 @@ begin
          last_blk <= '0';
          blk_more <= '0';
          error    <= x"01";                   -- diagnostic code: no error
+         -- Megamiga 2026-10-19: the ATA signature after a reset (ATA/ATAPI-7 9.12: sector
+         -- count 01, LBA low 01, LBA mid/high 00/00 = an ATA device). Linux's libata
+         -- classifies the drive by it after SRST; the cylinder scsi.device had left
+         -- there made it "found unknown device (class 0)".
+         tf_scnt  <= x"01";
+         tf_lba0  <= x"01";
+         tf_lba1  <= x"00";
+         tf_lba2  <= x"00";
          tf_devh  <= x"A0";
          ptr      <= (others => '0');
          pf_off   <= (others => '0');

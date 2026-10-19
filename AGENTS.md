@@ -162,6 +162,13 @@ Megamiga fork (johansmolinski):
   2026-10-12), the RIPPLE board with Gayle off too. Merged into main
   2026-10-16 on top of 0.6.4: the toggle is on lines 29/47/65/83 (A4000 too, off
   there by default), groups 65..68.
+- `linux040` (2026-10-19, Minimig branch `linux040`): Linux 6.18 boots to a busybox
+  shell on the 68040 (HW-confirmed, build linux-e). Four AP68040 fixes in `rtl/ap040`
+  (MUL.L/DIV.L second-register forwarding, store-fault write in WB3, no early read in
+  exception entry, store fault during exception step 5 is no double fault; reported
+  upstream as ranzbak/AP68040-pipelined #1); Gayle: ATA signature after a reset
+  (`ide_board.vhd`), so libata finds the disk (HW-confirmed linux040-d); kernel on
+  fedora `~/linux68k` (clean kit `linux-g`), ILA flow + benches `~/aexp-work/linux/{ila,sim}`.
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and

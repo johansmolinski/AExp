@@ -2916,6 +2916,80 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       +0.225 under the corrected one (same routed design, so its bitstream was used).
       HW-confirmed by the user 2026-10-19 (menu size, drive sound disk guard). Merged
       into main (4b13425 and the follow-ups up to 7e2c601), pushed.
+  - **Linux boots to a busybox shell on the 68040 (2026-10-17..19, branch `linux040` from
+    main 50b43ce, Minimig branch `linux040` from ea6144a).** Kernel: Linux 6.18.57 LTS built
+    on fedora (`~/linux68k/build.sh`: `amiga_defconfig` for the 68040 only, -Os, busybox-static
+    initramfs built in; the command line needs `video=amifb:pal`, amifb's AGA default is
+    31 kHz), started with amiboot 5.6 from AmigaDOS (`execute boot`, kits
+    `~/aexp-builds/linux-*`; the test kernel `linux-f` prints every access error as
+    AEin/AEnn/AEout). Four AP68040 bugs stood in the way, all in the submodule's `rtl/ap040`
+    (all four are in upstream ranzbak/AP68040-pipelined as checked out on 2026-10-10,
+    `~/aexp-work/cpu060/ref/ranzbak_AP68040-pipelined`):
+    1. MUL.L 64 (Dh) and DIV.L (Dr): EX computes the second result register, but EA-calc and
+       EA-fetch only saw the micro-op's (An)+ update on u1, so the next instruction read the
+       old Dh (put_dec_trunc8: `MULU.L #,D1:D0` / `MOVE.W D1,D0` - garbled printk numbers).
+       EX exports its u1 port (`fw_u1_*`), EA-calc waits for it (`ex_w1_pend`).
+    2. A completed store's access fault reported its pending write in WB1; the 68040 (WinUAE,
+       NetBSD trap.c) reports it in WB3, and Linux's `access_error040()` completes only
+       WB2/WB3, so every first write to a user page was lost (bss, exec).
+    3. The early operand read (`use_early`) went out during exception entry: after a store
+       fault (`wf_go`) EA-fetch is empty, the next, abandoned instruction's read gets FC 5 in
+       P_EXC, Linux's supervisor table has no user mapping, the read faults, and a fault in
+       exception entry halts the core (`aerr_dbl`). Found with an ILA capture on the MEGA65
+       (`~/aexp-work/linux/ila`: probes added to linux-b's synthesized checkpoint in a
+       non-project flow, trigger `ph == P_HALT`; busybox stopped right after its 13th access
+       error). Fix: no early read in P_EXC/P_RTE/P_RESET/P_HALT, and one issued in the
+       `wf_go` clock itself is dropped. Build `linux-d` (WNS +0.027): busybox ran to its
+       162nd access error, then the CPU stopped again (diag UART: CPU address frozen,
+       cursor frozen).
+    4. An instruction-fetch fault (ID's `ifault`, not serialising) or a read fault enters
+       P_EXC and waits in step 5 for the older instructions; a store fault from one of them
+       counted as a double fault (`wf_dbl`). Nothing of the frame has gone out in step 5, so
+       the store's access error now replaces the entry (`wf_go`), as on the 68040, and the
+       abandoned instruction faults again after the RTE; a frame store (`wb_stf.exc`) is
+       still a double fault.
+    Benches in `~/aexp-work/linux/sim` (the e2e040 harness in the release configuration,
+    OPTS 311, FRAM, copyback; `runbb.sh`, `regress.sh`; `mktb.py` monitors EXCTRACE/XWIN):
+    `exctest.S` (store fault + the next load, 8 alignments x 0..3 fillers; without fix 3
+    halts after 4 faults; mutants: only the `wf_go` drop PASSES, only the phase gate FAILS -
+    the gate half, EA-fetch empty after `wf_go`, does not happen in the bench and rests on
+    the ILA trace), `exctest2.S` (store fault + TRAP/line A: PASS before and after, both
+    serialise), `exctest3.S` (a store at the end of a code page, the next page not present:
+    without fix 4 halts after 1 fault, with it C0DE and all 96 faults), `bbtest.S` (busybox's
+    start, separate empty SRP table) - all PASS with the four fixes. Build `linux-e`
+    (floppy-direct + the four fixes, WNS +0.001, WHS +0.010): **hardware-confirmed
+    2026-10-19, the user: "We're in buzybox and can execute commands."** Note: linux-e was
+    built on the floppy-direct base (Minimig d7d29e2); the branch carries the same four
+    commits on top of main's Minimig (ea6144a, IDE DMA + Z3 48 MB), not yet built as such.
+    Reported upstream 2026-10-19: ranzbak/AP68040-pipelined issue #1 (all four, with the
+    patch; it applies to upstream `0a07062` with offsets only).
+    - Gayle ATA under Linux, "ata1: found unknown device (class 0)" (2026-10-19): libata
+      classifies the drive after SRST by the ATA signature (LBA mid/high 00/00), but
+      `ide_board.vhd`'s `device_reset` kept the taskfile, so the cylinder scsi.device had
+      left there was read back. `device_reset` (SRST release and the hardware reset) now
+      loads sector count 01, LBA low 01, LBA mid/high 00/00. Bench `~/aexp-work/ide`
+      (`tb_ide_board.vhd` step 11, `add_sig.py`: SRST through pata_gayle's addresses
+      $DA0002 + 4n / $DA101A): without the fix 4 errors (05/56/34/12 read back), with it
+      both modes PASS; `~/aexp-work/z3b/ide` (DMA) scenarios 0/1 PASS. (`ideng/run_g50.sh`
+      no longer elaborates against main's sdhost: stale bench.) HW: see linux040-d below.
+    - Clean kernel kit `~/aexp-builds/linux-g` (pristine traps.c, /init = the busybox
+      script; fedora `build.sh` takes OUT/VMOUT/INITT; the bring-up traps.c is kept as
+      `traps.c.debug`); qemu virt reaches the shell.
+    - Fedora: the build disk's btrfs ran out of metadata space (all chunks allocated to
+      data, 41 GB "free"): `sudo btrfs balance start -dusage=5 /home` after deleting two
+      disposable build directories gave 37 GiB unallocated.
+    - Build `linux040-b` (main 50b43ce + the four fixes + the Gayle signature): WNS +0.002,
+      WHS +0.036. On the MEGA65 the OSD menu did not come up; likely cause: main had
+      moved on to the menu rows (OPTM_SIZE 248 -> 252, same file name), so the card's
+      settings file did not fit the older menu. Rebased onto main
+      4b13425 (hmenu), Minimig `linux040` onto 95069c1 (`rtgena`), no code conflicts.
+    - Build `linux040-c` (REF hmenu-e): first pass WNS -0.077, the re-rolls worse (-0.545);
+      the failing paths `g_ap040.tg68k_inst` -> `sd_ba` were the ones main's 7e2c601 then
+      put under the CPU -> SDRAM multicycle (found by the hmenu session). Stopped, rebased
+      onto main 7e2c601. Build `linux040-d` (REF hmenu-e): WNS +0.002, WHS +0.010 at the
+      first pass. **Hardware-confirmed by the user on 2026-10-19** (linux040-d, kernel kit
+      linux-g, A1200 profile with the 68040 and Gayle IDE): the OSD is back, Linux boots
+      to the busybox shell, libata finds the ATA disk and lists its partitions.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
