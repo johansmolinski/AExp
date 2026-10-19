@@ -1017,19 +1017,7 @@ PREP_START      INCRB
 
                 ; Megamiga 0.3: the Kickstart and the hard disk of the saved
                 ; machine profile (the HDL already runs its CPU/chipset/RAM)
-                XOR     R0, R0                  ; R0: profile 0..3
-                MOVE    AEXP_OSM_PROF_A600, R8
-                RSUB    M2M$GET_SETTING, 1
-                ADD     R9, R0
-                MOVE    AEXP_OSM_PROF_A1200, R8
-                RSUB    M2M$GET_SETTING, 1
-                ADD     R9, R0
-                ADD     R9, R0
-                MOVE    AEXP_OSM_PROF_A4000, R8
-                RSUB    M2M$GET_SETTING, 1
-                ADD     R9, R0
-                ADD     R9, R0
-                ADD     R9, R0
+                XOR     R0, R0                  ; R0: profile (0.7 WIP: one)
                 MOVE    R0, R8
                 XOR     R9, R9                  ; 0 = boot
                 RSUB    PROFILE_APPLY, 1
@@ -1084,15 +1072,6 @@ OSM_SEL_POST    INCRB
                 ; reset -- only the coefficient RAM content changes; the
                 ; Amiga keeps running. The user sees the new filter from the
                 ; next frame.
-                ; Megamiga 0.3: a machine profile was selected (R9 = 0..3):
-                ; load its Kickstart and hard disk (the HDL cold-boots)
-                CMP     AEXP_OPTM_G_PROFILE, R8
-                RBRA    _OSM_SP_FLT, !Z
-                MOVE    R9, R8
-                MOVE    1, R9
-                RSUB    PROFILE_APPLY, 1
-                RBRA    _OSM_SEL_POST_R, 1
-
 _OSM_SP_FLT     CMP     AEXP_OPTM_G_FILTER, R8
                 RBRA    _OSM_SP_DRV, !Z
                 RSUB    LOAD_HDMI_FILTER, 1
@@ -5517,8 +5496,9 @@ ADF_FLUSH_CHUNK .EQU    512                 ; bytes per background time slice
 ADF_DRIVES      .EQU    3
 
 ; Kickstart selector: accepted ROM sizes (high words; the low words are 0)
-PROF_KICK_ID    .EQU    5                       ; manual ROM ids (order of the
-PROF_HDF_ID     .EQU    3                       ; OPTM_G_LOAD_ROM lines); the
+PROF_KICK_ID    .EQU    6                       ; manual ROM ids (order of the
+PROF_HDF_ID     .EQU    4                       ; OPTM_G_LOAD_ROM lines; 0.7: the
+                                                ; Profile line is 3); the
                                                 ; slave HDF is PROF_HDF_ID + 1
 PROF_DIR_LEN    .EQU    7                       ; strlen("/amiga/")
 PROF_PEND_NUM   .EQU    3                       ; PROF_HDF_ID..PROF_KICK_ID
@@ -8469,21 +8449,7 @@ _PR_KEY         INCRB
                 RET
 
 ; _PR_CUR: the profile that is selected in the menu -> R8 (0..3). R9 used.
-_PR_CUR         MOVE    R10, @--SP
-                MOVE    AEXP_OSM_PROF_A600, R8
-                RSUB    M2M$GET_SETTING, 1
-                MOVE    R9, R10
-                MOVE    AEXP_OSM_PROF_A1200, R8
-                RSUB    M2M$GET_SETTING, 1
-                ADD     R9, R10
-                ADD     R9, R10
-                MOVE    AEXP_OSM_PROF_A4000, R8
-                RSUB    M2M$GET_SETTING, 1
-                ADD     R9, R10
-                ADD     R9, R10
-                ADD     R9, R10
-                MOVE    R10, R8
-                MOVE    @SP++, R10
+_PR_CUR         XOR     R8, R8                  ; (0.7 WIP: one profile)
                 RET
 
 ; B2_PROF_REMEMBER: the user loaded the file handle R8 (opened through the

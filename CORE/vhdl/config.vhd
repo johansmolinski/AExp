@@ -99,10 +99,10 @@ constant HELP_1 : string :=
 
    " MACHINE PROFILES (main menu)\n\n" &
 
-   " A500:  68000, OCS, 512 KB + 512 KB Slow\n" &
-   " A600:  68000, ECS, 2 MB Chip\n" &
-   " A1200: 68020, AGA, 2 MB Chip\n" &
-   " A4000: 68040, AGA, 2 MB Chip, Zorro III\n" &
+   " Profile: one of the files in\n" &
+   " /amiga/profiles (the first start makes\n" &
+   " A500, A600, A1200 and A4000). Add New\n" &
+   " Profile there copies the active one.\n" &
    " CPU (68000-68040), chipset, RAM (8 MB\n" &
    " Zorro II, 16 and 32 MB Zorro III) are\n" &
    " set in Profile Settings. A profile\n" &
