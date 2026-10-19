@@ -14,8 +14,25 @@ set jobs  [expr {[llength $argv] > 1 ? [lindex $argv 1] : 4}]
 open_project CORE-${board}.xpr
 
 reset_run synth_1               ;# force a clean rebuild (invalidates impl_1)
+# Incremental synthesis from the reference build (REF_SYNTH_DCP, set by
+# build_all.sh from REF_DIR): unchanged logic keeps its cell names, so the
+# incremental implementation can match - and keep - nearly all of the
+# reference placement. A fresh synthesis renames ~10% of the cells after even
+# a small source change, and those are placed anew (hmenu-f, 2026-10-19: 84.5%
+# reuse for three changed menu-bit ranges). Cleared afterwards, like the hooks.
+set synth_ref ""
+if {[info exists ::env(REF_SYNTH_DCP)] && $::env(REF_SYNTH_DCP) ne ""} {
+    set synth_ref $::env(REF_SYNTH_DCP)
+    puts "REF_SYNTH_DCP: incremental synthesis from $synth_ref"
+    set_property AUTO_INCREMENTAL_CHECKPOINT 0 [get_runs synth_1]
+    set_property INCREMENTAL_CHECKPOINT $synth_ref [get_runs synth_1]
+}
 launch_runs synth_1 -jobs $jobs
 wait_on_run synth_1
+if {$synth_ref ne ""} {
+    set_property INCREMENTAL_CHECKPOINT "" [get_runs synth_1]
+    catch {remove_files -quiet -fileset utils_1 [get_files -quiet -of_objects [get_filesets utils_1] $synth_ref]}
+}
 if {[get_property PROGRESS [get_runs synth_1]] ne "100%"} {
     puts "RESULT $board FAILED synth_1: [get_property STATUS [get_runs synth_1]]"
     exit 1
