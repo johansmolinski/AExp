@@ -2903,6 +2903,53 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       Volume, Stereo Mix) had not been renumbered (the OSM came up small) - fixed in
       cfb466a; `~/aexp-work/menu-rows/cfg/xcheck.py` now checks every C_MENU_* constant,
       ranges too, against the item texts of 50b43ce.
+  - **Linux boots to a busybox shell on the 68040 (2026-10-17..19, branch `linux040` from
+    main 50b43ce, Minimig branch `linux040` from ea6144a).** Kernel: Linux 6.18.57 LTS built
+    on fedora (`~/linux68k/build.sh`: `amiga_defconfig` for the 68040 only, -Os, busybox-static
+    initramfs built in; the command line needs `video=amifb:pal`, amifb's AGA default is
+    31 kHz), started with amiboot 5.6 from AmigaDOS (`execute boot`, kits
+    `~/aexp-builds/linux-*`; the test kernel `linux-f` prints every access error as
+    AEin/AEnn/AEout). Four AP68040 bugs stood in the way, all in the submodule's `rtl/ap040`
+    (all four are in upstream ranzbak/AP68040-pipelined as checked out on 2026-10-10,
+    `~/aexp-work/cpu060/ref/ranzbak_AP68040-pipelined`):
+    1. MUL.L 64 (Dh) and DIV.L (Dr): EX computes the second result register, but EA-calc and
+       EA-fetch only saw the micro-op's (An)+ update on u1, so the next instruction read the
+       old Dh (put_dec_trunc8: `MULU.L #,D1:D0` / `MOVE.W D1,D0` - garbled printk numbers).
+       EX exports its u1 port (`fw_u1_*`), EA-calc waits for it (`ex_w1_pend`).
+    2. A completed store's access fault reported its pending write in WB1; the 68040 (WinUAE,
+       NetBSD trap.c) reports it in WB3, and Linux's `access_error040()` completes only
+       WB2/WB3, so every first write to a user page was lost (bss, exec).
+    3. The early operand read (`use_early`) went out during exception entry: after a store
+       fault (`wf_go`) EA-fetch is empty, the next, abandoned instruction's read gets FC 5 in
+       P_EXC, Linux's supervisor table has no user mapping, the read faults, and a fault in
+       exception entry halts the core (`aerr_dbl`). Found with an ILA capture on the MEGA65
+       (`~/aexp-work/linux/ila`: probes added to linux-b's synthesized checkpoint in a
+       non-project flow, trigger `ph == P_HALT`; busybox stopped right after its 13th access
+       error). Fix: no early read in P_EXC/P_RTE/P_RESET/P_HALT, and one issued in the
+       `wf_go` clock itself is dropped. Build `linux-d` (WNS +0.027): busybox ran to its
+       162nd access error, then the CPU stopped again (diag UART: CPU address frozen,
+       cursor frozen).
+    4. An instruction-fetch fault (ID's `ifault`, not serialising) or a read fault enters
+       P_EXC and waits in step 5 for the older instructions; a store fault from one of them
+       counted as a double fault (`wf_dbl`). Nothing of the frame has gone out in step 5, so
+       the store's access error now replaces the entry (`wf_go`), as on the 68040, and the
+       abandoned instruction faults again after the RTE; a frame store (`wb_stf.exc`) is
+       still a double fault.
+    Benches in `~/aexp-work/linux/sim` (the e2e040 harness in the release configuration,
+    OPTS 311, FRAM, copyback; `runbb.sh`, `regress.sh`; `mktb.py` monitors EXCTRACE/XWIN):
+    `exctest.S` (store fault + the next load, 8 alignments x 0..3 fillers; without fix 3
+    halts after 4 faults; mutants: only the `wf_go` drop PASSES, only the phase gate FAILS -
+    the gate half, EA-fetch empty after `wf_go`, does not happen in the bench and rests on
+    the ILA trace), `exctest2.S` (store fault + TRAP/line A: PASS before and after, both
+    serialise), `exctest3.S` (a store at the end of a code page, the next page not present:
+    without fix 4 halts after 1 fault, with it C0DE and all 96 faults), `bbtest.S` (busybox's
+    start, separate empty SRP table) - all PASS with the four fixes. Build `linux-e`
+    (floppy-direct + the four fixes, WNS +0.001, WHS +0.010): **hardware-confirmed
+    2026-10-19, the user: "We're in buzybox and can execute commands."** Note: linux-e was
+    built on the floppy-direct base (Minimig d7d29e2); the branch carries the same four
+    commits on top of main's Minimig (ea6144a, IDE DMA + Z3 48 MB), not yet built as such.
+    Next: a clean kernel without the AE prints, the Gayle ATA "unknown device" under Linux,
+    report the four fixes upstream.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
