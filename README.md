@@ -202,6 +202,11 @@ The choices live in the settings file, so keep `megamiga-<version>.cfg` on
 the card. A file that is gone (deleted, renamed, or on the other card) counts
 as not chosen: pick it again.
 
+A settings file belongs to the menu of the core that wrote it. When a core
+with a different menu (a newer or older version) finds it, it resets the
+file to the defaults and says so on the screen at the start: the menu
+settings and the files the profiles remember are gone, choose them again.
+
 ### Kickstart ROM
 
 The core needs a Kickstart ROM: 1.3 (the 256 KB version that shipped with the

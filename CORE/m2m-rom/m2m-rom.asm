@@ -1013,6 +1013,8 @@ PREP_START      INCRB
                 ; un-resets so the first frame is already positioned.
                 RSUB    LOAD_SCREEN_OFFSETS, 1
 
+                RSUB    CFG_SIGWARN, 1          ; a settings file was reset
+
                 ; Megamiga 0.3: the Kickstart and the hard disk of the saved
                 ; machine profile (the HDL already runs its CPU/chipset/RAM)
                 XOR     R0, R0                  ; R0: profile 0..3
@@ -2859,6 +2861,13 @@ PROF_SAVED      RSUB    FAR_CALL, 1
                 .DW     BANK_F32F, B2_PROF_SAVED
 PROF_FORGET     RSUB    FAR_CALL, 1
                 .DW     BANK_F32F, B2_PROF_FORGET
+; the signature of the settings file (M2M-UPSTREAM cfg-strings, options.asm)
+CFG_SIGCHECK    RSUB    FAR_CALL, 1
+                .DW     BANK_F32F, B2_CFG_CHECK
+CFG_SIGSET      RSUB    FAR_CALL, 1
+                .DW     BANK_F32F, B2_CFG_SIGSET
+CFG_SIGWARN     RSUB    FAR_CALL, 1
+                .DW     BANK_F32F, B2_CFG_WARN
 
 ; ----------------------------------------------------------------------------
 ; The FAT32 write layer (M2M/QNICE/monitor/fat32_write.asm, fat32_wfile.asm):
@@ -8862,6 +8871,165 @@ _PP_END         MOVE    PROF_DEVP, R8
                 RBRA    _PPE_RET, !Z
                 MOVE    0, @R8
 _PPE_RET        RET
+
+; ----------------------------------------------------------------------------
+; The signature of the settings file (2026-10-19)
+;
+; The menu bytes of the settings file only mean something to a menu with the
+; same items in the same order. The text of the file therefore carries
+; "menu=XXXX": a 16-bit hash of OPTM_SIZE and the group word of every item
+; (config.vhd), i.e. of the menu's structure - the same for every settings
+; file of this menu, whatever is selected. A file without it, or with another
+; one (a core with another menu), is reset when it is loaded: OPTM_SIZE bytes,
+; byte 0 = 0xFF (the standard selectors), no text - its settings, including
+; the files the machine profiles remember, are gone; the core says so on the
+; screen at the start (PREP_START). A new file gets the line at its first
+; save. Not caught: options of one radio group swapped (same group words).
+; ----------------------------------------------------------------------------
+
+_B2_SIG_KEY     .ASCII_W "menu"
+_B2_SIG_LOG     .ASCII_W "Settings file: made for another menu - reset to the defaults\n"
+_B2_SIG_TXT     .ASCII_P "\n"
+                .ASCII_P " Settings reset\n"
+                .ASCII_P "\n"
+                .ASCII_P " The settings file was written by a core\n"
+                .ASCII_P " with a different menu, so its settings\n"
+                .ASCII_P " would end up on the wrong options. It was\n"
+                .ASCII_P " replaced by a new one with the defaults.\n"
+                .ASCII_P "\n"
+                .ASCII_P " The machine profiles no longer remember\n"
+                .ASCII_P " their Kickstart and hard disks: choose\n"
+                .ASCII_P " them again in Profile Settings.\n"
+                .ASCII_P "\n"
+                .ASCII_W " Press any key to continue.\n"
+
+; _B2_SIGHEX: the signature of this menu as 4 hex digits and a zero -> the
+; buffer R8 (5 words). All registers preserved.
+_B2_SIGHEX      SYSCALL(enter, 1)
+                MOVE    R8, R7                  ; R7: buffer
+                MOVE    M2M$RAMROM_DEV, R0      ; R5/R6: the window as it was
+                MOVE    @R0, R5
+                MOVE    M2M$RAMROM_4KWIN, R1
+                MOVE    @R1, R6
+                MOVE    M2M$CONFIG, @R0
+                MOVE    M2M$CFG_OPTM_GROUPS, @R1
+                MOVE    OPTM_ICOUNT, R2
+                MOVE    @R2, R2                 ; R2: items left
+                MOVE    R2, R3                  ; R3: hash, from the count
+                MOVE    M2M$RAMROM_DATA, R4
+_B2_SH_1        MOVE    R3, R8                  ; rotate left, then the
+                AND     0xFFFB, SR              ; group word
+                SHR     15, R8
+                AND     0xFFFD, SR
+                SHL     1, R3
+                OR      R8, R3
+                XOR     @R4++, R3
+                SUB     1, R2
+                RBRA    _B2_SH_1, !Z
+                MOVE    R5, @R0
+                MOVE    R6, @R1
+                MOVE    4, R2                   ; 4 hex digits, the high one
+_B2_SH_2        MOVE    R3, R8                  ; first
+                AND     0xFFFB, SR
+                SHR     12, R8
+                AND     0x000F, R8
+                ADD     0x0030, R8
+                CMP     R8, 0x0039              ; above "9"?
+                RBRA    _B2_SH_3, !N
+                ADD     7, R8
+_B2_SH_3        MOVE    R8, @R7++
+                AND     0xFFFD, SR
+                SHL     4, R3
+                SUB     1, R2
+                RBRA    _B2_SH_2, !Z
+                MOVE    0, @R7
+                SYSCALL(leave, 1)
+                RET
+
+; B2_CFG_CHECK: the settings file R8 (open, its text loaded by CFGS_LOAD)
+; -> C=1: it carries the signature of this menu. C=0: it did not and is reset
+; (see above; CFGS_RESET = 1); the caller then treats it as a new file.
+; Registers preserved.
+B2_CFG_CHECK    SYSCALL(enter, 1)
+                MOVE    R8, R0                  ; R0: file handle
+                SUB     10, SP                  ; SP: this menu's signature,
+                MOVE    SP, R8                  ; SP + 5: the file's
+                RSUB    _B2_SIGHEX, 1
+                MOVE    _B2_SIG_KEY, R8
+                MOVE    SP, R9
+                ADD     5, R9
+                MOVE    5, R10
+                RSUB    CFGS_GET, 1
+                MOVE    SP, R8
+                SYSCALL(strcmp, 1)
+                ADD     10, SP
+                CMP     0, R10
+                RBRA    _B2_CC_OK, Z
+                MOVE    _B2_SIG_LOG, R8
+                SYSCALL(puts, 1)
+                MOVE    CFGS_RESET, R8
+                MOVE    1, @R8
+                MOVE    CFGS_LEN, R8            ; no text: CFGS_SIZE makes it
+                MOVE    0, @R8                  ; OPTM_SIZE bytes long
+                MOVE    CFGS_BUF, R8
+                MOVE    0, @R8
+                MOVE    CFGS_DIRTY, R8
+                MOVE    0, @R8
+                MOVE    R0, R8
+                RSUB    CFGS_SIZE, 1
+                MOVE    R0, R8                  ; byte 0: 0xFF (on an error the
+                XOR     R9, R9                  ; defaults are used anyway and
+                XOR     R10, R10                ; the next save rewrites it)
+                SYSCALL(f32_fseek, 1)
+                CMP     0, R9
+                RBRA    _B2_CC_NO, !Z
+                MOVE    R0, R8
+                MOVE    0x00FF, R9
+                SYSCALL(f32_fwrite, 1)
+                CMP     0, R9
+                RBRA    _B2_CC_NO, !Z
+                MOVE    R0, R8
+                SYSCALL(f32_fflush, 1)
+_B2_CC_NO       SYSCALL(leave, 1)
+                AND     0xFFFB, SR              ; C=0
+                RET
+_B2_CC_OK       SYSCALL(leave, 1)
+                OR      0x0004, SR              ; C=1
+                RET
+
+; B2_CFG_SIGSET: a new settings file: its text gets the signature of this menu
+; (CFGS_DIRTY, so the next save writes it). Registers preserved.
+B2_CFG_SIGSET   SYSCALL(enter, 1)
+                SUB     5, SP
+                MOVE    SP, R8
+                RSUB    _B2_SIGHEX, 1
+                MOVE    SP, R9
+                MOVE    _B2_SIG_KEY, R8
+                RSUB    CFGS_SET, 1
+                ADD     5, SP
+                SYSCALL(leave, 1)
+                RET
+
+; B2_CFG_WARN: if B2_CFG_CHECK reset the settings file, say so on the screen
+; until a key is pressed (at the start of the core, PREP_START). Registers
+; preserved.
+B2_CFG_WARN     SYSCALL(enter, 1)
+                MOVE    CFGS_RESET, R0
+                CMP     0, @R0
+                RBRA    _B2_CW_RET, Z
+                MOVE    0, @R0
+                RSUB    SCR$OSM_M_ON, 1
+                RSUB    FRAME_FULLSCR, 1
+                MOVE    _B2_SIG_TXT, R8
+                RSUB    SCR$PRINTSTR, 1
+_B2_CW_1        RSUB    HANDLE_IO, 1
+                RSUB    KEYB$SCAN, 1
+                RSUB    KEYB$GETKEY, 1
+                CMP     0, R8
+                RBRA    _B2_CW_1, Z
+                RSUB    SCR$OSM_OFF, 1
+_B2_CW_RET      SYSCALL(leave, 1)
+                RET
 #endif
 
 ; ----------------------------------------------------------------------------
