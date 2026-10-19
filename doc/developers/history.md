@@ -2948,8 +2948,23 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     2026-10-19, the user: "We're in buzybox and can execute commands."** Note: linux-e was
     built on the floppy-direct base (Minimig d7d29e2); the branch carries the same four
     commits on top of main's Minimig (ea6144a, IDE DMA + Z3 48 MB), not yet built as such.
-    Next: a clean kernel without the AE prints, the Gayle ATA "unknown device" under Linux,
-    report the four fixes upstream.
+    Reported upstream 2026-10-19: ranzbak/AP68040-pipelined issue #1 (all four, with the
+    patch; it applies to upstream `0a07062` with offsets only).
+    - Gayle ATA under Linux, "ata1: found unknown device (class 0)" (2026-10-19): libata
+      classifies the drive after SRST by the ATA signature (LBA mid/high 00/00), but
+      `ide_board.vhd`'s `device_reset` kept the taskfile, so the cylinder scsi.device had
+      left there was read back. `device_reset` (SRST release and the hardware reset) now
+      loads sector count 01, LBA low 01, LBA mid/high 00/00. Bench `~/aexp-work/ide`
+      (`tb_ide_board.vhd` step 11, `add_sig.py`: SRST through pata_gayle's addresses
+      $DA0002 + 4n / $DA101A): without the fix 4 errors (05/56/34/12 read back), with it
+      both modes PASS; `~/aexp-work/z3b/ide` (DMA) scenarios 0/1 PASS. (`ideng/run_g50.sh`
+      no longer elaborates against main's sdhost: stale bench.) Not on the hardware yet.
+    - Clean kernel kit `~/aexp-builds/linux-g` (pristine traps.c, /init = the busybox
+      script; fedora `build.sh` takes OUT/VMOUT/INITT; the bring-up traps.c is kept as
+      `traps.c.debug`); qemu virt reaches the shell.
+    - Fedora: the build disk's btrfs ran out of metadata space (all chunks allocated to
+      data, 41 GB "free"): `sudo btrfs balance start -dusage=5 /home` after deleting two
+      disposable build directories gave 37 GiB unallocated.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
