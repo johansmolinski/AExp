@@ -165,8 +165,10 @@ Megamiga fork (johansmolinski):
 - `linux040` (2026-10-19, Minimig branch `linux040`): Linux 6.18 boots to a busybox
   shell on the 68040 (HW-confirmed, build linux-e). Four AP68040 fixes in `rtl/ap040`
   (MUL.L/DIV.L second-register forwarding, store-fault write in WB3, no early read in
-  exception entry, store fault during exception step 5 is no double fault); kernel on
-  fedora `~/linux68k`, ILA flow + benches `~/aexp-work/linux/{ila,sim}`.
+  exception entry, store fault during exception step 5 is no double fault; reported
+  upstream as ranzbak/AP68040-pipelined #1); Gayle: ATA signature after a reset
+  (`ide_board.vhd`), so libata finds the disk (HW-confirmed linux040-d); kernel on
+  fedora `~/linux68k` (clean kit `linux-g`), ILA flow + benches `~/aexp-work/linux/{ila,sim}`.
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and

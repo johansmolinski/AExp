@@ -2958,7 +2958,7 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       (`tb_ide_board.vhd` step 11, `add_sig.py`: SRST through pata_gayle's addresses
       $DA0002 + 4n / $DA101A): without the fix 4 errors (05/56/34/12 read back), with it
       both modes PASS; `~/aexp-work/z3b/ide` (DMA) scenarios 0/1 PASS. (`ideng/run_g50.sh`
-      no longer elaborates against main's sdhost: stale bench.) Not on the hardware yet.
+      no longer elaborates against main's sdhost: stale bench.) HW: see linux040-d below.
     - Clean kernel kit `~/aexp-builds/linux-g` (pristine traps.c, /init = the busybox
       script; fedora `build.sh` takes OUT/VMOUT/INITT; the bring-up traps.c is kept as
       `traps.c.debug`); qemu virt reaches the shell.
@@ -2970,6 +2970,13 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       moved on to the menu rows (OPTM_SIZE 248 -> 252, same file name), so the card's
       settings file did not fit the older menu. Rebased onto main
       4b13425 (hmenu), Minimig `linux040` onto 95069c1 (`rtgena`), no code conflicts.
+    - Build `linux040-c` (REF hmenu-e): first pass WNS -0.077, the re-rolls worse (-0.545);
+      the failing paths `g_ap040.tg68k_inst` -> `sd_ba` were the ones main's 7e2c601 then
+      put under the CPU -> SDRAM multicycle (found by the hmenu session). Stopped, rebased
+      onto main 7e2c601. Build `linux040-d` (REF hmenu-e): WNS +0.002, WHS +0.010 at the
+      first pass. **Hardware-confirmed by the user on 2026-10-19** (linux040-d, kernel kit
+      linux-g, A1200 profile with the 68040 and Gayle IDE): the OSD is back, Linux boots
+      to the busybox shell, libata finds the ATA disk and lists its partitions.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
