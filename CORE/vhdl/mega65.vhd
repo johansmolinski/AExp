@@ -655,9 +655,15 @@ signal main_hwf_wr_ok             : std_logic;                     -- tab qualif
 signal main_hwf_precmode          : std_logic_vector(1 downto 0);  -- 0x7C mode (50M->main)
 signal main_fdd_step_n            : std_logic := '1';              -- registered mirrors of the f_step /
 signal main_fdd_dir               : std_logic := '1';              -- f_stepdir pins for the diag cyl tracker
+constant C_SND_SETTLE   : natural := 1023;   -- 0.7 drive sound: 36 us selected before /DSKCHG is read
+constant C_SND_TMR_BITS : natural := 24;     -- probe period 2^24 clocks = 0.59 s
+constant C_SND_PRB_BITS : natural := 13;     -- probe length 2^13 clocks = 289 us
 signal main_snd_cyl               : natural range 0 to 79 := 0;    -- 0.7 drive sound: where the real head is
 signal main_snd_step_q            : std_logic := '1';              -- 0.7 drive sound: the forwarded step, last clock
 signal main_snd_pin               : std_logic := '1';              -- 0.7 drive sound: the f_step pin
+signal main_snd_disk              : std_logic := '0';              -- 0.7 drive sound: a real disk is in the drive
+signal main_snd_settle            : natural range 0 to C_SND_SETTLE := 0;   -- clocks the drive has been selected
+signal main_snd_tmr               : unsigned(C_SND_TMR_BITS - 1 downto 0) := (others => '0');   -- probe period
 signal main_qnice_rst             : std_logic;  -- QNICE reset synced into main_clk: the
                                                 -- front-end FIFO's read-side reset MUST
                                                 -- derive from the same event as the
@@ -2785,6 +2791,13 @@ begin
    -- output) is not passed on, so the units' different positions cannot drive it
    -- against a stop. Write gate, side and density stay inactive: nothing on a disk in
    -- the real drive is touched.
+   -- A real disk in the drive silences it (it would wear the disk): while the drive is
+   -- selected, its /DSKCHG is valid after C_SND_SETTLE clocks, and high means a disk is in
+   -- (the drive clears the latch on a step with a disk inserted - the first click or seek
+   -- after an insertion finds it; until then the motor may run). Then no motor and no
+   -- steps, only a probe: every 2^C_SND_TMR_BITS clocks (0.59 s) the drive is selected
+   -- for 2^C_SND_PRB_BITS clocks (289 us), and a low /DSKCHG (the disk was taken out)
+   -- brings the sound back.
    hwf_pins_proc : process (main_clk)
       variable v_sel_n : std_logic;
       variable v_unit  : natural range 0 to 2;
@@ -2792,6 +2805,7 @@ begin
       variable v_sel   : std_logic;
       variable v_stp   : std_logic;
       variable v_pin   : std_logic;
+      variable v_prb   : std_logic;
    begin
       if rising_edge(main_clk) then
          if main_hwf_en = '1' then
@@ -2925,16 +2939,33 @@ begin
             if main_osm_control_i(C_MENU_DRV_NOCLICK) = '1' then
                v_sel := '0';                                 -- Noclick: motor sounds only
             end if;
+            v_prb := '0';
+            if main_snd_disk = '1' then                      -- a real disk: no motor, no steps
+               v_on  := '0';
+               v_sel := '0';
+               if main_snd_tmr(C_SND_TMR_BITS - 1 downto C_SND_PRB_BITS) = 0 then
+                  v_prb := '1';                              -- ... only the probe
+               end if;
+            end if;
             if main_osm_control_i(C_MENU_DRV_SNDOFF) = '1' then
                v_on  := '0';
                v_sel := '0';
+               v_prb := '0';
             elsif main_hwf_ctrl(3 + v_unit) = '0' and (v_on = '1' or v_sel = '1') then
                v_stp := main_hwf_ctrl(0);
             end if;
 
-            if v_on = '1' or v_sel = '1' then
+            if v_on = '1' or v_sel = '1' or v_prb = '1' then
                f_selecta_o <= '0';
+               if main_snd_settle /= C_SND_SETTLE then
+                  main_snd_settle <= main_snd_settle + 1;
+               else                                          -- /DSKCHG is valid: high = a disk
+                  main_snd_disk <= main_hwf_change_n;
+               end if;
+            else
+               main_snd_settle <= 0;
             end if;
+            main_snd_tmr <= main_snd_tmr + 1;
             f_motora_o  <= not v_on;
             f_stepdir_o <= main_hwf_ctrl(1);                 -- direc: '1' = toward track 0
             v_pin := '1';

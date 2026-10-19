@@ -2877,6 +2877,14 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       still reach it - the click of an empty drive - unless Noclick. `main_snd_cyl` keeps
       the head inside cylinders 0..79 (TRK0 resyncs it); write gate, side and density
       stay inactive.
+    - Disk guard (user, 2026-10-19: a disk in the drive would wear): `main_snd_disk` =
+      /DSKCHG read after the drive has been selected C_SND_SETTLE (1023) clocks - an
+      unselected drive releases the line, which then reads "disk". The drive clears the
+      latch on a step with a disk in, so the first click or seek after an insertion
+      finds it (the motor may run until then). With a disk: no motor, no steps, only a
+      probe select of 2^13 clocks (289 us) every 2^24 (0.59 s); a low /DSKCHG there
+      (disk out) brings the sound back. Not with Off. drvsound TB cases h..k, 18/18
+      mutants.
     - The settings file is created when no card has one (`_HLP_CREATE`, M2M-UPSTREAM
       cfg-create): on the first card that mounts, in the directory of CFG_FILE,
       OPTM_SIZE bytes with byte 0 = 0xFF (the standard selectors), then the lookup runs
@@ -2885,9 +2893,16 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       `~/aexp-work/menu-rows` (now also greying, the CPU redraw, a greyed selected option,
       headline lines; 25/25 mutants), `cfg/run.sh` (rows, rules, defaults, no single-item
       radio), `~/aexp-work/drvsound` (ghdl on the code block of mega65.vhd: priority,
-      Noclick, Off, the 0..79 limits, TRK0, pulse width; 10/10 mutants),
+      Noclick, Off, the 0..79 limits, TRK0, pulse width, the disk guard; 18/18 mutants),
       `~/aexp-work/cfgcreate` (cfgold + creation: 18 cases, the images checked; 4/5
-      mutants, no_flush equivalent). Builds `hmenu-b` (afde733) and `hmenu-c` (9cfc099).
+      mutants, no_flush equivalent). Builds `hmenu-b` (afde733) and `hmenu-c` (9cfc099), REF hmenu-a: both
+      WNS -0.774 (QNICE/sdhost, identical: firmware does not change P&R); `hmenu-d`
+      (a184938, fresh) 16 re-rolls, best -0.042; `hmenu-e` (a184938, IMPL_MARGIN
+      "cpu_clk:0.5 native_clk4x_mmcm:0.3 hr_clk:0.3 qnice_clk:0.2") PASS 0.000 after
+      re-roll 2, on HW. HW found: the three C_MENU_* RANGE subtypes (OSM Scaling,
+      Volume, Stereo Mix) had not been renumbered (the OSM came up small) - fixed in
+      cfb466a; `~/aexp-work/menu-rows/cfg/xcheck.py` now checks every C_MENU_* constant,
+      ranges too, against the item texts of 50b43ce.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

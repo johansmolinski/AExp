@@ -310,6 +310,11 @@ drive makes every few seconds while Workbench checks for a disk. Nothing is
 written to a disk in the internal drive, and the sound is off while a drive
 is set to Hardware Floppy.
 
+A real disk in the internal drive silences it, so the disk does not wear:
+the drive reports the disk at the first click or head step after it is
+inserted (the motor may run until then), and the sound comes back within a
+second of taking the disk out.
+
 Press <kbd>Help</kbd> to open the menu, which shows one line per existing
 drive: a disk image drive shows the mounted file name or `<Load>` when it is
 empty, a Hardware Floppy drive shows that instead. Move the highlight to a
