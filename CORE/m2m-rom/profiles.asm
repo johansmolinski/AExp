@@ -255,18 +255,26 @@ _P_IC2          MOVE    R3, R8
 _P_ADDR         ADD     AEXP_OSM_PROF_BASE, R8
                 RET
 
-; _P_SET: menu item R8 := R9 (0/1). While the menu exists, M2M$FORCE_MENU
-; keeps its picture in step (a radio item: only with R9 = 1, the old one is
-; deselected by OPTM_SET); otherwise M2M$SET_SETTING. R8, R9 preserved.
+; _P_SET: menu item R8 := R9 (0/1): the register of the hardware
+; (M2M$SET_SETTING) and, while the menu is open, its selection array, from
+; which the redraw after the selector paints. (Not M2M$FORCE_MENU: OPTM_SET
+; goes fatal for a radio item that is already selected - HW, prof-p3.)
+; Registers preserved.
 _P_SET          INCRB
-                MOVE    OPTM_HEAP, R0
-                CMP     0, @R0
+                RSUB    M2M$SET_SETTING, 1
+                MOVE    M2M$CSR, R0             ; the menu on screen?
+                MOVE    @R0, R0
+                AND     M2M$CSR_OSM, R0
                 RBRA    _P_SET_R, Z
-                RSUB    M2M$FORCE_MENU, 1
-                DECRB
-                RET
-_P_SET_R        RSUB    M2M$SET_SETTING, 1
-                DECRB
+                MOVE    OPTM_DATA, R0
+                MOVE    @R0, R0
+                CMP     0, R0
+                RBRA    _P_SET_R, Z
+                ADD     OPTM_IR_STDSEL, R0
+                MOVE    @R0, R0
+                ADD     R8, R0
+                MOVE    R9, @R0
+_P_SET_R        DECRB
                 RET
 
 ; ----------------------------------------------------------------------------
@@ -328,14 +336,7 @@ _P_AP_DEF       MOVE    R0, R3                  ; R2: the value -> the items
                 RSUB    _P_SET, 1
                 RBRA    _P_AP_NX, 1
 _P_AP_SR        MOVE    @R3, R4                 ; a radio: item R2 := 1, the
-                MOVE    OPTM_HEAP, R5           ; others 0 (M2M$FORCE_MENU:
-                CMP     0, @R5                  ; the old one goes by itself)
-                RBRA    _P_AP_SA, Z
-                ADD     R2, R8
-                MOVE    1, R9
-                RSUB    _P_SET, 1
-                RBRA    _P_AP_NX, 1
-_P_AP_SA        XOR     R6, R6
+                XOR     R6, R6                  ; others 0
 _P_AP_SL        XOR     R9, R9
                 CMP     R6, R2
                 RBRA    _P_AP_SS, !Z
@@ -1655,3 +1656,59 @@ _P_RN_END       RSUB    _P_CLR, 1
                 RSUB    _P_PAINT, 1
                 SYSCALL(leave, 1)
                 RET
+
+; ----------------------------------------------------------------------------
+; B3_HDF_MAP (HDF_PREP, 0.7): the extent map of the HDF (FAT32$FILE_MAP into
+; HDF_MAP) with the progress bar of FAST_LOAD: walking the cluster chain of a
+; large file takes seconds. FAT32$FILE_MAP_CB calls FL_BAR_STEP (all
+; registers preserved) once per 256 clusters; the bar is set up for
+; (size >> (17 + log2 sectors per cluster)) + 1 steps, one per 256 clusters
+; (FL_NOBAR - PROFILE_APPLY - leaves it off). Output: R9, R10 as
+; FAT32$FILE_MAP; R8 = HDF_FDH, R11 preserved.
+; ----------------------------------------------------------------------------
+B3_HDF_MAP      MOVE    R11, @--SP
+                INCRB
+                MOVE    HDF_FDH, R0
+                MOVE    @R0, R1                 ; R1: sectors per cluster
+                ADD     FAT32$DEV_SECT_PER_CLUS, R1
+                MOVE    @R1, R1
+                MOVE    R0, R2                  ; R3|R2: the size
+                ADD     FAT32$FDH_SIZE_LO, R2
+                MOVE    @R2++, R3
+                MOVE    @R2, R2
+                MOVE    R3, R4                  ; R2|R4 (hi|lo) >>= 17 + log2
+                MOVE    17, R5                  ; (spc)
+_B3_HM_L        CMP     1, R1
+                RBRA    _B3_HM_S, Z
+                SHR     1, R1
+                AND     0x7FFF, R1
+                ADD     1, R5
+                RBRA    _B3_HM_L, 1
+_B3_HM_S        MOVE    R2, R6                  ; one bit at a time: R2|R4
+                AND     1, R6
+                AND     0xFFFB, SR
+                SHR     1, R2
+                AND     0xFFFB, SR
+                SHR     1, R4
+                CMP     0, R6
+                RBRA    _B3_HM_S1, Z
+                OR      0x8000, R4
+_B3_HM_S1       SUB     1, R5
+                RBRA    _B3_HM_S, !Z
+                ADD     1, R4                   ; R4: steps (the high word is 0
+                MOVE    R4, R8                  ; for files below 8 GB)
+                AND     0xFFFD, SR              ; FL_BAR_INIT wants a size:
+                SHL     9, R8                   ; R9|R8 = steps x 512
+                MOVE    R4, R9
+                AND     0xFFFB, SR
+                SHR     7, R9
+_B3_HM_I        RSUB    FL_BAR_INIT, 1
+                MOVE    HDF_FDH, R8
+                MOVE    HDF_MAP, R9
+                MOVE    HDF_MAP_WORDS, R10
+                MOVE    FL_BAR_STEP, R11
+                RSUB    FAT32$FILE_MAP_CB, 1
+                DECRB
+                MOVE    @SP++, R11
+                RET
+

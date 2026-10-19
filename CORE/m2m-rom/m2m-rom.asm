@@ -2872,6 +2872,8 @@ PRF_KGET        RSUB    FAR_CALL, 1
                 .DW     BANK_PROF, B3_PRF_KGET
 PRF_KSET        RSUB    FAR_CALL, 1
                 .DW     BANK_PROF, B3_PRF_KSET
+HDF_MAPBAR      RSUB    FAR_CALL, 1             ; HDF_PREP: the extent map
+                .DW     BANK_PROF, B3_HDF_MAP
 ; the signature of the settings file (M2M-UPSTREAM cfg-strings, options.asm)
 CFG_SIGCHECK    RSUB    FAR_CALL, 1
                 .DW     BANK_F32F, B2_CFG_CHECK
@@ -3356,10 +3358,7 @@ _HDFP_FILE      MOVE    R2, R1                  ; a whole number of sectors
                 ; extent map: seeks without FAT reads. A file with more
                 ; extents than the map holds still works, through the
                 ; cluster-stepping FAT32$FILE_SEEK.
-                MOVE    HDF_FDH, R8
-                MOVE    HDF_MAP, R9
-                MOVE    HDF_MAP_WORDS, R10
-                RSUB    FAT32$FILE_MAP, 1       ; (not in the M2M syscall table)
+                RSUB    HDF_MAPBAR, 1           ; (0.7: with a progress bar)
                 MOVE    HDF_MAPOK, R1
                 MOVE    1, @R1
                 CMP     0, R9
@@ -9067,7 +9066,9 @@ RODATA_BUF      .BLOCK RODATA_BUF_SIZE          ; RAM copy of one read-only text
 FL_NOBAR        .BLOCK 1                        ; PROFILE_APPLY: FAST_LOAD without bar
 PROF_FDH        .BLOCK FAT32$FDH_STRUCT_SIZE    ; PROFILE_APPLY: the Kickstart / HDF file
 PROF_PENDF      .BLOCK 1                        ; PROF_NAME: a name waits for the menu
-; Megamiga 0.7: profiles as files (profiles.asm)
+PROF_PEND       .BLOCK PROF_PEND_NUM            ; its path labels (0 = none), by ROM id
+; Megamiga 0.7: profiles as files (profiles.asm). NOT between PROF_PENDF and
+; PROF_PEND: PROFILE_APPLY clears PROF_PENDF and PROF_PEND in one run.
 PRF_NAME        .BLOCK 21                       ; the active profile (PRF_NLEN)
 PRF_TXT         .BLOCK CFGS_MAX                 ; its text
 PRF_LEN         .BLOCK 1
@@ -9082,7 +9083,6 @@ PRF_EDBUF       .BLOCK 21                       ; a name being edited/chosen
 PRF_LINE        .BLOCK 24                       ; one line of the inner area
 PRF_LN          .BLOCK 1                        ; the profiles in PRF_LIST
 PRF_LIST        .BLOCK 420                      ; PRF_LMAX x PRF_NLEN
-PROF_PEND       .BLOCK PROF_PEND_NUM            ; its path labels (0 = none), by ROM id
 PROF_PATH       .BLOCK 128                      ; a remembered path (cfg text)
 PROF_DEVP       .BLOCK 1                        ; _PR_PATHOF: the device handle
 PROF_PNAME      .BLOCK 63                       ; PROF_PEND_NUM x PROF_PN_LEN:
