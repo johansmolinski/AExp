@@ -163,6 +163,7 @@ port (
    -- M2M Keyboard interface (incl. power led and drive led)
    main_kb_key_num_i       : in  integer range 0 to 79;  -- cycles through all MEGA65 keys
    main_kb_key_pressed_n_i : in  std_logic;              -- low active: debounced feedback: is kb_key_num_i pressed right now?
+   main_kb_key_raw_n_i     : in  std_logic;              -- the same, also while the OSM is open (M2M osm-hotkey)
    main_power_led_o        : out std_logic;
    main_power_led_col_o    : out std_logic_vector(23 downto 0);
    main_drive_led_o        : out std_logic;
@@ -664,6 +665,11 @@ signal main_snd_pin               : std_logic := '1';              -- 0.7 drive 
 signal main_snd_disk              : std_logic := '0';              -- 0.7 drive sound: a real disk is in the drive
 signal main_snd_settle            : natural range 0 to C_SND_SETTLE := 0;   -- clocks the drive has been selected
 signal main_snd_tmr               : unsigned(C_SND_TMR_BITS - 1 downto 0) := (others => '0');   -- probe period
+signal main_key_down              : std_logic_vector(0 to 79) := (others => '0');   -- 0.7 key events: the keys held
+signal main_key_seq               : unsigned(3 downto 0) := (others => '0');        -- 0.7 key events: counts them
+signal main_key_shift             : std_logic := '0';                                -- Shift held at the last one
+signal main_key_last              : unsigned(6 downto 0) := (others => '0');        -- its key number
+signal qnice_key_event            : std_logic_vector(15 downto 0);                   -- in the QNICE domain
 signal main_qnice_rst             : std_logic;  -- QNICE reset synced into main_clk: the
                                                 -- front-end FIFO's read-side reset MUST
                                                 -- derive from the same event as the
@@ -2627,6 +2633,10 @@ begin
          when C_DEV_AMIGA_FDD =>
             qnice_dev_data_o <= qnice_fdd_data;
 
+         -- Megamiga 0.7: the last key-down event (key_events), any address
+         when C_DEV_AMIGA_KEYS =>
+            qnice_dev_data_o <= qnice_key_event;
+
          when others => null;
       end case;
    end process core_specific_devices;
@@ -3191,6 +3201,42 @@ begin
 
    -- conditioned real drive status into the core domain (slowly varying
    -- mechanical levels; covered by M2M/common.xdc's cdc_stable constraint)
+   -- Megamiga 0.7 (profiles): key-down events of the whole keyboard for the firmware's name
+   -- editor (C_DEV_AMIGA_KEYS). The framework hides the keyboard from the core while the menu is
+   -- open (main_kb_key_pressed_n_i), so this reads the ungated status (main_kb_key_raw_n_i, M2M
+   -- osm-hotkey). The scanner visits every key once a millisecond: a key that is down now and
+   -- was not the last time is a new event - the sequence number counts it, so the firmware
+   -- sees every press (it reads far more often than once per key). The two Shift keys (15 left,
+   -- 52 right) make no events of their own; their state goes with the event.
+   key_events : process (main_clk)
+   begin
+      if rising_edge(main_clk) then
+         if main_kb_key_raw_n_i = '0' and main_key_down(main_kb_key_num_i) = '0' and
+            main_kb_key_num_i /= 15 and main_kb_key_num_i /= 52 then
+            main_key_seq   <= main_key_seq + 1;
+            main_key_last  <= to_unsigned(main_kb_key_num_i, 7);
+            main_key_shift <= main_key_down(15) or main_key_down(52);
+         end if;
+         main_key_down(main_kb_key_num_i) <= not main_kb_key_raw_n_i;
+      end if;
+   end process key_events;
+
+   i_cdc_key_event : entity work.cdc_stable
+      generic map (
+         G_DATA_SIZE    => 16,
+         G_REGISTER_SRC => true
+      )
+      port map (
+         src_clk_i                => main_clk,
+         src_data_i(15 downto 12) => std_logic_vector(main_key_seq),
+         src_data_i(11 downto 9)  => "000",
+         src_data_i(8)            => main_key_shift,
+         src_data_i(7)            => '0',
+         src_data_i(6 downto 0)   => std_logic_vector(main_key_last),
+         dst_clk_i                => qnice_clk_i,
+         dst_data_o               => qnice_key_event
+      ); -- i_cdc_key_event
+
    i_cdc_hwf_status : entity work.cdc_stable
       generic map (
          G_DATA_SIZE    => 6,

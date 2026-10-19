@@ -126,6 +126,7 @@ port (
    main_reset_core_o       : out   std_logic;
    main_key_num_o          : out   integer range 0 to 79;
    main_key_pressed_n_o    : out   std_logic;
+   main_key_raw_n_o        : out   std_logic;   -- M2M-UPSTREAM osm-hotkey (2026-10-19): not gated by the OSM
    main_power_led_i        : in    std_logic;
    main_power_led_col_i    : in    std_logic_vector(23 downto 0);
    main_drive_led_i        : in    std_logic;
@@ -615,6 +616,7 @@ begin
          enable_core_i        => main_csr_keyboard_on,
          key_num_o            => main_key_num_o,
          key_pressed_n_o      => main_key_pressed_n_o,
+         key_raw_n_o          => main_key_raw_n_o,     -- M2M-UPSTREAM osm-hotkey (2026-10-19)
 
          -- M2M-UPSTREAM osm-hotkey (AExp 2026-07-10): core-selected OSM-open key(s)
          osm_key_a_i          => osm_key_a_i,

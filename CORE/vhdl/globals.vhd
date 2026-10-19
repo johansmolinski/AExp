@@ -252,6 +252,10 @@ constant C_DEV_AMIGA_SHARE    : std_logic_vector(15 downto 0) := x"010B";
 -- cartridge's freeze button), window 0xFFFF = the M2M CSR of the " AR3 ROM:%s" menu line.
 -- Keep it on ONE line - make_rom.sh scrapes it.
 constant C_DEV_AMIGA_AR3      : std_logic_vector(15 downto 0) := x"010C";
+-- Megamiga 0.7 (profiles): the last key-down event of the whole MEGA65 keyboard, also while the
+-- menu is open (the firmware's name editor): read-only, any address; {15..12 sequence number,
+-- 8 Shift held, 6..0 key number}. Keep it on ONE line - make_rom.sh scrapes it.
+constant C_DEV_AMIGA_KEYS     : std_logic_vector(15 downto 0) := x"010D";
 
 ----------------------------------------------------------------------------------------------------------
 -- Virtual Drive Management System
