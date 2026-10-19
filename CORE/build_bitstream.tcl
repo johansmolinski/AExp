@@ -77,6 +77,16 @@ if {[llength [get_pins -quiet {CORE/clk_gen/i_bufgmux/S}]] == 0} {
 if {[llength [get_cells -quiet {CORE/i_amiga_sdram/i_sdram_ctrl/*}]] == 0} {
     lappend gate "multicycle target CORE/i_amiga_sdram/i_sdram_ctrl missing"
 }
+# the CPU -> SDRAM multicycle (CORE.xdc) must cover every TG68K, whatever its name
+set tg [get_cells -quiet -hierarchical -filter {ORIG_REF_NAME =~ TG68KdotC_Kernel* || REF_NAME =~ TG68KdotC_Kernel*}]
+if {[llength $tg] == 0} {
+    lappend gate "no TG68KdotC_Kernel instance found (CPU -> SDRAM multicycle check)"
+}
+foreach c $tg {
+    if {![string match {CORE/i_main/i_cpu_wrapper/*cpu_inst_p} $c] && ![string match {CORE/i_main/i_cpu_wrapper/*tg68k_inst} $c]} {
+        lappend gate "$c is not a source of the CPU -> SDRAM multicycle in CORE.xdc"
+    }
+}
 foreach {clk want} {main_clk 35.242} {
     set c [get_clocks -quiet $clk]
     if {[llength $c] == 0} {

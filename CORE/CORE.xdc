@@ -148,8 +148,12 @@ set_false_path -from [get_cells -hierarchical -filter {IS_SEQUENTIAL && NAME =~ 
 ## +0.001 ns.
 ## (cpu040 branch: the 68020/68040 instance sits in a generate block, g_tg68k.cpu_inst_p or
 ## g_ap040.cpu_inst_p, hence the wildcard before cpu_inst_p.)
-set_multicycle_path -setup 2 -from [get_cells -hierarchical -filter {IS_PRIMITIVE && (NAME =~ CORE/i_main/i_cpu_wrapper/*cpu_inst_p/* || NAME =~ CORE/i_main/i_cpu_wrapper/cpu_inst_o/*)}] -to [get_cells -hierarchical -filter {IS_PRIMITIVE && NAME =~ CORE/i_amiga_sdram/i_sdram_ctrl/*}]
-set_multicycle_path -hold 1 -from [get_cells -hierarchical -filter {IS_PRIMITIVE && (NAME =~ CORE/i_main/i_cpu_wrapper/*cpu_inst_p/* || NAME =~ CORE/i_main/i_cpu_wrapper/cpu_inst_o/*)}] -to [get_cells -hierarchical -filter {IS_PRIMITIVE && NAME =~ CORE/i_amiga_sdram/i_sdram_ctrl/*}]
+## (2026-10-19: with the 68040 built in (CPU040 = 2) the 68020 is g_ap040.tg68k_inst, which the
+## pattern missed from 0.6.0 on: its TG68K -> sd_ba paths were timed single-cycle and kept the
+## builds at the edge (hmenu-g: -0.177 ns, +0.225 ns with tg68k_inst covered). The sign-off gate
+## now requires every TG68KdotC_Kernel instance to be one of the two names.)
+set_multicycle_path -setup 2 -from [get_cells -hierarchical -filter {IS_PRIMITIVE && (NAME =~ CORE/i_main/i_cpu_wrapper/*cpu_inst_p/* || NAME =~ CORE/i_main/i_cpu_wrapper/*tg68k_inst/* || NAME =~ CORE/i_main/i_cpu_wrapper/cpu_inst_o/*)}] -to [get_cells -hierarchical -filter {IS_PRIMITIVE && NAME =~ CORE/i_amiga_sdram/i_sdram_ctrl/*}]
+set_multicycle_path -hold 1 -from [get_cells -hierarchical -filter {IS_PRIMITIVE && (NAME =~ CORE/i_main/i_cpu_wrapper/*cpu_inst_p/* || NAME =~ CORE/i_main/i_cpu_wrapper/*tg68k_inst/* || NAME =~ CORE/i_main/i_cpu_wrapper/cpu_inst_o/*)}] -to [get_cells -hierarchical -filter {IS_PRIMITIVE && NAME =~ CORE/i_amiga_sdram/i_sdram_ctrl/*}]
 
 ## Megamiga RTG blitter (rtg_blitter.vhd): the registers are written on the core clock and read by
 ## the engine on hr_clk only while a command runs (the driver does not touch them until busy is
