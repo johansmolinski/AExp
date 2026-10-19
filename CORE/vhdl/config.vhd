@@ -645,15 +645,15 @@ constant OPTM_ITEMS        : string :=
    " df2:Hardware Floppy   \n" & --   6: Text: df2 is the hardware drive
    " Mount SDCard\n"        &  --   7: Shared folder SDCard: mounted (toggle, default OFF, never saved)
    "\n"                     &  --   8: Line
-   " Profile:%s\n"         &  --   9: the active profile: opens the profile selector (manual CRT/ROM load 3)
+   " Profile:            \n" & --   9: the active profile (name painted live): opens the profile selector
    " Rename Profile\n"     &  --  10: rename the active profile (name editor, firmware)
    "\n"                     &  --  11: Line
    " Profile Settings\n"    &  --  12: Profile Settings submenu head
    " Profile Settings\n"    &  --  13: Headline "Profile Settings"
-   " HDF 0:%s\n"            &  --  14: HDF master (unit 0) into the IDE board (manual CRT/ROM load 4)
-   " HDF 1:%s\n"            &  --  15: HDF slave (unit 1) into the IDE board (manual CRT/ROM load 6)
-   " Kickstart:%s\n"        &  --  16: Kickstart (manual CRT/ROM load 6)
-   " AR3 ROM:%s\n"          &  --  17: Action Replay III ROM (manual CRT/ROM load 7)
+   " HDF 0:%s\n"            &  --  14: HDF master (unit 0) into the IDE board (manual CRT/ROM load 3)
+   " HDF 1:%s\n"            &  --  15: HDF slave (unit 1) into the IDE board (manual CRT/ROM load 4)
+   " Kickstart:%s\n"        &  --  16: Kickstart (manual CRT/ROM load 5)
+   " AR3 ROM:%s\n"          &  --  17: Action Replay III ROM (manual CRT/ROM load 6)
    "\n"                     &  --  18: Line
    " CPU: 68000\n"           & --  19: profile: CPU 68000 (row "CPU")
    " 68020\n"                & --  20: profile: CPU 68020
@@ -847,21 +847,21 @@ constant OPTM_G_DF2MODE    : integer := 21;  -- df2 mode radio: Disk Image / Har
 -- Group numbers must be monotonic increasing, so a later feature lands at the
 -- end of the list even when it belongs to an earlier section of the menu.
 constant OPTM_G_HDMIDVI    : integer := 22;  -- DVI (no sound) toggle; read in HDL (mega65.vhd)
-constant OPTM_G_HDF        : integer := 24;  -- HDF master (unit 0) into the IDE board (manual CRT/ROM load 4)
+constant OPTM_G_HDF        : integer := 24;  -- HDF master (unit 0) into the IDE board (manual CRT/ROM load 3)
 constant OPTM_G_KICK       : integer := 25;  -- load a Kickstart ROM into C_DEV_AMIGA_KICK and cold-boot (manual CRT/ROM load 5)
 constant OPTM_G_SPINUP     : integer := 26;  -- Drive spin-up delay toggle; read in HDL (mega65.vhd -> main.vhd)
-constant OPTM_G_PROFILE    : integer := 30;  -- the active profile (Megamiga 0.7: profiles are files): opens the profile selector (manual CRT/ROM load 3, C_DEV_AMIGA_PROF)
+constant OPTM_G_PROFILE    : integer := 30;  -- the active profile (Megamiga 0.7: profiles are files): momentary, opens the firmware's profile selector
 constant OPTM_G_P1CPU      : integer := 31;  -- A500 profile: CPU radio 68000 / 68020 / 68040
 constant OPTM_G_P1CS       : integer := 32;  -- A500 profile: chipset radio OCS / ECS / AGA
 constant OPTM_G_P1CHIP     : integer := 33;  -- A500 profile: chip RAM radio 512 KB / 1 MB / 2 MB
 constant OPTM_G_P1SLOW     : integer := 34;  -- A500 profile: Slow RAM radio None / 512 KB (a row; was a toggle)
 constant OPTM_G_P1FAST     : integer := 35;  -- A500 profile: Zorro II Fast RAM toggle
 constant OPTM_G_P1Z3       : integer := 36;  -- A500 profile: Zorro III RAM toggle
-constant OPTM_G_HDF1       : integer := 49;  -- HDF slave (unit 1) into the IDE board (manual CRT/ROM load 5)
+constant OPTM_G_HDF1       : integer := 49;  -- HDF slave (unit 1) into the IDE board (manual CRT/ROM load 4)
 constant OPTM_G_SERIAL     : integer := 50;  -- Serial port on PMOD toggle; read in HDL (mega65.vhd drives the PMOD1 pins)
 constant OPTM_G_SHARE      : integer := 51;  -- Shared folder "Mount SDCard" toggle; read by the firmware (SHARE_STEP), forced off at start (PREP_START)
 constant OPTM_G_P1CART     : integer := 52;  -- A500 profile: cartridge radio None / HRTmon / Action Replay III
-constant OPTM_G_AR3ROM     : integer := 55;  -- Action Replay III ROM (manual CRT/ROM load 7, C_DEV_AMIGA_AR3)
+constant OPTM_G_AR3ROM     : integer := 55;  -- Action Replay III ROM (manual CRT/ROM load 6, C_DEV_AMIGA_AR3)
 constant OPTM_G_FREEZE     : integer := 56;  -- Freeze cartridge: momentary, handled by the firmware (OSM_SEL_POST)
 constant OPTM_G_RTGNATIVE  : integer := 57;  -- RTG native resolution toggle: HDMI follows the RTG screenmode; read in HDL (mega65.vhd)
 constant OPTM_G_P1HDC      : integer := 65;  -- A500 profile: hard disk controller radio None / Gayle / RIPPLE (a row; was the Gayle toggle)
@@ -962,15 +962,15 @@ constant OPTM_GROUPS       : OPTM_GTYPE := ( OPTM_G_TEXT + OPTM_G_HEADLINE, --  
                                               OPTM_G_TEXT + OPTM_DEP(OPTM_G_DF2MODE, 1),               --   6: Text: df2 is the hardware drive
                                               OPTM_G_SHARE + OPTM_G_SINGLESEL,                         --   7: Shared folder SDCard: mounted (toggle, default OFF)
                                               OPTM_G_LINE,                                             --   8: Line
-                                              OPTM_G_PROFILE + OPTM_G_LOAD_ROM,                        --   9: the active profile: opens the profile selector (manual CRT/ROM load 3)
+                                              OPTM_G_PROFILE + OPTM_G_SINGLESEL,                       --   9: the active profile (name painted live): opens the profile selector
                                               OPTM_G_PROFREN + OPTM_G_SINGLESEL,                       --  10: rename the active profile (name editor, firmware)
                                               OPTM_G_LINE,                                             --  11: Line
                                               OPTM_G_SUBMENU,                                          --  12: Profile Settings submenu head
                                               OPTM_G_TEXT + OPTM_G_HEADLINE,                           --  13: Headline "Profile Settings"
-                                              OPTM_G_HDF + OPTM_G_LOAD_ROM,                            --  14: HDF master (unit 0) into the IDE board (manual CRT/ROM load 4)
-                                              OPTM_G_HDF1 + OPTM_G_LOAD_ROM,                           --  15: HDF slave (unit 1) into the IDE board (manual CRT/ROM load 5)
-                                              OPTM_G_KICK + OPTM_G_LOAD_ROM,                           --  16: Kickstart (manual CRT/ROM load 6)
-                                              OPTM_G_AR3ROM + OPTM_G_LOAD_ROM,                         --  17: Action Replay III ROM (manual CRT/ROM load 7)
+                                              OPTM_G_HDF + OPTM_G_LOAD_ROM,                            --  14: HDF master (unit 0) into the IDE board (manual CRT/ROM load 3)
+                                              OPTM_G_HDF1 + OPTM_G_LOAD_ROM,                           --  15: HDF slave (unit 1) into the IDE board (manual CRT/ROM load 4)
+                                              OPTM_G_KICK + OPTM_G_LOAD_ROM,                           --  16: Kickstart (manual CRT/ROM load 5)
+                                              OPTM_G_AR3ROM + OPTM_G_LOAD_ROM,                         --  17: Action Replay III ROM (manual CRT/ROM load 6)
                                               OPTM_G_LINE,                                             --  18: Line
                                               OPTM_G_P1CPU + OPTM_G_STDSEL, --  19: profile: CPU 68000 (row "CPU")
                                               OPTM_G_P1CPU,              --  20: profile: CPU 68020

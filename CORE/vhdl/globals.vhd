@@ -256,10 +256,6 @@ constant C_DEV_AMIGA_AR3      : std_logic_vector(15 downto 0) := x"010C";
 -- menu is open (the firmware's name editor): read-only, any address; {15..12 sequence number,
 -- 8 Shift held, 6..0 key number}. Keep it on ONE line - make_rom.sh scrapes it.
 constant C_DEV_AMIGA_KEYS     : std_logic_vector(15 downto 0) := x"010D";
--- Megamiga 0.7 (profiles): the CSR of the " Profile:%s" line (manual CRT/ROM load 3): the
--- firmware reads the chosen profile file itself (PREP_LOAD_IMAGE leaves nothing to stream).
--- Keep it on ONE line - make_rom.sh scrapes it.
-constant C_DEV_AMIGA_PROF     : std_logic_vector(15 downto 0) := x"010E";
 
 ----------------------------------------------------------------------------------------------------------
 -- Virtual Drive Management System
@@ -325,11 +321,10 @@ constant C_CRTROMTYPE_OPTIONAL   : std_logic_vector(15 downto 0) := x"0004";
 -- Entry 6 (Megamiga): the Action Replay III ROM (OSM " AR3 ROM:%s" line in Profile Settings,
 -- the 7th OPTM_G_LOAD_ROM occurrence) into C_DEV_AMIGA_AR3. The firmware accepts exactly
 -- 256 KB; mega65.vhd answers the CSR handshake and cold-boots the Amiga once it is loaded.
-constant C_CRTROMS_MAN_NUM       : natural := 8;                                       -- amount of manually loadable ROMs and carts; maximum is 16
+constant C_CRTROMS_MAN_NUM       : natural := 7;                                       -- amount of manually loadable ROMs and carts; maximum is 16
 constant C_CRTROMS_MAN           : crtrom_buf_array := ( C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_ADF0,
                                                          C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_ADF1,
                                                          C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_ADF2,
-                                                         C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_PROF,   -- 3: Profile (0.7)
                                                          C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_IDE,
                                                          C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_IDE1,
                                                          C_CRTROMTYPE_DEVICE, C_DEV_AMIGA_KICK,

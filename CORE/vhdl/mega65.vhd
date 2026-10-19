@@ -721,11 +721,6 @@ signal qnice_ide1_data        : std_logic_vector(15 downto 0);
 signal qnice_ide1_wait        : std_logic;
 signal qnice_ide1_req_status  : std_logic_vector(3 downto 0);
 signal qnice_ide1_resp_status : std_logic_vector(3 downto 0);
-signal qnice_prof_ce          : std_logic;   -- the " Profile:%s" line: CSR only (0.7)
-signal qnice_prof_data        : std_logic_vector(15 downto 0);
-signal qnice_prof_wait        : std_logic;
-signal qnice_prof_req_status  : std_logic_vector(3 downto 0);
-signal qnice_prof_resp_status : std_logic_vector(3 downto 0);
 signal qnice_iderom_ce        : std_logic;
 signal qnice_iderom_data      : std_logic_vector(15 downto 0);
 signal qnice_iderom_wait      : std_logic;
@@ -1107,7 +1102,7 @@ constant C_MENU_SD_STATUS     : natural := 180;  -- main menu: empty TEXT line a
 -- amiga_cold_boot cold-boots the Amiga; choosing a profile also loads its Kickstart.
 -- (Megamiga 0.3..0.6.4: a profile radio A500 / A600 / A1200 / A4000 on the main page and one
 -- block per profile, C_MENU_PROF_BASE + profile * C_MENU_PROF_STRIDE + offset.)
-constant C_MENU_PROFILE       : natural := 9;    -- main menu: " Profile:%s" (manual CRT/ROM load 3)
+constant C_MENU_PROFILE       : natural := 9;    -- main menu: " Profile: <name>" (momentary: the profile selector)
 constant C_MENU_PROF_RENAME   : natural := 10;   -- main menu: " Rename Profile" (momentary, firmware)
 constant C_MENU_PROF_BASE     : natural := 19;   -- first line of the block
 constant C_PROF_CPU_020       : natural := 1;    -- CPU radio: 0 = 68000, 1 = 68020, 2 = 68040
@@ -2301,7 +2296,6 @@ begin
    --   0x010B  C_DEV_AMIGA_SHARE   the shared folder memory $DD4000-$DD5FFF (share_buf.vhd)
    --   0x010C  C_DEV_AMIGA_AR3     the Action Replay III ROM loader, freeze control, CSR
    --   0x010D  C_DEV_AMIGA_KEYS    the last key-down event (0.7, the profile name editor)
-   --   0x010E  C_DEV_AMIGA_PROF    CSR of the " Profile:%s" line (0.7, profiles as files)
    -- Chip and Slow RAM have no QNICE access for timing reasons (see the
    -- signal declarations above); their device IDs stay reserved in globals.vhd.
    ---------------------------------------------------------------------------------------------
@@ -2507,30 +2501,6 @@ begin
 
    qnice_ide1_resp_status <= C_CSR_RESP_READY when qnice_ide1_req_status = C_CSR_REQ_OK else C_CSR_RESP_IDLE;
 
-   -- Megamiga 0.7: the CSR of the " Profile:%s" line (C_DEV_AMIGA_PROF), like i_ide1_csr: the
-   -- firmware reads the chosen profile file itself, the Shell only sees the line "loaded".
-   i_prof_csr : entity work.qnice_csr
-      generic map (
-         G_ERROR_STRINGS => (others => "OK                 \n")
-      )
-      port map (
-         qnice_clk_i          => qnice_clk_i,
-         qnice_rst_i          => qnice_rst_i,
-         qnice_addr_i         => qnice_dev_addr_i,
-         qnice_data_i         => qnice_dev_data_i,
-         qnice_ce_i           => qnice_prof_ce,
-         qnice_we_i           => qnice_dev_we_i,
-         qnice_data_o         => qnice_prof_data,
-         qnice_wait_o         => qnice_prof_wait,
-         qnice_csr_o          => open,
-         qnice_req_status_o   => qnice_prof_req_status,
-         qnice_req_length_o   => open,
-         qnice_resp_status_i  => qnice_prof_resp_status,
-         qnice_resp_error_i   => x"0",
-         qnice_resp_address_i => (others => '0')
-      ); -- i_prof_csr
-
-   qnice_prof_resp_status <= C_CSR_RESP_READY when qnice_prof_req_status = C_CSR_REQ_OK else C_CSR_RESP_IDLE;
 
    core_specific_devices : process(all)
    begin
@@ -2546,7 +2516,6 @@ begin
       qnice_adfsd_map  <= '0';
       qnice_ide_ce     <= '0';
       qnice_ide1_ce    <= '0';
-      qnice_prof_ce    <= '0';
       qnice_iderom_ce  <= '0';
       qnice_shr_ce     <= '0';
 
@@ -2653,12 +2622,6 @@ begin
          -- process below)
          when C_DEV_AMIGA_FDD =>
             qnice_dev_data_o <= qnice_fdd_data;
-
-         -- Megamiga 0.7: the CSR of the " Profile:%s" line
-         when C_DEV_AMIGA_PROF =>
-            qnice_prof_ce    <= qnice_dev_ce_i;
-            qnice_dev_data_o <= qnice_prof_data;
-            qnice_dev_wait_o <= qnice_prof_wait;
 
          -- Megamiga 0.7: the last key-down event (key_events), any address
          when C_DEV_AMIGA_KEYS =>

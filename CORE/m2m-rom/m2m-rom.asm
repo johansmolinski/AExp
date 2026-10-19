@@ -3705,15 +3705,30 @@ _HES_U          MOVE    R8, R7                  ; R7: drive
                 ; a file: the extent map into window 1
 _HES_FILE       MOVE    M2M$RAMROM_4KWIN, R1
                 MOVE    1, @R1
-                MOVE    HDF_FDH, R8
                 MOVE    IDE_ENG_MAP, R9
                 CMP     0, R7
                 RBRA    _HES_M0, Z
                 ADD     IDE_ENG_MAPW, R9
-_HES_M0         MOVE    IDE_ENG_MAPW, R10
+                ; Megamiga 0.7: HDF_PREP has just mapped the file into HDF_MAP;
+                ; if it fit (up to 64 extents), the engine gets a copy instead
+                ; of a second walk of the whole cluster chain (the slow part of
+                ; mounting a large HDF). The map format does not depend on the
+                ; size of the buffer.
+_HES_M0         MOVE    HDF_MAPOK, R4
+                CMP     1, @R4
+                RBRA    _HES_WALK, !Z
+                MOVE    HDF_MAP, R4
+                MOVE    HDF_MAP_WORDS, R5
+_HES_CP         MOVE    @R4++, @R9++
+                SUB     1, R5
+                RBRA    _HES_CP, !Z
+                XOR     R4, R4                  ; R4: result (OK)
+                RBRA    _HES_MAPD, 1
+_HES_WALK       MOVE    HDF_FDH, R8
+                MOVE    IDE_ENG_MAPW, R10
                 RSUB    FAT32$FILE_MAP, 1       ; (not in the M2M syscall table)
                 MOVE    R9, R4                  ; R4: result
-                RSUB    IDE_SEL, 1
+_HES_MAPD       RSUB    IDE_SEL, 1
                 CMP     0, R4
                 RBRA    _HES_RET, !Z            ; too many extents: firmware
                 ; base = DEV_CLUSTER - (2 << shift): the block of cluster 0
@@ -5496,9 +5511,8 @@ ADF_FLUSH_CHUNK .EQU    512                 ; bytes per background time slice
 ADF_DRIVES      .EQU    3
 
 ; Kickstart selector: accepted ROM sizes (high words; the low words are 0)
-PROF_KICK_ID    .EQU    6                       ; manual ROM ids (order of the
-PROF_HDF_ID     .EQU    4                       ; OPTM_G_LOAD_ROM lines; 0.7: the
-                                                ; Profile line is 3); the
+PROF_KICK_ID    .EQU    5                       ; manual ROM ids (order of the
+PROF_HDF_ID     .EQU    3                       ; OPTM_G_LOAD_ROM lines); the
                                                 ; slave HDF is PROF_HDF_ID + 1
 PROF_DIR_LEN    .EQU    7                       ; strlen("/amiga/")
 PROF_PEND_NUM   .EQU    3                       ; PROF_HDF_ID..PROF_KICK_ID
