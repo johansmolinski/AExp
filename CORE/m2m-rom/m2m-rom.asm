@@ -144,6 +144,8 @@ FILTER_FILES    INCRB
                 RBRA    _FFILES_EXT, Z
                 CMP     AEXP_OPTM_G_HDF1, R11
                 RBRA    _FFILES_EXT, Z
+                CMP     AEXP_OPTM_G_QHDF, R11   ; (0.7: and the quick HDF)
+                RBRA    _FFILES_EXT, Z
                 MOVE    R8, R1                  ; R1: keep the directory entry
                 MOVE    R11, R8                 ; one of the three mount items?
                 RSUB    IS_ADF_GROUP, 1         ; (branch on C before anything
@@ -193,7 +195,12 @@ PREP_LOAD_IMAGE INCRB
 
                 CMP     CTX_LOAD_ROM, R9        ; only guard the ADF load
                 RBRA    _PREP_LI_OK, !Z
-                CMP     AEXP_OPTM_G_HDF, R10    ; the HDF lines: own path,
+                CMP     AEXP_OPTM_G_QHDF, R10   ; 0.7: the quick HDF of the
+                RBRA    _PREP_LI_NQ, !Z         ; main page (never remembered)
+                RSUB    QHDF_PREP, 1            ; R8/R9: result
+                DECRB
+                RET
+_PREP_LI_NQ     CMP     AEXP_OPTM_G_HDF, R10    ; the HDF lines: own path,
                 RBRA    _PREP_LI_H0, Z          ; R9 = the drive
                 CMP     AEXP_OPTM_G_HDF1, R10
                 RBRA    _PREP_LI_NHDF, !Z
@@ -210,7 +217,12 @@ _PREP_LI_HDF    MOVE    R8, R5                  ; R5: the file, R6: its ROM id
                 SUB     1, R4
                 MOVE    HDF_VPART, R7
                 MOVE    R4, @R7
-_PREP_LI_HP     RSUB    HDF_PREP, 1             ; R8/R9: result
+_PREP_LI_HP     MOVE    QHDF_ON, R4             ; 0.7: while the quick HDF is
+                CMP     0, @R4                  ; on, the profile only notes
+                RBRA    _PREP_LI_HQ, !Z         ; the file (mounted at its eject)
+                RSUB    HDF_PREP, 1             ; R8/R9: result
+                RBRA    _PREP_LI_REM, 1
+_PREP_LI_HQ     RSUB    QHDF_HREM, 1            ; R8/R9: 0
                 RBRA    _PREP_LI_REM, 1
 _PREP_LI_NHDF   CMP     AEXP_OPTM_G_KICK, R10   ; the Kickstart selector: own path
                 RBRA    _PREP_LI_NKCK, !Z
@@ -811,36 +823,64 @@ _PA_KHOLD       MOVE    AEXP_DEV_KICK, R8
                 SUB     PROF_HDF_ID, R8
                 MOVE    0, @R8
 
-                ; the hard disks: R4 = drive, 0 master, 1 slave
-_PA_HDF         XOR     R4, R4
+_PA_HDF         MOVE    R0, R8                  ; the hard disks
+                MOVE    R1, R9
+                RSUB    PROF_HDFS, 1
+
+_PA_RET         MOVE    FL_NOBAR, R2
+                MOVE    0, @R2
+                SYSCALL(leave, 1)
+                RET
+
+; PROF_HDFS: the hard disks of profile R8 (R9: 0 = boot, 1 = a switch: a drive
+; the profile has none for is emptied). Megamiga 0.7: while the quick HDF is
+; on (QHDF_ON), the drives keep it - the lines only show the profile's names.
+; Also called when the quick HDF is ejected (B3_HDF_SPACE). Registers preserved.
+PROF_HDFS       SYSCALL(enter, 1)
+                MOVE    R8, R0                  ; R0: profile
+                MOVE    R9, R1                  ; R1: 1 = switch, 0 = boot
+                XOR     R4, R4                  ; R4: drive, 0 master, 1 slave
 _PA_HL          MOVE    R0, R8                  ; one the profile remembers?
                 MOVE    PROF_HDF_ID, R9
                 ADD     R4, R9
                 RSUB    PROF_SAVED, 1
                 MOVE    R8, R3                  ; R3: its name
                 RBRA    _PA_HNO, !C             ; none: no drive there
+                MOVE    QHDF_ON, R8             ; (the quick HDF: the name only)
+                CMP     0, @R8
+                RBRA    _PA_HOK, !Z
                 MOVE    PROF_FDH, R8
                 MOVE    R4, R9
                 RSUB    HDF_PREP, 1             ; mounts, restarts the Amiga
                 CMP     0, R8
                 RBRA    _PA_HNX, !Z
-                MOVE    HDF_DEV_TAB, R8         ; the menu line counts as
+_PA_HOK         MOVE    HDF_DEV_TAB, R8         ; the menu line counts as
                 ADD     R4, R8                  ; loaded: STATUS OK on its
                 MOVE    @R8, R8                 ; device (CRTROM_MLST_GET)
                 MOVE    CRTROM_CSR_STATUS, R9
                 MOVE    CRTROM_CSR_ST_OK, R10
                 RSUB    CRTROM_CSR_W, 1
                 MOVE    R3, R8
-                MOVE    PROF_HDF_ID, R9         ; manual ROM 3 or 4
+                MOVE    PROF_HDF_ID, R9         ; manual ROM 4 or 5
                 ADD     R4, R9
                 RSUB    PROF_NAME, 1
                 RBRA    _PA_HNX, 1
 _PA_HNO         CMP     0, R1                   ; switch without this HDF in
                 RBRA    _PA_HNX, Z              ; the profile: drive absent
+                MOVE    QHDF_ON, R8             ; (unless the quick HDF holds
+                CMP     0, @R8                  ; the drives: then only the
+                RBRA    _PA_HNQ, !Z             ; line)
                 MOVE    R4, R8
                 ADD     1, R8                   ; drive mask: 1 or 2
                 RSUB    HDF_DROP, 1
-                MOVE    CRTROM_MAN_LDF, R8      ; the menu shows <Load>
+                RBRA    _PA_HNL, 1
+_PA_HNQ         MOVE    HDF_DEV_TAB, R8         ; (what HDF_DROP does for the
+                ADD     R4, R8                  ; line: STATUS IDLE)
+                MOVE    @R8, R8
+                MOVE    CRTROM_CSR_STATUS, R9
+                MOVE    CRTROM_CSR_ST_IDLE, R10
+                RSUB    CRTROM_CSR_W, 1
+_PA_HNL         MOVE    CRTROM_MAN_LDF, R8      ; the menu shows <Load>
                 ADD     PROF_HDF_ID, R8
                 ADD     R4, R8
                 MOVE    0, @R8
@@ -851,17 +891,14 @@ _PA_HNX         ADD     1, R4
                 CMP     2, R4
                 RBRA    _PA_HL, !Z
                 CMP     0, R1                   ; switch to a profile without
-                RBRA    _PA_RET, Z              ; any HDF: the board leaves the
+                RBRA    _PH_RET, Z              ; any HDF: the board leaves the
                 MOVE    HDF_UNITS, R8           ; autoconfig chain
                 CMP     0, @R8
-                RBRA    _PA_RET, !Z
+                RBRA    _PH_RET, !Z
                 RSUB    IDE_SEL, 1
                 MOVE    IDE_CTRL, R8
                 MOVE    0, @R8
-
-_PA_RET         MOVE    FL_NOBAR, R2
-                MOVE    0, @R2
-                SYSCALL(leave, 1)
+_PH_RET         SYSCALL(leave, 1)
                 RET
 
 ; PROF_OPEN: open a file of the read-only data device (label in R8) into
@@ -1239,7 +1276,7 @@ OSM_SEL_PRE     INCRB
 ; (behind "<..>"); choosing one makes the Shell call PREP_LOAD_IMAGE with an
 ; empty file handle and SF_VIRTUAL = id + 1.
 ;
-; Megamiga: for the two HDF lines, the partitions of an SD card with the MBR
+; Megamiga: for the two HDF lines (0.7: and the quick HDF), the partitions of an SD card with the MBR
 ; type 0x7F ("SD0: Partition 2: 1024 MB"), id = slot << 8 | the partition
 ; number: the drive is then that partition (HDF_PREP, HDF_VPART), like a link
 ; file names it. M2M-UPSTREAM sd-host (two slots): they are listed in the list
@@ -1257,6 +1294,8 @@ BROWSE_EXTRA    INCRB
                 CMP     CTX_LOAD_ROM, R9
                 RBRA    _BRX_NO, !Z
                 CMP     AEXP_OPTM_G_HDF, R0
+                RBRA    _BRX_GO, Z
+                CMP     AEXP_OPTM_G_QHDF, R0    ; (0.7: the quick HDF too)
                 RBRA    _BRX_GO, Z
                 CMP     AEXP_OPTM_G_HDF1, R0
                 RBRA    _BRX_NO, !Z
@@ -2119,17 +2158,20 @@ _HUK_G2         CMP     @R1++, R0
 
                 ; Megamiga 0.3.1: the two HDF lines. Gate 3 there is the drive
                 ; being mounted (HDF_UNITS: a profile mounts without the Shell)
-                XOR     R2, R2                  ; R2: drive 0 / 1
+                ; 0.7: and the quick HDF line ("drive" 2); while that one is on,
+                ; Space on an HDF line forgets the profile's file (B3_HDF_SPACE)
+                XOR     R2, R2                  ; R2: drive 0 / 1, 2 quick
                 CMP     AEXP_OSM_HDF_MOUNT_LN, R0
                 RBRA    _HUK_H, Z
                 ADD     1, R2
                 CMP     AEXP_OSM_HDF1_MOUNT_LN, R0
+                RBRA    _HUK_H, Z
+                ADD     1, R2
+                CMP     AEXP_OSM_QHDF_MOUNT_LN, R0
                 RBRA    _HUK_RET, !Z            ; some other line -> bail
-_HUK_H          MOVE    R2, R3                  ; drive mask 1 / 2
-                ADD     1, R3
-                MOVE    HDF_UNITS, R1
-                AND     @R1, R3
-                RBRA    _HUK_RET, Z             ; no disk -> let SPACE mount
+_HUK_H          MOVE    R2, R8                  ; something to eject or forget?
+                RSUB    HDF_SPACE_OK, 1
+                RBRA    _HUK_RET, !C            ; no -> let SPACE mount
                 MOVE    KEYB_PRESSED, R1        ; suppress the SPACE of the menu
                 OR      M2M$KEY_SPACE, @R1      ; (see gate 3 below)
                 CMP     0, R4                   ; gate 5: rising edge only
@@ -2137,10 +2179,7 @@ _HUK_H          MOVE    R2, R3                  ; drive mask 1 / 2
                 CMP     0, R5
                 RBRA    _HUK_RET, !Z
                 MOVE    R2, R8
-                RSUB    HDF_EJECT, 1
-                MOVE    R2, R9                  ; the profile forgets it
-                ADD     PROF_HDF_ID, R9
-                RSUB    PROF_FORGET, 1
+                RSUB    HDF_SPACE, 1
                 RBRA    _HUK_RET, 1
 
                 ; --- gate 3: is a disk in THAT drive? PARSEST == PT_OK ---
@@ -3538,6 +3577,15 @@ HDF_VRDB_WR     RSUB    FAR_CALL, 1
                 .DW     BANK_IDE, B3_VRDB_WR
 HDF_VRDB_ID     RSUB    FAR_CALL, 1
                 .DW     BANK_IDE, B3_VRDB_ID
+; the quick HDF of the main page (Megamiga 0.7, see B3_QHDF_PREP)
+QHDF_PREP       RSUB    FAR_CALL, 1
+                .DW     BANK_IDE, B3_QHDF_PREP
+QHDF_HREM       RSUB    FAR_CALL, 1
+                .DW     BANK_IDE, B3_QHDF_HREM
+HDF_SPACE_OK    RSUB    FAR_CALL, 1
+                .DW     BANK_IDE, B3_HDF_SPOK
+HDF_SPACE       RSUB    FAR_CALL, 1
+                .DW     BANK_IDE, B3_HDF_SPACE
 
 ; HDF_GEOM_INIT: state of the direct block I/O for a freshly mapped HDF:
 ; log2 of the sectors per cluster of its device, extent cache at the start
@@ -5433,9 +5481,11 @@ ADF_FLUSH_CHUNK .EQU    512                 ; bytes per background time slice
 ADF_DRIVES      .EQU    3
 
 ; Kickstart selector: accepted ROM sizes (high words; the low words are 0)
-PROF_KICK_ID    .EQU    5                       ; manual ROM ids (order of the
-PROF_HDF_ID     .EQU    3                       ; OPTM_G_LOAD_ROM lines); the
+PROF_KICK_ID    .EQU    6                       ; manual ROM ids (order of the
+PROF_HDF_ID     .EQU    4                       ; OPTM_G_LOAD_ROM lines); the
                                                 ; slave HDF is PROF_HDF_ID + 1
+PROF_QHDF_ID    .EQU    3                       ; 0.7: the quick HDF line of the
+                                                ; main page (QHDF_PREP)
 PROF_DIR_LEN    .EQU    7                       ; strlen("/amiga/")
 PROF_PEND_NUM   .EQU    3                       ; PROF_HDF_ID..PROF_KICK_ID
 PROF_PN_LEN     .EQU    21                      ; a name in PROF_PNAME (+ zero)
@@ -9588,6 +9638,178 @@ _VR_PART        .DW     0, 0x5041, 0x5254       ; pb_ID "PART"
                 .DW     46, 0x7FFF, 0xFFFE      ; de_Mask
                 .DW     0xFFFF
 
+; ----------------------------------------------------------------------------
+; The quick HDF (Megamiga 0.7): " hdf:%s" on the main page
+;
+; For the one-game WHDLoad hard disk images: a file chosen on that line becomes
+; the master drive (the slave is emptied) in place of the profile's HDF 0 / HDF 1
+; until Space on that line ejects it or the core restarts - it is never saved.
+; The profile keeps its disks: their lines in Profile Settings still show them,
+; a profile switch mounts nothing over the quick HDF, and a file chosen on those
+; lines meanwhile is only noted in the profile (QHDF_HREM). The eject mounts the
+; profile's disks again (PROF_HDFS) and restarts the Amiga. QHDF_ON says which.
+; ----------------------------------------------------------------------------
+
+; B3_QHDF_PREP: PREP_LOAD_IMAGE of the quick HDF line. Input: R8 = the file
+; handle of the Shell (a partition from the browser: SF_VIRTUAL).
+; Output: R8: 0 = OK, else error; R9: 0 or an error message; R10..R12 preserved
+B3_QHDF_PREP    INCRB
+                MOVE    R10, @--SP
+                MOVE    R11, @--SP
+                MOVE    R12, @--SP
+                MOVE    R8, R0                  ; R0: the handle
+                MOVE    SF_VIRTUAL, R4          ; a partition: as on the HDF
+                MOVE    @R4, R4                 ; lines (HDF_VPART = slot << 8 |
+                CMP     0, R4                   ; its number)
+                RBRA    _QP_F, Z
+                SUB     1, R4
+                MOVE    HDF_VPART, R5
+                MOVE    R4, @R5
+_QP_F           MOVE    2, R8                   ; the slave goes, the master
+                RSUB    HDF_DROP, 1             ; gets the file
+                MOVE    R0, R8
+                XOR     R9, R9
+                RSUB    HDF_PREP, 1             ; (restarts the Amiga)
+                MOVE    R8, R2                  ; R2/R3: the result
+                MOVE    R9, R3
+                CMP     0, R2
+                RBRA    _QP_ERR, !Z
+                MOVE    QHDF_ON, R1
+                MOVE    1, @R1
+                XOR     R4, R4                  ; the profile's lines keep the
+_QP_L           MOVE    CRTROM_MAN_LDF, R5      ; names they show (HDF_DROP and
+                ADD     PROF_HDF_ID, R5         ; HDF_PREP set their devices
+                ADD     R4, R5                  ; IDLE)
+                CMP     0, @R5
+                RBRA    _QP_N, Z
+                MOVE    HDF_DEV_TAB, R8
+                ADD     R4, R8
+                MOVE    @R8, R8
+                MOVE    CRTROM_CSR_STATUS, R9
+                MOVE    CRTROM_CSR_ST_OK, R10
+                RSUB    CRTROM_CSR_W, 1
+_QP_N           ADD     1, R4
+                CMP     2, R4
+                RBRA    _QP_L, !Z
+                RBRA    _QP_RET, 1
+_QP_ERR         MOVE    QHDF_ON, R1             ; refused while the profile's
+                CMP     0, @R1                  ; disks were in: them again
+                RBRA    _QP_RET, !Z             ; (the slave was dropped, the
+                XOR     R8, R8                  ; master maybe too)
+                MOVE    1, R9
+                RSUB    PROF_HDFS, 1
+_QP_RET         MOVE    R2, R8
+                MOVE    R3, R9
+                MOVE    @SP++, R12
+                MOVE    @SP++, R11
+                MOVE    @SP++, R10
+                DECRB
+                RET
+
+; B3_QHDF_HREM: an HDF line of Profile Settings while the quick HDF is on: the
+; profile notes the file (PREP_LOAD_IMAGE calls PROF_REMEMBER next) and it is
+; mounted when the quick HDF is ejected; the Shell reads EOF at once.
+; Input: R8 = the file handle of the Shell. Output: R8 = R9 = 0
+B3_QHDF_HREM    INCRB
+                MOVE    HDF_VPART, R0           ; (one load only)
+                MOVE    0, @R0
+                MOVE    SF_VIRTUAL, R0          ; a partition: no file to read
+                CMP     0, @R0
+                RBRA    _QH_OK, !Z
+                MOVE    R8, R0
+                ADD     FAT32$FDH_SIZE_LO, R0
+                MOVE    @R0, R9
+                MOVE    R8, R0
+                ADD     FAT32$FDH_SIZE_HI, R0
+                MOVE    @R0, R10
+                SYSCALL(f32_fseek, 1)
+_QH_OK          XOR     R8, R8
+                XOR     R9, R9
+                DECRB
+                RET
+
+; B3_HDF_SPOK (HANDLE_UNMOUNT_KEY): does Space on line R8 (0 = HDF 0, 1 = HDF 1,
+; 2 = the quick HDF) eject or forget something? Output: C=1 yes, C=0 no (Space
+; opens the file browser). Registers preserved.
+B3_HDF_SPOK     INCRB
+                MOVE    QHDF_ON, R0
+                MOVE    @R0, R0                 ; R0: the quick HDF is on
+                CMP     2, R8
+                RBRA    _QS_D, !Z
+                CMP     0, R0                   ; the quick line: its disk
+                RBRA    _QS_NO, Z
+                RBRA    _QS_YES, 1
+_QS_D           CMP     0, R0
+                RBRA    _QS_U, Z
+                MOVE    CRTROM_MAN_LDF, R1      ; quick on: a file the profile
+                ADD     PROF_HDF_ID, R1         ; notes (the line shows it)
+                ADD     R8, R1
+                CMP     0, @R1
+                RBRA    _QS_NO, Z
+                RBRA    _QS_YES, 1
+_QS_U           MOVE    R8, R1                  ; else: the drive is mounted
+                ADD     1, R1
+                MOVE    HDF_UNITS, R2
+                AND     @R2, R1
+                RBRA    _QS_NO, Z
+_QS_YES         OR      0x0004, SR              ; C=1
+                DECRB
+                RET
+_QS_NO          AND     0xFFFB, SR              ; C=0
+                DECRB
+                RET
+
+; B3_HDF_SPACE (HANDLE_UNMOUNT_KEY, after B3_HDF_SPOK said yes): Space on line R8
+; (as there). HDF 0 / 1: the drive is ejected (the Amiga restarts) and the
+; profile forgets the file - while the quick HDF is on, only the profile forgets
+; it. The quick line: the quick HDF is ejected, the profile's disks come back.
+; Registers preserved.
+B3_HDF_SPACE    SYSCALL(enter, 1)
+                MOVE    R8, R0                  ; R0: the line
+                CMP     2, R0
+                RBRA    _QX_Q, Z
+                MOVE    QHDF_ON, R1
+                CMP     0, @R1
+                RBRA    _QX_F, !Z
+                MOVE    R0, R8                  ; as before: eject and forget
+                RSUB    HDF_EJECT, 1
+                RBRA    _QX_FG, 1
+_QX_F           MOVE    HDF_DEV_TAB, R8         ; quick on: the line shows
+                ADD     R0, R8                  ; <Load> again
+                MOVE    @R8, R8
+                MOVE    CRTROM_CSR_STATUS, R9
+                MOVE    CRTROM_CSR_ST_IDLE, R10
+                RSUB    CRTROM_CSR_W, 1
+                MOVE    CRTROM_MAN_LDF, R8
+                ADD     PROF_HDF_ID, R8
+                ADD     R0, R8
+                MOVE    0, @R8
+_QX_FG          MOVE    R0, R9                  ; the profile forgets it
+                ADD     PROF_HDF_ID, R9
+                RSUB    PROF_FORGET, 1
+                RBRA    _QX_RET, 1
+
+_QX_Q           MOVE    QHDF_ON, R1             ; the quick HDF goes
+                MOVE    0, @R1
+                MOVE    AEXP_DEV_IDEQ, R8       ; its line: <Load>
+                MOVE    CRTROM_CSR_STATUS, R9
+                MOVE    CRTROM_CSR_ST_IDLE, R10
+                RSUB    CRTROM_CSR_W, 1
+                MOVE    CRTROM_MAN_LDF, R8
+                ADD     PROF_QHDF_ID, R8
+                MOVE    0, @R8
+                MOVE    1, R8                   ; out of the master
+                RSUB    HDF_DROP, 1
+                XOR     R8, R8                  ; the profile's disks again (a
+                MOVE    1, R9                   ; drive without one stays empty;
+                RSUB    PROF_HDFS, 1            ; a mount restarts the Amiga)
+                MOVE    HDF_UNITS, R8           ; none: restart it here (the
+                CMP     0, @R8                  ; board has left the chain)
+                RBRA    _QX_RET, !Z
+                RSUB    IDE_RESET_AMIGA, 1
+_QX_RET         SYSCALL(leave, 1)
+                RET
+
 ; End of the bank BANK_IDE
 
                 .ORG    0x9000                  ; M2M$CODE_WIN
@@ -9689,6 +9911,8 @@ HDF_UNITS       .BLOCK 1                        ; mounted drives: bit 0 master
                                                 ; (unit 0), bit 1 slave (unit 1)
 HDF_ACTIVE      .BLOCK 1                        ; drive whose state is in the
                                                 ; block below (see HDF_SELECT)
+QHDF_ON         .BLOCK 1                        ; 0.7: 1 = the quick HDF is the
+                                                ; master, the profile's are out
 HDF_DSLOT       .BLOCK 2                        ; per drive: its SD card slot
 HDF_DGEN        .BLOCK 2                        ; ... and that card's generation
                                                 ; at the mount (M2M-UPSTREAM
@@ -9904,7 +10128,12 @@ SHR_RNOBJ       .BLOCK 8                        ; RENAME: the object
 ; " Rename Profile" lines instead of the radio (181 items, 2020 characters):
 ; demand 3242, MENU_HEAP_SIZE 3264, headroom 22. The variables of profiles.asm
 ; (PRF_*, 1103 words) take the rest: see HEAP_SIZE.
-MENU_HEAP_SIZE  .EQU 3264
+;MENU_HEAP_SIZE  .EQU 3264
+; Megamiga 0.7 quick HDF: the " hdf:%s" line of the main page (182 items, +9
+; characters) and its manual CRT/ROM load (one more OPTM_HEAP buffer of OPTM_DX
+; + 2 = 25 words): demand 3242 + 9 + 4 + 25 = 3280, MENU_HEAP_SIZE 3296,
+; headroom 16, release HEAP_SIZE -32.
+MENU_HEAP_SIZE  .EQU 3296
 
 #ifndef RELEASE
 
@@ -9973,7 +10202,8 @@ HEAP            .BLOCK 1
 ; The sort order (file names "NN_<name>"): PRF_FILE, PRF_FULL, longer file
 ; names and list entries, 138 words more: the combined total is 160 words
 ; smaller: 17248.
-HEAP_SIZE       .EQU 13984                      ; 17248 - 3264 = 13984
+;HEAP_SIZE       .EQU 13984                      ; 17248 - 3264 = 13984
+HEAP_SIZE       .EQU 13952                      ; 17248 - 3296 = 13952
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

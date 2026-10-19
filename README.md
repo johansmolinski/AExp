@@ -516,6 +516,25 @@ format command, which the patched `lide.rom` of the release fixes. Workbench
 images for an unexpanded A500 with small cylinders (for example 2 heads x 32
 sectors), or switch on the Fast RAM.
 
+#### A quick hard disk: hdf: on the main page
+
+The line **hdf:** right below the floppy drives of the main menu takes one hard
+disk image for a while, without touching the profile - meant for the WHDLoad
+images that hold a single game and boot it (one HDF per game). Pick an `.hdf`
+file (or an Amiga partition of the SD card) there and it becomes the master
+drive, the only one: the profile's **HDF 0** and **HDF 1** step aside and the
+Amiga restarts and boots the game. It stays like that until you highlight
+**hdf:** and press <kbd>Space</kbd>, which ejects it, mounts the profile's hard
+disks again and restarts the Amiga - or until the core is restarted, because
+the quick disk is never saved.
+
+Meanwhile the profile keeps its disks: the HDF lines in **Profile Settings**
+still show them, switching to another profile changes them without touching the
+quick disk, and a file you pick on those lines is only noted in the profile
+(mounted when the quick disk goes); <kbd>Space</kbd> on such a line makes the
+profile forget its file. Simplified (RDB-less) UAE images work here too, see
+above. With the RIPPLE board the profile needs `lide.rom`, as for any hard disk.
+
 #### Hard disks on an SD card partition (beyond 4 GB)
 
 A hard disk can also be a partition of the SD card itself instead of a file,
@@ -894,12 +913,12 @@ soon as the core has started, press your menu key — <kbd>Help</kbd> unless
 you reassigned it in the Keyboard menu:
 
 1. <kbd>Help</kbd> — opens the menu, with the cursor on the topmost `dfN:`
-   disk-image line, or on **Mount SDCard** if no drive is a disk image.
-2. Eight times <kbd>&darr;</kbd> — past **Mount SDCard**, the four machine
-   profiles, **Profile Settings** and **Drive Settings**, onto **Settings**.
-   That is **one <kbd>&darr;</kbd> per drive you have set to Disk Image, plus
-   seven** — eight at the factory default. Moving the cursor over a profile does not
-   select it; only <kbd>Return</kbd> does.
+   disk-image line, or on **hdf:** if no drive is a disk image.
+2. Seven times <kbd>&darr;</kbd> — past **hdf:**, **Mount SDCard**,
+   **Profile:**, **Rename Profile**, **Profile Settings** and **Drive
+   Settings**, onto **Settings**. That is **one <kbd>&darr;</kbd> per drive you
+   have set to Disk Image, plus six** — seven at the factory default. Moving the
+   cursor over a line does not open it; only <kbd>Return</kbd> does.
 3. <kbd>Return</kbd> — opens Settings, cursor on the first `HDMI:` line.
 4. <kbd>Return</kbd> — opens the HDMI menu, cursor on **720p 50 Hz 16:9**.
 5. <kbd>&darr;</kbd> <kbd>&darr;</kbd> <kbd>&darr;</kbd> — past the two 576p
