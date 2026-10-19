@@ -169,6 +169,12 @@ Megamiga fork (johansmolinski):
   upstream as ranzbak/AP68040-pipelined #1); Gayle: ATA signature after a reset
   (`ide_board.vhd`), so libata finds the disk (HW-confirmed linux040-d); kernel on
   fedora `~/linux68k` (clean kit `linux-g`), ILA flow + benches `~/aexp-work/linux/{ila,sim}`.
+- `vrdb` (2026-10-19): HDF images without an RDB (UAE hardfiles, files and SD
+  partitions): a virtual cylinder in front of the image (RDSK + one PART, DH0/DH1, the
+  image's DosType; UAE's geometry, MiSTer's when only that one finds the root block).
+  Firmware in code bank 3 `BANK_IDE` (with HDF_LINK/HDF_PART_GET moved there), sector
+  engine skip register (ide_board 0x38/0x39, read back: an older board leaves such a
+  drive to the firmware). TBs `~/aexp-work/vrdb/{fw,eng}`.
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
