@@ -240,6 +240,7 @@ entity main is
       -- every CPU reset); eth_sel_o like ide_sel_o (fram_addr_o(15 downto 1) = offset);
       -- eth_irq_i goes to INT2.
       eth_ena_i               : in  std_logic;
+      rtg_card_i              : in  std_logic;   -- Megamiga 0.7: the RTG board in the autoconfig chain
       eth_sel_o               : out std_logic;
       eth_data_i              : in  std_logic_vector(15 downto 0);
       eth_ready_i             : in  std_logic;
@@ -576,6 +577,7 @@ architecture synthesis of main is
          z3ena          : in  std_logic;
          z3bena         : in  std_logic;
          eth_ena        : in  std_logic;
+         rtgena         : in  std_logic;
          ext_eth        : out std_logic;
          ext_shr        : out std_logic;
          ext_sel        : out std_logic;
@@ -1018,6 +1020,7 @@ begin
          z3ena           => z3_ram_i,            -- 16 MB Zorro III board (68020 only)
          z3bena          => z3b_ram_i,           -- 32 MB Zorro III board (68020 only)
          eth_ena         => eth_ena_i,           -- network card in the autoconfig chain
+         rtgena          => rtg_card_i,          -- Megamiga 0.7: graphics card switch
          ext_eth         => cpu_ext_eth,
          ext_shr         => cpu_ext_shr,
          ext_sel         => cpu_ext_sel,

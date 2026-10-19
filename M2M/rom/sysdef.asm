@@ -94,6 +94,7 @@ M2M$SA_COL_STD_INV  .EQU 0x8B   ; inverse standard
 M2M$SA_COL_TTLE     .EQU 0x0E   ; Title: Yellow on blue background
 M2M$SA_COL_TTLE_INV .EQU 0x8E   ; inverse Title
 M2M$SA_COL_SEL      .EQU 0x0F   ; selection: white font on blue background
+M2M$SA_COL_DIM      .EQU 0x4F   ; greyed out: dark white on blue (menu-rows)
 
 ; Special characters in font Anikki-16x16
 M2M$FC_TL           .EQU 201    ; fat top/left corner
@@ -299,6 +300,10 @@ M2M$CFG_OPTM_DEPS   .EQU 0x0313     ; Per-line menu dependency word (OPTM_DEP);
                                     ; index 4095 = feature probe, see
                                     ; OPTM_DEPS_PROBE in options.asm
                                     ; (M2M-UPSTREAM osm-deps)
+M2M$CFG_OPTM_ROWS   .EQU 0x0314     ; 1 = option of a row (OPTM_ROWS); index
+                                    ; 4095 = OPTM_ROWS_MAGIC: feature probe
+                                    ; (M2M-UPSTREAM menu-rows)
+OPTM_ROWS_MAGIC     .EQU 0x2D52
 
 ; M2M$CFG_WHS
 

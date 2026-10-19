@@ -396,6 +396,9 @@ signal main_cpu_040           : std_logic;                       -- Megamiga: th
 signal main_z3_ram            : std_logic;                       -- Megamiga: 16 MB Zorro III board
 signal main_z3b_ram           : std_logic;                       -- Megamiga 0.7: 32 MB Zorro III board
 signal main_gayle             : std_logic;                       -- Megamiga 0.7: IDE as the Gayle
+signal main_ide_none          : std_logic;                       -- Megamiga 0.7: no hard disk controller
+signal main_rtg_card          : std_logic;                       -- Megamiga 0.7: the graphics card is in
+signal main_eth_card          : std_logic;                       -- Megamiga 0.7: the network card is in
 signal main_ide_irq           : std_logic;                       -- Megamiga 0.7: Gayle IDE interrupt
 signal main_chipset           : std_logic_vector(1 downto 0);    -- Megamiga: 00 OCS, 01 ECS, 10 AGA
 signal main_chip_size         : std_logic_vector(1 downto 0);    -- Megamiga: 00 512K, 01 1M, 11 2M chip RAM
@@ -652,6 +655,15 @@ signal main_hwf_wr_ok             : std_logic;                     -- tab qualif
 signal main_hwf_precmode          : std_logic_vector(1 downto 0);  -- 0x7C mode (50M->main)
 signal main_fdd_step_n            : std_logic := '1';              -- registered mirrors of the f_step /
 signal main_fdd_dir               : std_logic := '1';              -- f_stepdir pins for the diag cyl tracker
+constant C_SND_SETTLE   : natural := 1023;   -- 0.7 drive sound: 36 us selected before /DSKCHG is read
+constant C_SND_TMR_BITS : natural := 24;     -- probe period 2^24 clocks = 0.59 s
+constant C_SND_PRB_BITS : natural := 13;     -- probe length 2^13 clocks = 289 us
+signal main_snd_cyl               : natural range 0 to 79 := 0;    -- 0.7 drive sound: where the real head is
+signal main_snd_step_q            : std_logic := '1';              -- 0.7 drive sound: the forwarded step, last clock
+signal main_snd_pin               : std_logic := '1';              -- 0.7 drive sound: the f_step pin
+signal main_snd_disk              : std_logic := '0';              -- 0.7 drive sound: a real disk is in the drive
+signal main_snd_settle            : natural range 0 to C_SND_SETTLE := 0;   -- clocks the drive has been selected
+signal main_snd_tmr               : unsigned(C_SND_TMR_BITS - 1 downto 0) := (others => '0');   -- probe period
 signal main_qnice_rst             : std_logic;  -- QNICE reset synced into main_clk: the
                                                 -- front-end FIFO's read-side reset MUST
                                                 -- derive from the same event as the
@@ -950,17 +962,17 @@ signal mem_arb_waitrequest         : std_logic_vector(C_ARB_SLAVES - 1 downto 0)
 -- derived drive count. The firmware keeps these two radios consistent in
 -- OSM_SEL_POST; the HDL never has to repair an inconsistent combination, it
 -- just decodes what it is given.
-constant C_MENU_DRIVES_1      : natural := 102;
-constant C_MENU_DRIVES_2      : natural := 103;
-constant C_MENU_DRIVES_3      : natural := 104;
-constant C_MENU_DF0_IMG       : natural := 108;
-constant C_MENU_DF0_HW        : natural := 109;
-constant C_MENU_DF1_IMG       : natural := 113;
-constant C_MENU_DF1_HW        : natural := 114;
-constant C_MENU_DF1_OFF       : natural := 115;
-constant C_MENU_DF2_IMG       : natural := 119;
-constant C_MENU_DF2_HW        : natural := 120;
-constant C_MENU_DF2_OFF       : natural := 121;
+constant C_MENU_DRIVES_1      : natural := 118;
+constant C_MENU_DRIVES_2      : natural := 119;
+constant C_MENU_DRIVES_3      : natural := 120;
+constant C_MENU_DF0_IMG       : natural := 123;
+constant C_MENU_DF0_HW        : natural := 124;
+constant C_MENU_DF1_IMG       : natural := 127;
+constant C_MENU_DF1_HW        : natural := 128;
+constant C_MENU_DF1_OFF       : natural := 129;
+constant C_MENU_DF2_IMG       : natural := 132;
+constant C_MENU_DF2_HW        : natural := 133;
+constant C_MENU_DF2_OFF       : natural := 134;
 
 -- Flat main-menu indexes of the six twin lines, one pair per drive: the mount
 -- line and its "Hardware Floppy" TEXT twin. These carry NO osm_control meaning
@@ -972,75 +984,77 @@ constant C_MENU_DF2_OFF       : natural := 121;
 -- in the firmware is what puts them under the cross-check of
 -- .research/check_osm_menu.py, which verifies every C_MENU_* against the TEXT
 -- of the line it addresses.
-constant C_MENU_DF0_MOUNT_LN  : natural := 2;
-constant C_MENU_DF0_HW_LN     : natural := 3;
-constant C_MENU_DF1_MOUNT_LN  : natural := 4;
-constant C_MENU_DF1_HW_LN     : natural := 5;
-constant C_MENU_DF2_MOUNT_LN  : natural := 6;
-constant C_MENU_DF2_HW_LN     : natural := 7;
-constant C_MENU_HDF_MOUNT_LN  : natural := 18;   -- HDF master mount line (Profile Settings), firmware-only
-constant C_MENU_HDF1_MOUNT_LN : natural := 19;   -- HDF slave mount line (Profile Settings), firmware-only
-constant C_MENU_SHARE          : natural := 8;    -- Shared folder "Mount SDCard" toggle (main menu), firmware-only
+constant C_MENU_DF0_MOUNT_LN  : natural := 1;
+constant C_MENU_DF0_HW_LN     : natural := 2;
+constant C_MENU_DF1_MOUNT_LN  : natural := 3;
+constant C_MENU_DF1_HW_LN     : natural := 4;
+constant C_MENU_DF2_MOUNT_LN  : natural := 5;
+constant C_MENU_DF2_HW_LN     : natural := 6;
+constant C_MENU_HDF_MOUNT_LN  : natural := 16;   -- HDF master mount line (Profile Settings), firmware-only
+constant C_MENU_HDF1_MOUNT_LN : natural := 17;   -- HDF slave mount line (Profile Settings), firmware-only
+constant C_MENU_SHARE          : natural := 7;    -- Shared folder "Mount SDCard" toggle (main menu), firmware-only
 
 -- per-unit drive mode, two bits each in main_drv_mode (unit u at 2u+1 downto 2u)
 constant C_DRV_IMAGE          : std_logic_vector(1 downto 0) := "00";  -- simulated ADF drive
 constant C_DRV_HW             : std_logic_vector(1 downto 0) := "01";  -- the MEGA65 mechanism
 constant C_DRV_OFF            : std_logic_vector(1 downto 0) := "10";  -- unit does not exist
 
-constant C_MENU_HDMI_16_9_50  : natural := 134;
-constant C_MENU_HDMI_4_3_50   : natural := 135;
-constant C_MENU_HDMI_5_4_50   : natural := 136;
+constant C_MENU_HDMI_16_9_50  : natural := 147;
+constant C_MENU_HDMI_4_3_50   : natural := 148;
+constant C_MENU_HDMI_5_4_50   : natural := 149;
 
 -- DVI (no sound): single-select, default OFF. Drives the framework's qnice_dvi
 -- input, which makes M2M's vga_to_hdmi.vhd force plain DVI encoding on every
 -- non-video period - no audio sample packets and no HDMI data islands at all.
 -- Pixel timing is untouched, so the picture geometry stays identical. The bit is
 -- consumed in the qnice_clk domain; vga_to_hdmi.vhd does its own CDC.
-constant C_MENU_HDMI_DVI      : natural := 138;
+constant C_MENU_HDMI_DVI      : natural := 151;
 
 -- RTG native resolution: single-select, default ON. While the RTG card shows a screenmode
 -- that one of the HDMI modes below shows 1:1 (or 2:1), HDMI switches to that mode instead
 -- of scaling the framebuffer into the HDMI mode of the radio above. Off = always scaled.
-constant C_MENU_RTG_NATIVE    : natural := 139;
+constant C_MENU_RTG_NATIVE    : natural := 152;
 
 -- The HDMI Filter radio is read by the firmware only (dispatcher
 -- LOAD_HDMI_FILTER with ASCAL_USAGE=1), never by any VHDL: these eight
 -- lines exist solely as the scrape source for osm_const.asm.
-constant C_MENU_FLT_NO_FILTER     : natural := 144;
-constant C_MENU_FLT_SHARP         : natural := 145;
-constant C_MENU_FLT_BICUBIC       : natural := 146;
-constant C_MENU_FLT_SMOOTH        : natural := 147;
-constant C_MENU_FLT_LANCZOS       : natural := 148;
-constant C_MENU_FLT_SCANLINES     : natural := 149;
-constant C_MENU_FLT_CRT_SVIDEO    : natural := 150;
-constant C_MENU_FLT_CRT_COMPOSITE : natural := 151;
+constant C_MENU_FLT_NO_FILTER     : natural := 156;
+constant C_MENU_FLT_SHARP         : natural := 157;
+constant C_MENU_FLT_BICUBIC       : natural := 158;
+constant C_MENU_FLT_SMOOTH        : natural := 159;
+constant C_MENU_FLT_LANCZOS       : natural := 160;
+constant C_MENU_FLT_SCANLINES     : natural := 161;
+constant C_MENU_FLT_CRT_SVIDEO    : natural := 162;
+constant C_MENU_FLT_CRT_COMPOSITE : natural := 163;
 
 -- HDMI flicker-free toggle (issue #12): single-select, default ON, read here in HDL
 -- (like the VGA radio) and CDC'd into the hr_clk domain to drive the core-speed FSM.
-constant C_MENU_HDMI_FF       : natural := 154;
+constant C_MENU_HDMI_FF       : natural := 166;
 
-constant C_MENU_VGA_STD       : natural := 158;   -- VGA: Standard (scandoubled 31.25 kHz); default
-constant C_MENU_VGA_15KHZHSVS : natural := 162;   -- VGA: raw 15.625 kHz RGB with separate HS/VS
-constant C_MENU_VGA_15KHZCS   : natural := 163;   -- VGA: raw 15.625 kHz RGB with composite sync (SCART)
+constant C_MENU_VGA_STD       : natural := 169;   -- VGA: Standard (scandoubled 31.25 kHz); default
+constant C_MENU_VGA_15KHZHSVS : natural := 173;   -- VGA: raw 15.625 kHz RGB with separate HS/VS
+constant C_MENU_VGA_15KHZCS   : natural := 174;   -- VGA: raw 15.625 kHz RGB with composite sync (SCART)
 
--- OSM Scaling follows the C64 layout: line 169 (100%, default) maps to bit 0,
--- while line 177 (50%) maps to bit 8 for the framework's first_nonzero_bit decode.
+-- OSM Scaling follows the C64 layout: line 180 (100%, default) maps to bit 0,
+-- while line 188 (50%) maps to bit 8 for the framework's first_nonzero_bit decode.
 -- (Megamiga 0.6.4: these three ranges were 2 lines too low since the "Mount
 -- SDCard" lines of 0.6.1: the headline and the line were in them, the last two
--- items were not. Volume 100% played at 90%, 5% and 0% did nothing.)
-subtype C_MENU_OSM_SCALING is natural range 178 downto 170;
+-- items were not. Volume 100% played at 90%, 5% and 0% did nothing. The menu
+-- rows of 0.7 moved them again: removing the separators under the headlines
+-- left all three 8..10 lines too low until 2026-10-19.)
+subtype C_MENU_OSM_SCALING is natural range 188 downto 180;
 
--- Volume radio (master volume, 5% steps): line 186 (100%, default) down to line 206
+-- Volume radio (master volume, 5% steps): line 195 (100%, default) down to line 215
 -- (0% = mute). Decoded below into main_volume (0..20 step index) and applied in
 -- main.vhd as a perceptual Q15 attenuation (C_VOL_LUT) on the final Paula mix,
 -- ahead of the framework's split into the HDMI and analog audio paths.
-subtype C_MENU_VOLUME is natural range 207 downto 187;
+subtype C_MENU_VOLUME is natural range 215 downto 195;
 
--- Stereo crossfeed radio ("Stereo: %s" submenu): line 212 (Full Stereo, default)
--- down to line 215 (Mono). Decoded below into main_stereo_mix using MiSTer's
+-- Stereo crossfeed radio ("Stereo: %s" submenu): line 220 (Full Stereo, default)
+-- down to line 223 (Mono). Decoded below into main_stereo_mix using MiSTer's
 -- aud_mix encoding (00 = full separation, 01 = 87.5%/12.5%, 10 = 75%/25%,
 -- 11 = mono) and applied in main.vhd's audio_filters ahead of the master volume.
-subtype C_MENU_STEREO is natural range 216 downto 213;
+subtype C_MENU_STEREO is natural range 223 downto 220;
 
 -- Paula output filters (MiSTer Minimig.sv parity), both single-select toggles
 -- with OPTM_G_STDSEL = default ON. A500 Filter inserts the fixed 4400 Hz
@@ -1048,28 +1062,31 @@ subtype C_MENU_STEREO is natural range 216 downto 213;
 -- Filter arms the switchable 3 kHz low-pass on CIA-A PA1, which then follows
 -- the emulated power LED live (MiSTer's "Auto(LED)"). Both are static OSM bits
 -- wired straight into main.vhd like the keyboard/VGA bits.
-constant C_MENU_A500FILT      : natural := 219;
-constant C_MENU_LEDFILT       : natural := 220;
+constant C_MENU_A500FILT      : natural := 226;
+constant C_MENU_LEDFILT       : natural := 227;
 
 -- Keyboard mapping mode radio (issue #6): '1' = Amiga (pure positional), '0' = MEGA65
 -- (semantic "cap is law"; default). Read here in HDL and wired straight into
 -- keyboard.vhd via main.vhd, exactly like the VGA/flicker-free bits. Line 132 (MEGA65)
 -- carries OPTM_G_STDSEL, so this Amiga bit is 0 at power-up.
-constant C_MENU_KBD_AMIGA     : natural := 224;
+constant C_MENU_KBD_AMIGA     : natural := 230;
 
 -- OSM-open key radio (issue #8): selects which key(s) drive the framework's
 -- menu-open bit (qnice_keys bit 7). Decoded below into m2m_keyb's osm_key_a/b +
 -- combo inputs and threaded core->framework->m2m_keyb, so the firmware stays
 -- byte-identical (bit 7 keeps its "the menu key" meaning). Line 136 (Help) carries
 -- OPTM_G_STDSEL = the classic default. MEGA+Run/Stop is a two-key combo.
-constant C_MENU_OSMKEY_HELP   : natural := 229;
-constant C_MENU_OSMKEY_F11    : natural := 230;
-constant C_MENU_OSMKEY_F13    : natural := 231;
-constant C_MENU_OSMKEY_COMBO  : natural := 232;
+constant C_MENU_OSMKEY_HELP   : natural := 234;
+constant C_MENU_OSMKEY_F11    : natural := 235;
+constant C_MENU_OSMKEY_F13    : natural := 236;
+constant C_MENU_OSMKEY_COMBO  : natural := 237;
 
-constant C_MENU_DRV_SPINUP    : natural := 123;   -- Drive Settings: spin-up delay of the simulated drives
-constant C_MENU_SERIAL        : natural := 238;  -- Settings: Amiga serial port on PMOD1 (default OFF)
-constant C_MENU_SD_STATUS     : natural := 247;  -- main menu: empty TEXT line at the end (the SD status is painted on the bottom row; unused by the firmware)
+constant C_MENU_DRV_SPINUP    : natural := 136;   -- Drive Settings: spin-up delay of the simulated drives
+constant C_MENU_DRV_SOUND     : natural := 137;   -- Drive Settings: Virtual Drive Sound radio (a row), Megamiga 0.7: On (default)
+constant C_MENU_DRV_NOCLICK   : natural := 138;   -- ... Noclick: only while a motor runs (no click of an empty drive)
+constant C_MENU_DRV_SNDOFF    : natural := 139;   -- ... Off
+constant C_MENU_SERIAL        : natural := 242;  -- Settings: Amiga serial port on PMOD1 (default OFF)
+constant C_MENU_SD_STATUS     : natural := 251;  -- main menu: empty TEXT line at the end (the SD status is painted on the bottom row; unused by the firmware)
 
 -- Megamiga 0.3 machine profiles. The main page carries the profile radio (A500 / A600 /
 -- A1200 / A4000); Profile Settings holds one block of radios and toggles per profile, and only
@@ -1080,25 +1097,29 @@ constant C_MENU_SD_STATUS     : natural := 247;  -- main menu: empty TEXT line a
 -- configuration (the profile itself or one of its settings) is a topology change:
 -- amiga_cold_boot cold-boots the Amiga. The firmware additionally loads the profile's
 -- Kickstart (and HDF) when the profile changes.
-constant C_MENU_PROF_A500     : natural := 10;
-constant C_MENU_PROF_A600     : natural := 11;
-constant C_MENU_PROF_A1200    : natural := 12;
-constant C_MENU_PROF_A4000    : natural := 13;
-constant C_MENU_PROF_BASE     : natural := 23;   -- first line of the A500 block
-constant C_MENU_PROF_STRIDE   : natural := 18;   -- lines per profile block
+constant C_MENU_PROF_A500     : natural := 9;
+constant C_MENU_PROF_A600     : natural := 10;
+constant C_MENU_PROF_A1200    : natural := 11;
+constant C_MENU_PROF_A4000    : natural := 12;
+constant C_MENU_PROF_BASE     : natural := 21;   -- first line of the A500 block
+constant C_MENU_PROF_STRIDE   : natural := 23;   -- lines per profile block (menu rows, Megamiga 0.7: was 18)
 constant C_PROF_CPU_020       : natural := 1;    -- CPU radio: 0 = 68000, 1 = 68020, 2 = 68040
 constant C_PROF_CPU_040       : natural := 2;
 constant C_PROF_CS_OCS        : natural := 3;    -- chipset radio: 3 OCS, 4 ECS, 5 AGA
 constant C_PROF_CS_AGA        : natural := 5;
-constant C_PROF_GAYLE         : natural := 6;    -- Gayle IDE controller toggle (Megamiga 0.7)
-constant C_PROF_CHIP_1M       : natural := 8;    -- chip RAM radio: 7 512 KB, 8 1 MB, 9 2 MB
-constant C_PROF_CHIP_2M       : natural := 9;
-constant C_PROF_SLOW          : natural := 11;   -- Slow RAM (512 KB) toggle
-constant C_PROF_FAST          : natural := 12;   -- Zorro II Fast RAM (8 MB) toggle, R4+ only
-constant C_PROF_Z3            : natural := 13;   -- Zorro III RAM (16 MB) toggle, 68020 only
-constant C_PROF_Z3B           : natural := 14;   -- Zorro III RAM (32 MB) toggle, 68020 only (0.7: was a Line)
-constant C_PROF_CART_HRT      : natural := 16;   -- cartridge radio: 15 none, 16 HRTmon, 17 Action Replay III
-constant C_PROF_CART_AR3      : natural := 17;
+constant C_PROF_HDC_NONE      : natural := 6;    -- hard disk controller radio: 6 None, 7 Gayle, 8 RIPPLE board
+constant C_PROF_GAYLE         : natural := 7;
+constant C_PROF_CHIP_1M       : natural := 10;   -- chip RAM radio: 9 512 KB, 10 1 MB, 11 2 MB
+constant C_PROF_CHIP_2M       : natural := 11;
+constant C_PROF_SLOW          : natural := 13;   -- Slow RAM radio: 12 None, 13 512 KB
+constant C_PROF_CART_HRT      : natural := 15;   -- cartridge radio: 14 none, 15 HRTmon, 16 Action Replay III
+constant C_PROF_CART_AR3      : natural := 16;
+                                                 -- 17: headline "Zorro Boards"
+constant C_PROF_FAST          : natural := 18;   -- Zorro II RAM (8 MB) toggle, R4+ only
+constant C_PROF_Z3            : natural := 19;   -- Zorro III RAM (16 MB) toggle, 68020/68040 only
+constant C_PROF_Z3B           : natural := 20;   -- Zorro III RAM (32 MB) toggle, 68020/68040 only
+constant C_PROF_GFX           : natural := 21;   -- graphics card (RTG) toggle, 68020/68040 only
+constant C_PROF_NET           : natural := 22;   -- network card toggle
 
 -- Network card (eth_card.vhd): CPU side on main_clk, MAC side on eth_clk50
 signal main_eth_sel           : std_logic;
@@ -1434,6 +1455,11 @@ begin
       main_slow_ram <= main_osm_control_i(v_base + C_PROF_SLOW);
       -- Megamiga 0.7: the HDFs on the A600/A1200 Gayle instead of the RIPPLE board
       main_gayle    <= main_osm_control_i(v_base + C_PROF_GAYLE);
+      -- Megamiga 0.7 (menu rows): the controller radio None / Gayle / RIPPLE board, and the
+      -- graphics and network card switches of the Zorro Boards section
+      main_ide_none <= main_osm_control_i(v_base + C_PROF_HDC_NONE);
+      main_rtg_card <= main_osm_control_i(v_base + C_PROF_GFX);
+      main_eth_card <= main_osm_control_i(v_base + C_PROF_NET);
       if C_HAS_SDRAM then
          main_fastram_en <= main_osm_control_i(v_base + C_PROF_FAST);
       else
@@ -1490,6 +1516,7 @@ begin
          z3_ram_i          => main_z3_ram,
          z3b_ram_i         => main_z3b_ram,
          gayle_i           => main_gayle,
+         boards_i          => main_eth_card & main_rtg_card & main_ide_none,
          chipset_i         => main_chipset,
          chip_size_i       => main_chip_size,
          drv_map_i         => main_drv_map,
@@ -1651,7 +1678,8 @@ begin
          blt_din_o            => main_blt_din,
          blt_dout_i           => main_blt_dout,
          c7m_o                => main_c7m,
-         ide_ena_i            => main_ide_ena,
+         --ide_ena_i            => main_ide_ena,
+         ide_ena_i            => main_ide_ena and not main_ide_none,  -- 0.7: None = no controller
          gayle_ena_i          => main_gayle,
          ide_irq_i            => main_ide_irq,
          ide_sel_o            => main_ide_sel,
@@ -1668,7 +1696,9 @@ begin
          fmap_z3base_o        => main_fmap_z3base,
          fmap_z3b_o           => main_fmap_z3b,
          fmap_z3bbase_o       => main_fmap_z3bbase,
-         eth_ena_i            => '1',              -- the network card is always there
+         --eth_ena_i            => '1',              -- the network card is always there
+         eth_ena_i            => main_eth_card,    -- Megamiga 0.7: the profile's Network Card
+         rtg_card_i           => main_rtg_card,    -- Megamiga 0.7: the profile's Graphics Card
          eth_sel_o            => main_eth_sel,
          eth_data_i           => main_eth_rddata,
          eth_ready_i          => main_eth_ready,
@@ -2750,8 +2780,32 @@ begin
    -- STEP is additionally gated on "our unit selected" (drives gate on
    -- SELECT internally anyway; this keeps the pin quiet when the virtual
    -- unit steps). main_hwf_ctrl = {motor_n,sel3..0_n,side,direc,step_n}.
+   --
+   -- Megamiga 0.7: Virtual Drive Sound (Drive Settings, C_MENU_DRV_SOUND, default on).
+   -- While no unit is the Hardware Floppy, the real drive plays the sounds of the disk
+   -- image drives: its motor runs while the motor of the lowest disk image unit whose
+   -- motor is on runs (df0 before df1 before df2), and it takes that unit's step pulses.
+   -- With no motor on, the steps of the lowest selected disk image unit still reach it
+   -- (the "click" of an empty Amiga drive; not with Noclick). The real head is followed in main_snd_cyl:
+   -- a step that would take it past cylinder 79 or below track 0 (the drive's TRK0
+   -- output) is not passed on, so the units' different positions cannot drive it
+   -- against a stop. Write gate, side and density stay inactive: nothing on a disk in
+   -- the real drive is touched.
+   -- A real disk in the drive silences it (it would wear the disk): while the drive is
+   -- selected, its /DSKCHG is valid after C_SND_SETTLE clocks, and high means a disk is in
+   -- (the drive clears the latch on a step with a disk inserted - the first click or seek
+   -- after an insertion finds it; until then the motor may run). Then no motor and no
+   -- steps, only a probe: every 2^C_SND_TMR_BITS clocks (0.59 s) the drive is selected
+   -- for 2^C_SND_PRB_BITS clocks (289 us), and a low /DSKCHG (the disk was taken out)
+   -- brings the sound back.
    hwf_pins_proc : process (main_clk)
       variable v_sel_n : std_logic;
+      variable v_unit  : natural range 0 to 2;
+      variable v_on    : std_logic;
+      variable v_sel   : std_logic;
+      variable v_stp   : std_logic;
+      variable v_pin   : std_logic;
+      variable v_prb   : std_logic;
    begin
       if rising_edge(main_clk) then
          if main_hwf_en = '1' then
@@ -2862,6 +2916,80 @@ begin
             main_fdd_step_n   <= '1';
             main_fdd_dir      <= '1';
             main_hwf_selected <= '0';
+
+            -- Megamiga 0.7: Virtual Drive Sound (see above)
+            v_unit := 0;
+            v_on   := '0';
+            v_sel  := '0';
+            for u in 2 downto 0 loop                         -- the lowest unit wins
+               if main_adf_en(u) = '1' and main_hwf_motor_on(u) = '1' then
+                  v_unit := u;
+                  v_on   := '1';
+               end if;
+            end loop;
+            if v_on = '0' then
+               for u in 2 downto 0 loop
+                  if main_adf_en(u) = '1' and main_hwf_ctrl(3 + u) = '0' then
+                     v_unit := u;
+                     v_sel  := '1';
+                  end if;
+               end loop;
+            end if;
+            v_stp := '1';
+            if main_osm_control_i(C_MENU_DRV_NOCLICK) = '1' then
+               v_sel := '0';                                 -- Noclick: motor sounds only
+            end if;
+            v_prb := '0';
+            if main_snd_disk = '1' then                      -- a real disk: no motor, no steps
+               v_on  := '0';
+               v_sel := '0';
+               if main_snd_tmr(C_SND_TMR_BITS - 1 downto C_SND_PRB_BITS) = 0 then
+                  v_prb := '1';                              -- ... only the probe
+               end if;
+            end if;
+            if main_osm_control_i(C_MENU_DRV_SNDOFF) = '1' then
+               v_on  := '0';
+               v_sel := '0';
+               v_prb := '0';
+            elsif main_hwf_ctrl(3 + v_unit) = '0' and (v_on = '1' or v_sel = '1') then
+               v_stp := main_hwf_ctrl(0);
+            end if;
+
+            if v_on = '1' or v_sel = '1' or v_prb = '1' then
+               f_selecta_o <= '0';
+               if main_snd_settle /= C_SND_SETTLE then
+                  main_snd_settle <= main_snd_settle + 1;
+               else                                          -- /DSKCHG is valid: high = a disk
+                  main_snd_disk <= main_hwf_change_n;
+               end if;
+            else
+               main_snd_settle <= 0;
+            end if;
+            main_snd_tmr <= main_snd_tmr + 1;
+            f_motora_o  <= not v_on;
+            f_stepdir_o <= main_hwf_ctrl(1);                 -- direc: '1' = toward track 0
+            v_pin := '1';
+            if main_snd_step_q = '1' and v_stp = '0' then    -- a step starts
+               if main_hwf_ctrl(1) = '1' then
+                  if main_hwf_track0_n = '1' then
+                     v_pin := '0';
+                     if main_snd_cyl /= 0 then
+                        main_snd_cyl <= main_snd_cyl - 1;
+                     end if;
+                  end if;
+               elsif main_snd_cyl /= 79 then
+                  v_pin        := '0';
+                  main_snd_cyl <= main_snd_cyl + 1;
+               end if;
+            elsif v_stp = '0' then
+               v_pin := main_snd_pin;                        -- the pulse (or its refusal) lasts
+            end if;
+            f_step_o        <= v_pin;
+            main_snd_pin    <= v_pin;
+            main_snd_step_q <= v_stp;
+            if main_hwf_track0_n = '0' and (v_on = '1' or v_sel = '1') then
+               main_snd_cyl <= 0;                            -- the drive reports track 0
+            end if;
          end if;
          f_density_o <= '1';                                 -- DD-safe level, always
       end if;

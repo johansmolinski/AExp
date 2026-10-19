@@ -2816,6 +2816,93 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     first run was void: parallel `ghdl -e` overwrote one ./tb_ide_g, each mutant now has its
     own directory). Build `z3-48-a` (ea36094): WNS +0.025, WHS +0.016, 117.7k LUTs (88%).
     Hardware-confirmed by the user on 2026-10-18 (z3-48-a on the MEGA65 R6).
+  - **Menu rows (branch `hmenu` from main 50b43ce, 2026-10-18; M2M exception 21
+    `menu-rows`).** The user wanted radio options side by side: CPU (68000 68020
+    68040), Chip RAM (512 kB 1 MB 2 MB), Slow RAM (None 512 kB), Monitor Cartridge
+    (None HRTmon AR3) in every profile and Drive Settings > Drives (1 2 3); a fourth
+    drive was offered by the user "if not too much" and left for later (new menu lines,
+    a fourth entry in every per-drive table, a fourth image channel). A row: label line
+    (the text before ": " of the group's first item), then the options, each behind its
+    marker; the cursor highlights one option, left/right move inside the row, up/down
+    skip the rest of it and land on the selected option of the next row, Return/Space
+    select. Design: every option stays its own menu item (line numbers, settings file,
+    OPTM_SIZE, prof_decode unchanged); only screen positions change, so menu.asm keeps
+    computing the classic position (ordinal = position among the visible items) and the
+    screen callbacks translate it through the layout `OPTR_PRINT` recorded while drawing
+    (`M2M/rom/menu_rows.asm`). Slow RAM was a toggle: the separator in front of it
+    (offset 10 of each profile block: lines 33/51/69/87) became "Slow RAM: None" and the
+    toggle (offset 11, `C_PROF_SLOW`) its second item, so the HDL still reads the same
+    bit; an old settings file has neither set, and `_HLP_RADIOFIX` gives any radio group
+    without a selection its first item (no single-item radio group exists, checked by
+    `cfg/check.py`). The Profile Settings page went from 27 to 24 rows. Firmware: ROM
+    31694 -> 32296/32768 words, 84 variable words (stack margin 252 -> 168),
+    MENU_HEAP_SIZE 4416 -> 4288 (demand 4260, 148 characters fewer), release HEAP_SIZE
+    14240. Tests `~/aexp-work/menu-rows`: `run.sh` (real OPTM_SHOW/OPTM_RUN + menu_rows
+    into a RAM screen: 25 scripted keys over three rows, a submenu row without a label,
+    a classic radio and a single-select; screen and attributes checked at each step,
+    callbacks checked), `radiofix/run.sh` (_HLP_RADIOFIX extracted from options.asm,
+    16 settings banks in RAM, a group across a bank boundary), `cfg/run.sh` (ghdl dump
+    of config.vhd as the firmware reads it: row rules, widths, defaults; `render.py`
+    draws a level), `mut.py` 20/20 mutants killed; `~/aexp-work/menu-nest` still PASS.
+    Build `hmenu-a` (6c0871f, REF z3-48-a): WNS +0.116, WHS +0.016; the user on the MEGA65:
+    "Looks great!".
+
+    Round 2 (afde733, 9cfc099; a NEW settings file is required, the user: "It's ok to
+    require a new config file. No fallbacks." - so `_HLP_RADIOFIX` went again):
+    - Profile blocks of 23 lines (stride 18 -> 23): rows CPU, Chipset, Hard Disk
+      Controller (None / Gayle / RIPPLE - the RIPPLE-compatible Zorro II board,
+      lide.device is its driver), Chip RAM, Slow RAM, Monitor Cartridge (no Zorro board:
+      it stays outside the section), then the headline "Zorro Boards": Zorro II RAM 8 MB,
+      Zorro III RAM 16 MB / 32 MB, Graphics Card, Network Card. The two cards had no switch
+      before (always in); now per profile, default on: `cpu_wrapper` input `rtgena` gates
+      `ac_rtgb`, `eth_ena` comes from the profile, None gates the IDE board's
+      `ide_ena`; all three cold-boot through `amiga_cold_boot` `boards_i`.
+    - Greyed out (the user: "grey out options that are not available"): config.vhd
+      `OPTM_AVAIL` rules (group, item mask, mother group, mother item mask) mirror
+      prof_decode - the Zorro III boards and the graphics card need a 68020/68040, HRTmon
+      not the 68040, the Action Replay the 68000. The layout word carries them (bit 1 +
+      mother/mask); `_OPTM_AVAIL` decides, OPTM_SHOW draws such items with
+      `M2M$SA_COL_DIM` (0x4F), up/down/left/right and the entry position skip them, a
+      change of a mother redraws the level (`_OPTM_GAFF`). The setting is kept.
+    - The menu limit: the settings register has 256 bits and HELP_MENU_INIT allows 254
+      items; the menu had 248 and needed 20 more. The 19 separators directly below a
+      headline (all of them unconditional) are no items any more: config.vhd's
+      `OPTM_HEADLINE_LINE` sets layout bit 14 for every headline and OPTR_PRINT draws the
+      line itself (`OPT_LINE_AT`). 248 - 19 + 20 + 3 (drive sound) = 252 items, 2 left;
+      more growth needs a wider settings register (an M2M change).
+    - Virtual Drive Sound (Drive Settings row "On / Noclick / Off", default On): while no
+      unit is the Hardware Floppy, `hwf_pins_proc` lets the real drive run its motor for
+      the lowest disk image unit whose motor is on (df0 > df1 > df2) and passes on that
+      unit's steps; without a motor the steps of the lowest selected disk image unit
+      still reach it - the click of an empty drive - unless Noclick. `main_snd_cyl` keeps
+      the head inside cylinders 0..79 (TRK0 resyncs it); write gate, side and density
+      stay inactive.
+    - Disk guard (user, 2026-10-19: a disk in the drive would wear): `main_snd_disk` =
+      /DSKCHG read after the drive has been selected C_SND_SETTLE (1023) clocks - an
+      unselected drive releases the line, which then reads "disk". The drive clears the
+      latch on a step with a disk in, so the first click or seek after an insertion
+      finds it (the motor may run until then). With a disk: no motor, no steps, only a
+      probe select of 2^13 clocks (289 us) every 2^24 (0.59 s); a low /DSKCHG there
+      (disk out) brings the sound back. Not with Off. drvsound TB cases h..k, 18/18
+      mutants.
+    - The settings file is created when no card has one (`_HLP_CREATE`, M2M-UPSTREAM
+      cfg-create): on the first card that mounts, in the directory of CFG_FILE,
+      OPTM_SIZE bytes with byte 0 = 0xFF (the standard selectors), then the lookup runs
+      again; the user: "if config file is missing, create one".
+    - Firmware: ROM 32576/32768 words, MENU_HEAP_SIZE 4480 (demand 4476). Tests:
+      `~/aexp-work/menu-rows` (now also greying, the CPU redraw, a greyed selected option,
+      headline lines; 25/25 mutants), `cfg/run.sh` (rows, rules, defaults, no single-item
+      radio), `~/aexp-work/drvsound` (ghdl on the code block of mega65.vhd: priority,
+      Noclick, Off, the 0..79 limits, TRK0, pulse width, the disk guard; 18/18 mutants),
+      `~/aexp-work/cfgcreate` (cfgold + creation: 18 cases, the images checked; 4/5
+      mutants, no_flush equivalent). Builds `hmenu-b` (afde733) and `hmenu-c` (9cfc099), REF hmenu-a: both
+      WNS -0.774 (QNICE/sdhost, identical: firmware does not change P&R); `hmenu-d`
+      (a184938, fresh) 16 re-rolls, best -0.042; `hmenu-e` (a184938, IMPL_MARGIN
+      "cpu_clk:0.5 native_clk4x_mmcm:0.3 hr_clk:0.3 qnice_clk:0.2") PASS 0.000 after
+      re-roll 2, on HW. HW found: the three C_MENU_* RANGE subtypes (OSM Scaling,
+      Volume, Stereo Mix) had not been renumbered (the OSM came up small) - fixed in
+      cfb466a; `~/aexp-work/menu-rows/cfg/xcheck.py` now checks every C_MENU_* constant,
+      ranges too, against the item texts of 50b43ce.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

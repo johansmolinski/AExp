@@ -45,6 +45,7 @@ entity amiga_cold_boot is
       z3_ram_i          : in  std_logic;                     -- Megamiga: 16 MB Zorro III board
       z3b_ram_i         : in  std_logic;                     -- Megamiga 0.7: 32 MB Zorro III board
       gayle_i           : in  std_logic;                     -- Megamiga 0.7: IDE as the Gayle
+      boards_i          : in  std_logic_vector(2 downto 0);  -- Megamiga 0.7: {network card, graphics card, no IDE}
       chipset_i         : in  std_logic_vector(1 downto 0);  -- Megamiga: OCS / ECS / AGA
       chip_size_i       : in  std_logic_vector(1 downto 0);  -- Megamiga: chip RAM 512K / 1M / 2M
       drv_map_i         : in  std_logic_vector(7 downto 0);  -- Drive Settings: {count, mode per unit}
@@ -78,6 +79,7 @@ architecture synthesis of amiga_cold_boot is
    signal z3_ram_applied   : std_logic := '0'; -- OSM default is no Zorro III RAM
    signal z3b_ram_applied  : std_logic := '0';
    signal gayle_applied    : std_logic := '0';
+   signal boards_applied   : std_logic_vector(2 downto 0) := "000";
    -- the power-on values are the menu defaults = the A500 profile (68000, OCS, 512 KB
    -- chip + 512 KB slow), so there is no spurious cold boot at t=0
    signal chipset_applied  : std_logic_vector(1 downto 0) := "00"; -- OSM default is OCS
@@ -117,6 +119,7 @@ begin
                if slow_ram_i /= slow_ram_applied or fast_ram_i /= fast_ram_applied or
                   cpu_020_i /= cpu_020_applied or z3_ram_i /= z3_ram_applied or
                   cpu_040_i /= cpu_040_applied or gayle_i /= gayle_applied or
+                  boards_i /= boards_applied or
                   z3b_ram_i /= z3b_ram_applied or
                   chipset_i /= chipset_applied or chip_size_i /= chip_size_applied or
                   drv_map_i /= drv_map_applied or kick_hold_i = '1' or cart_i /= cart_applied then
@@ -175,6 +178,7 @@ begin
                   z3_ram_applied   <= z3_ram_i;
                   z3b_ram_applied  <= z3b_ram_i;
                   gayle_applied    <= gayle_i;
+                  boards_applied   <= boards_i;
                   chipset_applied  <= chipset_i;
                   chip_size_applied <= chip_size_i;
                   drv_map_applied  <= drv_map_i;

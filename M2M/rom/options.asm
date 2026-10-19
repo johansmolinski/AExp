@@ -126,6 +126,25 @@ _HLP_SSIC1      SUB     1, R4                   ; one less menu item to go
                 ADD     OPTM_IR_LINES, R8
                 MOVE    R9, @R8
 
+                ; M2M-UPSTREAM menu-rows: bits 15..1 of the lines word are the
+                ; layout word of config.vhd (OPTM_LAYOUT: rows, greyed-out
+                ; rules, the line below a headline; see menu_rows.asm). A
+                ; config.vhd without it does not serve the probe word.
+                MOVE    M2M$CFG_OPTM_ROWS, @R0
+                MOVE    M2M$RAMROM_DATA, R8
+                MOVE    R8, R6
+                ADD     0x0FFF, R6
+                CMP     OPTM_ROWS_MAGIC, @R6
+                RBRA    _HLP_ROWS_E, !Z
+                MOVE    R9, R6                  ; R6: lines array
+                MOVE    R3, R7                  ; R7: amount of menu items
+_HLP_ROWS_1     MOVE    @R8++, R5
+                ADD     R5, R5
+                OR      R5, @R6++
+                SUB     1, R7
+                RBRA    _HLP_ROWS_1, !Z
+_HLP_ROWS_E
+
                 ; M2M-UPSTREAM osm-deps
                 ; Copy the per-line dependency array to the heap and resolve it
                 ; in place, so that OPTM_DEP_OK can evaluate it cheaply while
@@ -393,7 +412,7 @@ _HLP_CA_1       MOVE    LOG_STR_CFG_ON, R8
                 ; settings file is looked for on the external card first,
                 ; then on the internal one; it is saved back to the card it
                 ; came from (SDC_HOME, see ROSM_INTEGRITY)
-                MOVE    1, R6                   ; R6: slot
+_HLP_CA_SL0     MOVE    1, R6                   ; R6: slot
 _HLP_CA_SL      MOVE    R6, R8
                 RSUB    SDC$MOUNT, 1            ; R8: device, R9: 0 = OK
                 CMP     0, R9                   ; R9=error code; 0=OK
@@ -415,6 +434,8 @@ _HLP_CA_4       MOVE    M2M$RAMROM_DEV, R10     ; (the name in the config
                 RBRA    _HLP_CA_HOME, Z         ; yes
 _HLP_CA_NX      SUB     1, R6                   ; the next card
                 RBRA    _HLP_CA_SL, !N
+                RSUB    _HLP_CREATE, 1          ; M2M-UPSTREAM cfg-create: no
+                RBRA    _HLP_CA_SL0, C          ; file: create one, look again
                 MOVE    M2M$RAMROM_DEV, R10
                 MOVE    M2M$CONFIG, @R10
                 MOVE    M2M$CFG_CFG_FILE, @R0
@@ -739,6 +760,108 @@ _HLP_DEPS_RET   SYSCALL(leave, 1)
                 RET
 
 ; ----------------------------------------------------------------------------
+; M2M-UPSTREAM cfg-create
+; _HLP_CREATE: there is no settings file on any card: create CFG_FILE on the
+; first card that mounts (the back card first, like the lookup) in its
+; directory, which has to exist. The file gets OPTM_SIZE bytes, the first one
+; 0xFF ("use the standard selectors"), so the lookup that follows finds it and
+; the menu saves into it from then on. An existing file (FAT32$ERR_EXISTS) or a
+; full card is no error here, just no new file.
+; Output: C=1 a file was created; all registers preserved
+; ----------------------------------------------------------------------------
+
+_HLP_CREATE     SYSCALL(enter, 1)
+
+                MOVE    M2M$RAMROM_DEV, R0      ; the path out of the config
+                MOVE    M2M$CONFIG, @R0         ; window into CFGS_BUF (no
+                MOVE    M2M$RAMROM_4KWIN, R0    ; text is loaded yet)
+                MOVE    M2M$CFG_CFG_FILE, @R0
+                MOVE    M2M$RAMROM_DATA, R8
+                MOVE    CFGS_BUF, R9
+                SYSCALL(strcpy, 1)
+                MOVE    CFGS_BUF, R0            ; R1: the last "/"
+                XOR     R1, R1
+_HLP_CR_1       CMP     0, @R0
+                RBRA    _HLP_CR_2, Z
+                CMP     0x002F, @R0
+                RBRA    _HLP_CR_1A, !Z
+                MOVE    R0, R1
+_HLP_CR_1A      ADD     1, R0
+                RBRA    _HLP_CR_1, 1
+_HLP_CR_2       CMP     0, R1
+                RBRA    _HLP_CR_NO, Z
+                MOVE    0, @R1                  ; CFGS_BUF: the directory,
+                ADD     1, R1                   ; R1: the name
+
+                MOVE    1, R6                   ; R6: slot
+_HLP_CR_SL      MOVE    R6, R8
+                RSUB    SDC$MOUNT, 1            ; R8: device, R9: 0 = OK
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    R8, R2                  ; R2: device
+                MOVE    CFGS_BUF, R9
+                CMP     0, @R9                  ; "/name": the root
+                RBRA    _HLP_CR_3, !Z
+                MOVE    _HLP_CR_ROOT, R9
+_HLP_CR_3       XOR     R10, R10
+                SYSCALL(f32_cd, 1)              ; the directory current
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    CFGS_PB, R8             ; the parameter block: zeros,
+                MOVE    FAT32$PB_SIZE, R9       ; device, directory, name,
+                XOR     R10, R10                ; 1980-01-01
+                SYSCALL(memset, 1)
+                MOVE    CFGS_PB, R3
+                MOVE    R2, @R3++               ; PB_DEV
+                MOVE    R2, R4
+                ADD     FAT32$DEV_AD_1STCLUS_LO, R4
+                MOVE    @R4++, @R3++            ; PB_DIR
+                MOVE    @R4, @R3++
+                MOVE    R1, @R3++               ; PB_NAME
+                MOVE    FAT32$FA_ARCHIVE, @R3++ ; PB_ATTR
+                MOVE    0x0021, @R3             ; PB_DATE
+                MOVE    CFGS_PB, R8
+                RSUB    FAT32$W_CREATE, 1
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    CFGS_PB, R8             ; open it, OPTM_SIZE bytes
+                MOVE    CONFIG_FILE, R9
+                RSUB    FAT32$W_FDH, 1
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    CONFIG_FILE, R8
+                MOVE    CFGS_PB, R9
+                MOVE    OPTM_ICOUNT, R10
+                MOVE    @R10, R10
+                XOR     R11, R11
+                RSUB    FAT32$W_SETSIZE, 1
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    CONFIG_FILE, R8         ; byte 0: 0xFF
+                MOVE    0x00FF, R9
+                SYSCALL(f32_fwrite, 1)
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    CONFIG_FILE, R8
+                SYSCALL(f32_fflush, 1)
+                CMP     0, R9
+                RBRA    _HLP_CR_NX, !Z
+                MOVE    LOG_STR_CFG_NEW, R8
+                SYSCALL(puts, 1)
+                MOVE    CFGS_BUF, R8            ; (CFGS_BUF: no text again)
+                MOVE    0, @R8
+                OR      0x0004, SR
+                RBRA    _HLP_CR_RET, 1
+_HLP_CR_NX      SUB     1, R6                   ; the next card
+                RBRA    _HLP_CR_SL, !N
+_HLP_CR_NO      MOVE    CFGS_BUF, R8
+                MOVE    0, @R8
+                AND     0xFFFB, SR
+_HLP_CR_RET     SYSCALL(leave, 1)
+                RET
+_HLP_CR_ROOT    .ASCII_W "/"
+
+; ----------------------------------------------------------------------------
 ; M2M-UPSTREAM osm-deps
 ; OPTM_DEPS_PROBE: Detect whether config.vhd supports the dependency feature
 ;
@@ -1047,7 +1170,10 @@ _ROSMS_RET      SYSCALL(leave, 1)
 ; Menu initialization record (needed by OPTM_INIT)
 ; Will be copied to the HEAP, together with the configuration data from
 ; config.vhd and then modified to point to the right addresses on the heap
-OPT_MENU_DATA   .DW     SCR$CLR, SCR$PRINTFRAME, OPT_PRINTSTR, SCR$PRINTSTRXY
+; M2M-UPSTREAM menu-rows: OPTR_PRINT / OPTR_PRINTXY (menu_rows.asm) draw the
+; options of a row side by side; without rows they draw the classic menu
+;OPT_MENU_DATA   .DW     SCR$CLR, SCR$PRINTFRAME, OPT_PRINTSTR, SCR$PRINTSTRXY
+OPT_MENU_DATA   .DW     SCR$CLR, SCR$PRINTFRAME, OPTR_PRINT, OPTR_PRINTXY
                 .DW     OPT_PRINTLINE, OPT_SELECT, OPT_MENU_GETKEY
                 .DW     OPTM_CB_SEL, OPTM_CB_SHOW, FATAL,
                 .DW     M2M$OPT_SEL_MULTI, 0    ; selection char + zero term.:
@@ -1056,63 +1182,25 @@ OPT_MENU_DATA   .DW     SCR$CLR, SCR$PRINTFRAME, OPT_PRINTSTR, SCR$PRINTSTRXY
                                                 ; (the last one is OPTM_IR_DEPS,
                                                 ; M2M-UPSTREAM osm-deps)
 
-; Print function that handles everything incl. cursor pos and \n by itself
-; R8 contains the string that shall be printed
-; R9 contains a pointer to a mask array: the first word is the size of the
-;    array (and therefore the amount of menu items) and then we have one entry
-;    (word) per menu line: If the highest bit is one, then OPTM_FP_PRINT will
-;    print the line otherwise it will skip the line
-OPT_PRINTSTR    SYSCALL(enter, 1)
-
-                MOVE    @R9++, R0               ; R0: size of menu
-                MOVE    R9, R1                  ; R1: pointer to mask array
-                MOVE    R8, R2                  ; R2: current string segment
-                MOVE    SP, R3                  ; R3: remember stack pointer
-                XOR     R4, R4                  ; R4: item counter
-
-_OPT_PRINTSTR_1 MOVE    R2, R8                  ; treat current seg. as start
-
-                MOVE    OPTM_NL, R9             ; string containing \n
-                SYSCALL(strstr, 1)              ; search in input string
-                CMP     0, R10                  ; \n found?
-                RBRA    _OPT_PRINTSTR_F, Z      ; no: fatal
-
-                MOVE    R10, R6                 ; R6: length of segment..
-                SUB     R2, R6                  
-                ADD     2, R6                   ; ..including \n                              
-
-                CMP     @R1++, 0x7FFF           ; print current item?
-                RBRA    _OPT_PRINTSTR_2, !N     ; no: next iteration
-
-                ; copy current segment to the stack so that we can add a
-                ; zero terminator so that SCR$PRINTSTR can print it
-                SUB     R6, SP                  ; reserve space on stack
-                SUB     1, SP                   ; add space for zero term.
-                MOVE    R2, R8                  ; copy string segment
-                MOVE    SP, R9
-                MOVE    R6, R10
-                SYSCALL(memcpy, 1)
-                ADD     R6, R9
-                MOVE    0, @R9                  ; add zero terminator
-                MOVE    SP, R8                  ; print current segment
-                RSUB    SCR$PRINTSTR, 1
-
-                MOVE    R3, SP                  ; restore stack pointer
-
-_OPT_PRINTSTR_2 ADD     R6, R2                  ; skip current segment
-                ADD     1, R4                   ; next item
-                CMP     R0, R4                  ; done?
-                RBRA    _OPT_PRINTSTR_1, !Z     ; no: iterate
-
-                SYSCALL(leave, 1)               ; yes, done: return
-                RET
-
-_OPT_PRINTSTR_F MOVE    ERR_F_NEWLINE, R8      ; fatal due to missing newline
-                XOR     R9, R9
-                RBRA    FATAL, 1                
+; M2M-UPSTREAM menu-rows: OPT_PRINTSTR, the OPTM_FP_PRINT function, is
+; OPTR_PRINT in menu_rows.asm now (it prints each item at its position of the
+; row layout with SCR$PRINTSTRXY instead of the running cursor)
 
 ; Draws a horizontal line/menu separator at the y-pos given in R8, dx in R9
 OPT_PRINTLINE   INCRB
+
+                ; M2M-UPSTREAM menu-rows: R8 is the classic row of the line
+                ; (OPTM_Y + 1 + ordinal): use its row of the layout
+                MOVE    OPTM_Y, R1
+                SUB     @R1, R8
+                SUB     1, R8
+                RSUB    OPTR_POS, 1
+                MOVE    R9, R8
+                DECRB
+
+; M2M-UPSTREAM menu-rows: draw a separator at the screen row R8 (also used by
+; OPTR_PRINT for the line below a headline)
+OPT_LINE_AT     INCRB
 
                 MOVE    SP, R0                  ; R0: use to restore stack
                 MOVE    R8, R1                  ; R1: y-pos
@@ -1150,16 +1238,24 @@ _PRINTLN_L      MOVE    M2M$NC_SH, @R3++
 ; R9=3: select highlighted headline/title
 OPT_SELECT      INCRB
 
-                MOVE    OPTM_X, R0              ; R0: x start coordinate
-                MOVE    @R0, R0
-                ADD     1, R0
-                MOVE    OPTM_Y, R1              ; R1: y start coordinate
-                MOVE    @R1, R1
-                ADD     1, R1
-                ADD     R8, R1
-                MOVE    OPTM_DX, R2             ; R2: width of selection
-                MOVE    @R2, R2
-                SUB     2, R2
+                ; M2M-UPSTREAM menu-rows: position and width from the layout
+                ; (an option of a row: just its marker and text)
+                ;MOVE    OPTM_X, R0              ; R0: x start coordinate
+                ;MOVE    @R0, R0
+                ;ADD     1, R0
+                ;MOVE    OPTM_Y, R1              ; R1: y start coordinate
+                ;MOVE    @R1, R1
+                ;ADD     1, R1
+                ;ADD     R8, R1
+                ;MOVE    OPTM_DX, R2             ; R2: width of selection
+                ;MOVE    @R2, R2
+                ;SUB     2, R2
+                MOVE    R9, R3
+                RSUB    OPTR_POS, 1
+                MOVE    R8, R0                  ; R0: x start coordinate
+                MOVE    R9, R1                  ; R1: y start coordinate
+                MOVE    R10, R2                 ; R2: width of selection
+                MOVE    R3, R9
 
                 ; define attribute to apply
                 MOVE    M2M$SA_COL_STD, R3      ; unselect = standard text
@@ -1174,8 +1270,12 @@ _OPTM_FPS1A     CMP     OPTM_SEL_TLL, R9        ; headline/title?
                 MOVE    M2M$SA_COL_TTLE, R3     ; yes, headline/title
                 RBRA    _OPTM_FPS_2, 1
 _OPTM_FPS1B     CMP     OPTM_SEL_TLLSEL, R9     ; selected headline/title?
-                RBRA    _OPTM_FPS_2, !Z         ; no: default to standard text
+                RBRA    _OPTM_FPS1C, !Z         ; no
                 MOVE    M2M$SA_COL_TTLE_INV, R3 ; yes, selected headl./title          
+                RBRA    _OPTM_FPS_2, 1
+_OPTM_FPS1C     CMP     OPTM_SEL_DIM, R9        ; M2M-UPSTREAM menu-rows:
+                RBRA    _OPTM_FPS_2, !Z         ; greyed out?
+                MOVE    M2M$SA_COL_DIM, R3      ; (else: standard text)
 
 _OPTM_FPS_2     MOVE    SCR$SYS_DX, R8          ; R10: start address in ..
                 MOVE    @R8, R8
@@ -1258,8 +1358,17 @@ _OPTM_GK_3      CMP     M2M$KEY_HELP, R8        ; Help (close menu)
                 RBRA    _OPTMGK_RET, 1
 
 _OPTM_GK_4      CMP     M2M$KEY_RUNSTOP, R8     ; Run/Stop (one menu level up)
-                RBRA    _OPTMGK_LOOP, !Z        ; other key: ignore
+                RBRA    _OPTM_GK_5, !Z
                 MOVE    OPTM_KEY_MENUUP, R8
+                RBRA    _OPTMGK_RET, 1
+
+_OPTM_GK_5      CMP     M2M$KEY_LEFT, R8        ; M2M-UPSTREAM menu-rows:
+                RBRA    _OPTM_GK_6, !Z          ; left/right: the options of
+                MOVE    OPTM_KEY_LEFT, R8       ; a row
+                RBRA    _OPTMGK_RET, 1
+_OPTM_GK_6      CMP     M2M$KEY_RIGHT, R8
+                RBRA    _OPTMGK_LOOP, !Z        ; other key: ignore
+                MOVE    OPTM_KEY_RIGHT, R8
 
 _OPTMGK_RET     DECRB
                 RET
