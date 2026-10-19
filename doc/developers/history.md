@@ -2903,6 +2903,19 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       Volume, Stereo Mix) had not been renumbered (the OSM came up small) - fixed in
       cfb466a; `~/aexp-work/menu-rows/cfg/xcheck.py` now checks every C_MENU_* constant,
       ranges too, against the item texts of 50b43ce.
+    - Timing root cause (2026-10-19, 7e2c601): the CPU -> SDRAM multicycle in CORE.xdc
+      matched `*cpu_inst_p/*`, but with CPU040 = 2 the 68020 is `g_ap040.tg68k_inst`, so
+      since 0.6.0 its register file -> `sd_ba` paths were timed single-cycle (8.8 ns
+      instead of 17.6) - the main_clk -> native_clk4x_mmcm misses of hmenu-b..g. Measured
+      on hmenu-g's routed design: -0.177 ns before, +0.225 ns with `*tg68k_inst/*` added
+      (WHS +0.036). New sign-off gate: every TG68KdotC_Kernel instance must be
+      cpu_inst_p or tg68k_inst. Incremental synthesis from the REF build was added
+      (80809f2) but Vivado declined it for hmenu-h ("Change is too high", an edit of
+      mega65.vhd) - kept, it applies where the change is small.
+    - `hmenu-g` (90f1e9b, REF hmenu-e): first pass -0.177 under the old constraint =
+      +0.225 under the corrected one (same routed design, so its bitstream was used).
+      HW-confirmed by the user 2026-10-19 (menu size, drive sound disk guard). Merged
+      into main (4b13425 and the follow-ups up to 7e2c601), pushed.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
