@@ -97,7 +97,10 @@ for board in "${boards[@]}"; do
     unset REF_DCP REF_SYNTH_DCP
     if [ -n "${REF_DIR:-}" ]; then
         s="${REF_DIR}/CORE-${board}.runs/synth_1/mega65_$(lower "${board}").dcp"
-        [ -f "${s}" ] && export REF_SYNTH_DCP=$(cd "$(dirname "${s}")" && pwd)/$(basename "${s}")
+        # NO_REF_SYNTH=1: synthesize anew (Vivado 2022.2 can segfault in the incremental
+        # synthesis cache dump, HARTNDb::dumpUnoptimizedCache - quickhdf-a, 2026-10-19);
+        # the implementation still starts from the reference's routed checkpoint
+        [ -f "${s}" ] && [ "${NO_REF_SYNTH:-0}" != 1 ] && export REF_SYNTH_DCP=$(cd "$(dirname "${s}")" && pwd)/$(basename "${s}")
         r="${REF_DIR}/CORE-${board}.runs/impl_1/mega65_$(lower "${board}")"
         for f in "${r}_reroll.dcp" "${r}_postroute_physopt.dcp" "${r}_routed.dcp"; do
             [ -f "${f}" ] && { export REF_DCP=$(cd "$(dirname "${f}")" && pwd)/$(basename "${f}"); break; }

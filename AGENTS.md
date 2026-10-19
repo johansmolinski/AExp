@@ -179,6 +179,10 @@ Megamiga fork (johansmolinski):
   walk. Firmware code bank 4 `BANK_PROF` (`profiles.asm`, B4_*), design
   `doc/developers/profiles.md`, TB `~/aexp-work/profiles` (16 scenarios + mutants).
   HW-confirmed (prof-p6), merged with vrdb (its bank 3 -> profiles' 4).
+- `quickhdf` (2026-10-19): " hdf:%s" on the main page (line 7, manual load 3, device
+  C_DEV_AMIGA_IDEQ 0x010E): one HDF as the only drive in place of the profile's until Space
+  ejects it (the profile's come back) or the core restarts; firmware QHDF_ON, PROF_HDFS,
+  bank-3 B3_QHDF_*/B3_HDF_SP*. TB `~/aexp-work/quickhdf/fw`. HW-confirmed quickhdf-b.
 - `vrdb` (2026-10-19): HDF images without an RDB (UAE hardfiles, files and SD
   partitions): a virtual cylinder in front of the image (RDSK + one PART, DH0/DH1, the
   image's DosType; UAE's geometry, MiSTer's when only that one finds the root block).
