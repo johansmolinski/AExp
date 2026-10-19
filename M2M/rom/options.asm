@@ -380,6 +380,8 @@ _HLP_START      MOVE    OPTM_START, R8
                 MOVE    0, @R1
                 MOVE    CFGS_DIRTY, R1
                 MOVE    0, @R1
+                MOVE    CFGS_RESET, R1
+                MOVE    0, @R1
                 MOVE    CFGS_BUF, R1
                 MOVE    0, @R1
 
@@ -490,6 +492,8 @@ _HLP_CA_6       MOVE    R9, R8                  ; R9: file handle
                 CMP     0xFF, R9                ; new config file?
                 RBRA    _HLP_CA_7, !Z           ; no: read it
 
+_HLP_CA_NEW     RSUB    CFG_SIGSET, 1           ; M2M-UPSTREAM cfg-strings: the
+                                                ; signature (CORE/m2m-rom)
                 MOVE    LOG_STR_CFG_E3, R8      ; yes: use factory defaults..
                 SYSCALL(puts, 1)                ; ..but leave CONFIG_FILE..
                 MOVE    M2M$RAMROM_DATA, R8     ; ..intact so that the config.
@@ -561,6 +565,8 @@ _HLP_CA_14      SUB     1, R3                   ; done reading config file?
                 RBRA    _HLP_CA_9, !Z
 
 _HLP_CA_15      RSUB    CFGS_LOAD, 1            ; M2M-UPSTREAM cfg-strings
+                RSUB    CFG_SIGCHECK, 1         ; made for this menu? no: it
+                RBRA    _HLP_CA_NEW, !C         ; was reset to a new file
                 RBRA    _HLP_S3, 1              ; Case (a) successful
 
                 ; M2M-UPSTREAM cfg-strings: the file was written by a menu

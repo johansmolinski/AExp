@@ -29,7 +29,9 @@
 ;              group that make it available, bits 14..7 = the mother group;
 ;              unavailable items are drawn dimmed and the cursor skips them
 ;   bit 15     a separator line is drawn below the item (a headline) without
-;              being a menu item of its own
+;              being a menu item of its own; a headline that directly follows
+;              an option of a row gets one above it too (a section after rows,
+;              e.g. Megamiga's "Zorro Boards")
 ;
 ; Rules for config.vhd (checked by ~/aexp-work/menu-rows/cfg/check.py):
 ; - the items of a row group are consecutive lines, the row's first item
@@ -169,7 +171,23 @@ _OPTR_P_M2      MOVE    OPTR_COL, R7            ; the option behind its marker
 _OPTR_P_NR      RSUB    _OPTR_CLOSE, 1          ; a classic line
                 CMP     @R1, 0x7FFF             ; shown?
                 RBRA    _OPTR_P_NEXT, !N
-                MOVE    R2, R8
+                MOVE    @R3, R7                 ; a headline right behind a
+                AND     0x8000, R7              ; row (not at the top) gets a
+                RBRA    _OPTR_P_NA, Z           ; separator line above it too
+                CMP     0, R6
+                RBRA    _OPTR_P_NA, Z
+                MOVE    R3, R7
+                SUB     1, R7
+                MOVE    @R7, R7
+                AND     2, R7
+                RBRA    _OPTR_P_NA, Z
+                MOVE    OPTM_Y, R8
+                MOVE    @R8, R8
+                ADD     1, R8
+                ADD     R5, R8
+                RSUB    OPT_LINE_AT, 1
+                ADD     1, R5
+_OPTR_P_NA      MOVE    R2, R8
                 MOVE    R11, R9
                 XOR     R10, R10
                 MOVE    R5, R11

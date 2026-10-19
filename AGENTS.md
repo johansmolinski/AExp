@@ -444,18 +444,26 @@ the dated facts.
   skip its other options and land on the selected option of a row
   (`_OPTM_ROWSKIP`); the separator test reads bit 0 of the lines word, bit 1 =
   option of a row (HELP_MENU sets it from `SEL_OPTM_ROWS` 0x0314; index 4095 =
-  probe 0x2D52, missing = classic menu). `_HLP_RADIOFIX` (HELP_MENU_INIT): a
-  radio group without a selection gets its FIRST item - a settings file from
-  before Megamiga's "Slow RAM: None" existed. Every option stays its own item:
+  probe 0x2D52, missing = classic menu). Every option stays its own item:
   line numbers, settings file, OPTM_SIZE, mega65.vhd unchanged. Rules: row items
   consecutive, radio (no SINGLESEL), the row fits OPTM_DX - 2. TBs
   `~/aexp-work/menu-rows` (`run.sh`, `cfg/run.sh` + render.py, `mut.py`). Also in
   the layout word: greyed-out rules (config.vhd `OPTM_AVAIL`: drawn dimmed, skipped
-  by the cursor, redrawn when the mother changes) and the separator line below
-  every headline (`OPTM_HEADLINE_LINE`: those separators are no items, which keeps
-  the menu below the 254 items the 256-bit settings register allows - 252 used).
+  by the cursor, redrawn when the mother changes; `_OPTM_DESEL` deselects a greyed-out
+  item - a radio hands its selection to its first available option - in OPTM_SHOW and
+  before the selection callback copies OPTM_IR_STDSEL to the hardware) and the
+  separator line below every headline (`OPTM_HEADLINE_LINE`: those separators are no
+  items, which keeps the menu below the 254 items the 256-bit settings register
+  allows - 252 used); a headline right behind a row gets one above it too.
   `cfg-create` (same file set): HELP_MENU_INIT creates CFG_FILE (0xFF + zeros) when
-  no card has one. Added in the JS fork 2026-10-18.
+  no card has one. `cfg-signature` (options.asm calls `CFG_SIGCHECK`/`CFG_SIGSET`,
+  core callbacks; Megamiga's are in code bank 2): the text of the settings file
+  carries `menu=XXXX`, a hash of OPTM_SIZE and the group words (the menu's
+  structure, not its settings); a loaded file without it or with another one is
+  reset to a new file (0xFF, no text: the profiles' files are forgotten), the core
+  says so on the screen at the start; a new file gets it at its first save. This
+  replaces the "menu grew at its end" case of cfg-strings (such a file has another
+  signature). Added in the JS fork 2026-10-18/19.
   All other framework fixes
   go into `CORE/CORE.xdc` (constraints) or get documented for upstreaming.
   Git remote `upstream` = sy2002/MiSTer2MEGA65 (master = V2.0.1).

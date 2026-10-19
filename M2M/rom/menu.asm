@@ -236,6 +236,9 @@ OPTM_INIT       INCRB
 
 OPTM_SHOW       SYSCALL(enter, 1)
 
+                RSUB    _OPTM_DESEL, 1          ; M2M-UPSTREAM menu-rows: no
+                                                ; greyed-out item is shown as
+                                                ; selected (a settings file)
                 MOVE    OPTM_DATA, R0           ; R0: string to be printed
                 MOVE    @R0, R0
                 ADD     OPTM_IR_ITEMS, R0
@@ -1024,7 +1027,9 @@ _OPTM_RUN_9     MOVE    OPTM_Y, R10
 
                 ; call the callback function, but first find out which element
                 ; within the group has been selected
-_OPTM_RUN_10    MOVE    OPTM_DATA, R8
+_OPTM_RUN_10    RSUB    _OPTM_DESEL, 1          ; M2M-UPSTREAM menu-rows: no
+                                                ; greyed-out item stays selected
+                MOVE    OPTM_DATA, R8
                 MOVE    @R8, R8
                 ADD     OPTM_IR_GROUPS, R8
                 MOVE    @R8, R8
@@ -1844,6 +1849,67 @@ _OPTM_GA_2      SUB     1, R0
                 DECRB
                 RET
 _OPTM_GA_Y      OR      0x0004, SR
+                DECRB
+                RET
+
+; _OPTM_DESEL: deselect every greyed-out item in OPTM_IR_STDSEL; a radio
+; member hands its selection to the first available member of its group
+; (the "None" of a row). Runs before the selection callback, which copies
+; OPTM_IR_STDSEL to M2M$CFM_DATA, so the hardware and the settings file follow;
+; the redraw of _OPTM_GAFF shows it. OPTM_SHOW runs it too, for a state loaded
+; from a settings file (M2M$CFM_DATA follows at the next selection; the core
+; ignores a greyed-out option anyway). Clobbers R8.
+_OPTM_DESEL     INCRB
+                MOVE    OPTM_DATA, R0
+                MOVE    @R0, R0
+                MOVE    R0, R1
+                ADD     OPTM_IR_SIZE, R1
+                MOVE    @R1, R1                 ; R1: items
+                MOVE    R0, R2
+                ADD     OPTM_IR_STDSEL, R2
+                MOVE    @R2, R2                 ; R2: selected items
+                MOVE    R0, R3
+                ADD     OPTM_IR_GROUPS, R3
+                MOVE    @R3, R3                 ; R3: groups
+                XOR     R4, R4                  ; R4: index
+_OPTM_DS_1      MOVE    R2, R5
+                ADD     R4, R5
+                CMP     0, @R5                  ; selected?
+                RBRA    _OPTM_DS_4, Z
+                MOVE    R4, R8
+                RSUB    _OPTM_AVAIL, 1          ; and greyed out?
+                RBRA    _OPTM_DS_4, C
+                MOVE    0, @R5                  ; deselect it
+                MOVE    R3, R6
+                ADD     R4, R6
+                MOVE    @R6, R6                 ; R6: its group word
+                MOVE    R6, R7
+                AND     OPTM_SINGLESEL, R7      ; a toggle: done
+                RBRA    _OPTM_DS_4, !Z
+                AND     0x00FF, R6              ; a radio: the first available
+                XOR     R7, R7                  ; member gets the selection
+_OPTM_DS_2      MOVE    R3, R8
+                ADD     R7, R8
+                MOVE    @R8, R8
+                MOVE    R8, R0
+                AND     OPTM_SUBMENU, R0        ; (a submenu line is no member)
+                RBRA    _OPTM_DS_3, !Z
+                AND     0x00FF, R8
+                CMP     R8, R6
+                RBRA    _OPTM_DS_3, !Z
+                MOVE    R7, R8
+                RSUB    _OPTM_AVAIL, 1
+                RBRA    _OPTM_DS_3, !C
+                MOVE    R2, R8
+                ADD     R7, R8
+                MOVE    1, @R8
+                RBRA    _OPTM_DS_4, 1
+_OPTM_DS_3      ADD     1, R7
+                CMP     R7, R1
+                RBRA    _OPTM_DS_2, !Z
+_OPTM_DS_4      ADD     1, R4
+                CMP     R4, R1
+                RBRA    _OPTM_DS_1, !Z
                 DECRB
                 RET
 

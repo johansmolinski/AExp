@@ -2916,6 +2916,28 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       +0.225 under the corrected one (same routed design, so its bitstream was used).
       HW-confirmed by the user 2026-10-19 (menu size, drive sound disk guard). Merged
       into main (4b13425 and the follow-ups up to 7e2c601), pushed.
+    - Round 3 (2026-10-19, firmware only): (1) `_OPTM_DESEL` (menu.asm): a greyed-out
+      item is deselected - a radio hands its selection to its first available option
+      (AR3 -> None) - in OPTM_SHOW (a state loaded from a file) and before the selection
+      callback copies OPTM_IR_STDSEL to M2M$CFM_DATA. Visual only before: prof_decode and
+      cpu_wrapper already ignore a greyed-out option. (2) OPTR_PRINT: a headline right
+      behind a row gets a separator line above it too (only "Zorro Boards"; no config
+      bit: the 15-bit layout word is full; Profile Settings now 29 of 29 rows).
+      (3) Settings file signature: `menu=XXXX` in the text, a 16-bit hash (rotate left,
+      XOR) of OPTM_SIZE and the group words read from the config window - the structure
+      of the menu, not its settings. HELP_MENU_INIT: after CFGS_LOAD `CFG_SIGCHECK`; no or
+      another signature -> the file is reset in place (CFGS_SIZE to OPTM_SIZE, byte 0 =
+      0xFF, no text) and treated as new; a new file gets the signature (`CFG_SIGSET`,
+      CFGS_DIRTY: written at the next save); PREP_START shows "Settings reset" until a
+      key is pressed (`CFGS_RESET`). Code in bank 2 (B2_CFG_*, FAR_CALL stubs; the fixed
+      ROM has 60 words left: 32708/32768). Not caught: options of one radio swapped.
+      Tests: menu-rows (+ a headline behind a row and behind a headline, OCS greyed with
+      68020 -> AGA, Fast RAM selected under 68000 at the start, the selection array the
+      callback copies; 33/34 mutants, snap_grey now unreachable = equivalent),
+      cfgcreate (20 cases: signature ok / missing / other / short file, new and created
+      files get it, the reset file on disk, SD0 untouched when SD1's is reset;
+      `mut_sig.py` 13/13). Bitstream `hmenu-p1`: the firmware patched into linux040-d
+      (CORE/patch_firmware.sh; its hardware sources are identical to main cddf519).
   - **Linux boots to a busybox shell on the 68040 (2026-10-17..19, branch `linux040` from
     main 50b43ce, Minimig branch `linux040` from ea6144a).** Kernel: Linux 6.18.57 LTS built
     on fedora (`~/linux68k/build.sh`: `amiga_defconfig` for the 68040 only, -Os, busybox-static

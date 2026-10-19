@@ -91,6 +91,7 @@ OLD_SETTINGS    .BLOCK  16
 ; M2M-UPSTREAM cfg-strings (cfgstr.asm): the text behind the menu bytes
 CFGS_LEN        .BLOCK  1                       ; its length
 CFGS_DIRTY      .BLOCK  1                       ; 1: changed since loaded/saved
+CFGS_RESET      .BLOCK  1                       ; 1: the file was reset (signature)
 CFGS_BUF        .BLOCK  CFGS_MAX                ; one character per word
 CFGS_PB         .BLOCK  FAT32$PB_SIZE           ; FAT32 write layer parameters
 
