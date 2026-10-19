@@ -414,6 +414,7 @@ architecture synthesis of ide_board is
    signal q_shift0, q_shift1 : std_logic_vector(2 downto 0) := (others => '0');
    signal q_mult0, q_mult1   : std_logic_vector(7 downto 0) := (others => '0');
    signal q_geom0, q_geom1   : std_logic_vector(15 downto 0) := (others => '0');
+   signal q_skip0, q_skip1   : std_logic_vector(15 downto 0) := (others => '0');  -- Megamiga 0.7
    signal q_mult0_nz, q_mult1_nz : std_logic;
    signal q_map_addr  : std_logic_vector(11 downto 0);
    signal q_map_q     : std_logic_vector(15 downto 0);
@@ -1450,6 +1451,8 @@ begin
          cfg_mult1_i  => q_mult1_nz,
          cfg_geom0_i  => q_geom0,
          cfg_geom1_i  => q_geom1,
+         cfg_skip0_i  => q_skip0,
+         cfg_skip1_i  => q_skip1,
          cfg_sects0_i => q_sects0,
          cfg_sects1_i => q_sects1,
          cfg_base0_i  => q_base0,
@@ -1574,9 +1577,13 @@ begin
                   when x"2D" => q_shift1 <= qnice_data_i(2 downto 0);
                   when x"2E" => q_mult1  <= qnice_data_i(7 downto 0);
                   when x"2F" => q_geom1  <= qnice_data_i;
+                  -- Megamiga 0.7: the blocks in front of the image (the firmware's virtual
+                  -- RDB); the firmware reads them back to know the engine has them
+                  when x"38" => q_skip0  <= qnice_data_i;
+                  when x"39" => q_skip1  <= qnice_data_i;
                   when others => null;
                end case;
-               if qnice_addr_i(7 downto 4) = x"2" then
+               if qnice_addr_i(7 downto 4) = x"2" or qnice_addr_i(7 downto 1) = "0011100" then
                   q_cfg_wr_f <= '1';
                end if;
             end if;
@@ -1589,6 +1596,8 @@ begin
             q_mult1 <= (others => '0');
             q_geom0 <= (others => '0');
             q_geom1 <= (others => '0');
+            q_skip0 <= (others => '0');
+            q_skip1 <= (others => '0');
          end if;
       end if;
    end process qnice_write_proc;
@@ -1653,6 +1662,8 @@ begin
                when x"31" => d := q_st_acc;
                when x"32" => d := q_st_fwd;
                when x"33" => d := q_st_err;
+               when x"38" => d := q_skip0;
+               when x"39" => d := q_skip1;
                when x"40" | x"41" | x"42" | x"43" | x"44" | x"45" | x"46" | x"47" |
                     x"48" | x"49" | x"4A" | x"4B" | x"4C" | x"4D" | x"4E" | x"4F" |
                     x"50" | x"51" | x"52" | x"53" | x"54" | x"55" | x"56" | x"57" |

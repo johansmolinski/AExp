@@ -3372,6 +3372,7 @@ _HDFP_SEEK      RSUB    HDF_GEOM_INIT, 1        ; direct block I/O state
 _HDFP_SKM       RSUB    FAT32$FILE_SEEK_MAP, 1
 _HDFP_SKD       CMP     0, R9
                 RBRA    _HDFP_FATERR, !Z
+                RSUB    HDF_VRDB_DET, 1         ; Megamiga 0.7: a virtual RDB?
 
                 MOVE    HDF_FDH, R8             ; remember the card and its
                 MOVE    @R8, R8                 ; generation (see the SD
@@ -3513,151 +3514,18 @@ _HDFP_RET       MOVE    HDF_VPART, R1           ; (one load only)
                 DECRB
                 RET
 
-; HDF_LINK: is the file R8 a link file that names a partition of the SD card?
-;
-; A link file is an .hdf file under 512 bytes that starts with
-; "MEGAMIGA-PARTITION n" (n = 1..4, upper or lower case): the drive is then
-; partition n of the card the file is on, which must have the MBR type 0x7F
-; (the type for local / experimental use: no operating system claims it) and
-; at least 64 KB. Nothing else is ever used as a disk: the FAT32 partition, an
-; empty entry or another type are refused. The partition holds the disk as a
-; whole, from its own RDB on, exactly like an HDF file.
-;
-; Input:  R8: the file handle of the Shell, at position 0
-; Output: R8: 0 = not a link file, 1..4 = the partition, 0xFF = a link file but
-;         no usable partition; for 1..4: R10:R9 = its first block, R12:R11 =
-;         its size in blocks. The SD sector buffer is released (owned by
-;         nobody) once the MBR was read.
-HDF_LINK        INCRB
-                MOVE    R8, R0                  ; R0: the handle
-                MOVE    HDF_LINK_MAGIC, R8
-                RSUB    RODATA_STR, 1
-                MOVE    R8, R1                  ; R1: the magic text (RAM copy)
-_HLK_M          MOVE    @R1++, R2
-                CMP     0, R2
-                RBRA    _HLK_NUM, Z             ; the whole magic matched
-                RSUB    _HLK_RD, 1
-                RBRA    _HLK_NO, C
-                CMP     R2, R9
-                RBRA    _HLK_M, Z
-                RBRA    _HLK_NO, 1
-_HLK_NUM        RSUB    _HLK_RD, 1              ; the partition digit
-                RBRA    _HLK_NO, C
-                SUB     0x0031, R9              ; '1'..'4' -> 0..3
-                CMP     R9, 3
-                RBRA    _HLK_NO, N              ; (R9 > 3, also for < '1')
-                MOVE    R9, R3                  ; R3: partition - 1
-
-_HLK_MBR        MOVE    R0, R8                  ; the MBR: block 0, read
-                RSUB    _F32_RELEASE_BUF, 1     ; straight into the buffer
-                CMP     0, R9
-                RBRA    _HLK_BAD, !Z
-                XOR     R8, R8
-                XOR     R9, R9
-                MOVE    FAT32$DEV_BLOCK_READ, R10
-                MOVE    @R0, R11                ; the device of the file
-                RSUB    FAT32$CALL_DEV, 1
-                CMP     0, R8
-                RBRA    _HLK_BAD, !Z
-                MOVE    0x01FE, R8              ; the MBR signature 55 AA
-                RSUB    _HLK_B, 1
-                CMP     0x0055, R8
-                RBRA    _HLK_BAD, !Z
-                MOVE    0x01FF, R8
-                RSUB    _HLK_B, 1
-                CMP     0x00AA, R8
-                RBRA    _HLK_BAD, !Z
-                MOVE    R3, R4                  ; R4: the entry, 0x1BE + 16 n
-                AND     0xFFFD, SR
-                SHL     4, R4
-                ADD     0x01BE, R4
-                MOVE    R4, R8                  ; the type
-                ADD     4, R8
-                RSUB    _HLK_B, 1
-                CMP     0x007F, R8
-                RBRA    _HLK_BAD, !Z
-                MOVE    R4, R8                  ; R6:R5: first block
-                ADD     8, R8
-                RSUB    _HLK_W, 1
-                MOVE    R8, R5
-                MOVE    R4, R8
-                ADD     10, R8
-                RSUB    _HLK_W, 1
-                MOVE    R8, R6
-                MOVE    R4, R8                  ; R12:R11: size
-                ADD     12, R8
-                RSUB    _HLK_W, 1
-                MOVE    R8, R11
-                MOVE    R4, R8
-                ADD     14, R8
-                RSUB    _HLK_W, 1
-                MOVE    R8, R12
-                MOVE    R5, R8                  ; block 0 is the MBR itself
-                OR      R6, R8
-                RBRA    _HLK_BAD, Z
-                CMP     0, R12                  ; at least 128 blocks = 64 KB
-                RBRA    _HLK_OK, !Z
-                CMP     R11, 0x007F
-                RBRA    _HLK_BAD, !N            ; (R11 <= 127)
-_HLK_OK         MOVE    R5, R9
-                MOVE    R6, R10
-                MOVE    R3, R8
-                ADD     1, R8
-                RBRA    _HLK_RET, 1
-_HLK_BAD        MOVE    0x00FF, R8
-                RBRA    _HLK_RET, 1
-_HLK_NO         XOR     R8, R8
-_HLK_RET        DECRB
-                RET
-
-; HDF_PART_GET: partition R9 (1..4) of the SD card of the file handle R8 (only
-; its device word is read, see HDF_DEVREF): the checks of HDF_LINK (MBR type
-; 0x7F, not at block 0, at least 64 KB).
-; Output: R8: R9 if usable, else 0xFF; R10:R9 = its first block, R12:R11 = its
-;         size in blocks. The SD sector buffer is released.
-HDF_PART_GET    INCRB
-                MOVE    R8, R0
-                MOVE    R9, R3
-                SUB     1, R3
-                CMP     R3, 3
-                RBRA    _HLK_BAD, N             ; (R3 > 3, also for 0)
-                RBRA    _HLK_MBR, 1
-
-; _HLK_RD: next byte of the link file R0 (in the register bank of HDF_LINK) into R9, a-z as A-Z
-; Output: C=1 at the end of the file or on an error
-_HLK_RD         MOVE    R0, R8
-                SYSCALL(f32_fread, 1)
-                CMP     0, R10
-                RBRA    _HLKR_E, !Z
-                CMP     R9, 0x0060              ; 'a'..'z'?
-                RBRA    _HLKR_OK, !N            ; (R9 <= 0x60)
-                CMP     R9, 0x007A
-                RBRA    _HLKR_OK, N             ; (R9 > 'z')
-                SUB     0x0020, R9
-_HLKR_OK        AND     0xFFFB, SR              ; C=0
-                RET
-_HLKR_E         OR      0x0004, SR              ; C=1
-                RET
-
-; _HLK_B: byte R8 of the SD sector buffer -> R8. _HLK_W: the little-endian
-; word at R8 -> R8. R9 clobbered.
-_HLK_B          MOVE    IO$SD_DATA_POS, R9
-                MOVE    R8, @R9
-                MOVE    IO$SD_DATA, R9
-                MOVE    @R9, R8
-                AND     0x00FF, R8
-                RET
-_HLK_W          MOVE    R8, @--SP
-                ADD     1, R8                   ; high byte
-                RSUB    _HLK_B, 1
-                AND     0xFFFD, SR
-                SHL     8, R8
-                MOVE    R8, R9
-                MOVE    @SP++, R8               ; low byte
-                MOVE    R9, @--SP
-                RSUB    _HLK_B, 1
-                OR      @SP++, R8
-                RET
+; HDF_LINK, HDF_PART_GET: in code bank BANK_IDE (moved there in Megamiga 0.7)
+HDF_LINK        RSUB    FAR_CALL, 1
+                .DW     BANK_IDE, B3_HDF_LINK
+HDF_PART_GET    RSUB    FAR_CALL, 1
+                .DW     BANK_IDE, B3_HDF_PART_GET
+; the virtual RDB of images without one (Megamiga 0.7, see B3_VRDB_DET)
+HDF_VRDB_DET    RSUB    FAR_CALL, 1
+                .DW     BANK_IDE, B3_VRDB_DET
+HDF_VRDB_RD     RSUB    FAR_CALL, 1
+                .DW     BANK_IDE, B3_VRDB_RD
+HDF_VRDB_WR     RSUB    FAR_CALL, 1
+                .DW     BANK_IDE, B3_VRDB_WR
 
 ; HDF_GEOM_INIT: state of the direct block I/O for a freshly mapped HDF:
 ; log2 of the sectors per cluster of its device, extent cache at the start
@@ -3703,6 +3571,12 @@ HDF_ENG_SETUP   INCRB
 _HES_U          MOVE    R8, R7                  ; R7: drive
                 RSUB    IDE_SEL, 1
                 MOVE    IDE_ENG_OFF, @R0        ; off while it changes
+                MOVE    IDE_ENG_SKIP0, R1       ; Megamiga 0.7: the virtual RDB
+                ADD     R7, R1                  ; in front of the image; a board
+                MOVE    HDF_VRDB, R2            ; without the register (it reads
+                MOVE    @R2, @R1                ; 0) leaves such a drive to the
+                CMP     @R2, @R1                ; firmware
+                RBRA    _HES_RET, !Z
                 MOVE    HDF_SECT_LO, R1         ; sectors
                 MOVE    R0, R2
                 ADD     IDE_ENG_SECT, R2
@@ -4269,6 +4143,9 @@ IDE_SEEK        INCRB
                 MOVE    @R0, R0
                 MOVE    IDE_LBA_HI, R1
                 MOVE    @R1, R1
+                MOVE    HDF_VRDB, R2            ; Megamiga 0.7: behind the
+                SUB     @R2, R0                 ; virtual RDB
+                SUBC    0, R1
                 MOVE    R0, R9                  ; byte offset = LBA << 9
                 AND     0xFFFD, SR
                 SHL     9, R9
@@ -4292,6 +4169,8 @@ _ISK_RET        DECRB
 ; IDE_READ_SECT: read sector IDE_LBA into the buffer of the board and raise DRQ
 ; Output: none; R8..R12 clobbered
 IDE_READ_SECT   INCRB
+                RSUB    HDF_VRDB_RD, 1          ; Megamiga 0.7: a block of the
+                RBRA    _IRS_DONE, C            ; virtual RDB
                 MOVE    HDF_MAPOK, R0           ; extent map: direct block I/O
                 CMP     1, @R0
                 RBRA    _IRS_SLOW, !Z
@@ -4344,6 +4223,8 @@ _IRS_RET        DECRB
 ; Output: C=0: OK; C=1: failed, the command was finished with an error;
 ;         R8..R12 clobbered
 IDE_WRITE_SECT  INCRB
+                RSUB    HDF_VRDB_WR, 1          ; Megamiga 0.7: the virtual RDB
+                RBRA    _IWS_OK, C              ; is not written
                 MOVE    HDF_MAPOK, R0           ; extent map: direct block I/O
                 CMP     1, @R0
                 RBRA    _IWS_SLOW, !Z
@@ -4454,6 +4335,9 @@ IDE_LBA2BLK     INCRB
                 MOVE    @R8, R8
                 MOVE    IDE_LBA_HI, R9
                 MOVE    @R9, R9
+                MOVE    HDF_VRDB, R0            ; Megamiga 0.7: behind the
+                SUB     @R0, R8                 ; virtual RDB
+                SUBC    0, R9
                 MOVE    HDF_PART, R0            ; a partition of the card: the
                 CMP     0, @R0                  ; block is its first block plus
                 RBRA    _IL2B_FILE, Z           ; the sector (the IDE server
@@ -5400,6 +5284,8 @@ IDE_ENG_BASE    .EQU    3
 IDE_ENG_SHIFT   .EQU    5
 IDE_ENG_MULT    .EQU    6                   ; the multiple count (Megamiga 0.7)
 IDE_ENG_GEOM    .EQU    7                   ; the CHS geometry (Megamiga 0.7)
+IDE_ENG_SKIP0   .EQU    0x8138              ; unit 0/1: blocks in front of the image
+IDE_ENG_SKIP1   .EQU    0x8139              ; (Megamiga 0.7, the virtual RDB)
 IDE_DIAG_REQ    .EQU    0x8134              ; diagnostics: snapshot request
 IDE_DIAG_CNT    .EQU    0x8140              ; ... 12 x 32-bit counters (lo, hi)
 IDE_ENG_OFF     .EQU    0                   ; modes: firmware (IDE_STEP)
@@ -5468,8 +5354,8 @@ IDE_LIDE_AUTO_ID .EQU   1                   ; lide.rom = auto-load ROM 1
 IDE_ASCII_SPACE .EQU    0x0020
 HDF_MIN_SIZE_HI .EQU    1                   ; at least 64 KB
 HDF_MAP_WORDS   .EQU    257                 ; extent map: 64 extents
-HDF_BLK_WORDS   .EQU    285                 ; FDH (15 since the FAT32 write
-                                            ; layer) + 13 + HDF_MAP_WORDS
+HDF_BLK_WORDS   .EQU    288                 ; FDH (15 since the FAT32 write
+                                            ; layer) + 16 + HDF_MAP_WORDS
 
 ; commands that need no data and no action: answered with DRDY right away
 ; (INITIALIZE DEVICE PARAMETERS, SET FEATURES, RECALIBRATE, READ VERIFY,
@@ -5680,6 +5566,7 @@ END_OF_ROM      .DW 0
 BANK_SHARE      .EQU    0                       ; the shared folder
 BANK_F32W       .EQU    1                       ; FAT32 write layer: core
 BANK_F32F       .EQU    2                       ; FAT32 write layer: files
+BANK_IDE        .EQU    3                       ; 0.7: link files, virtual RDB
 
 #ifdef RELEASE
                 .ORG    0x9000                  ; M2M$CODE_WIN (.ORG takes no symbol)
@@ -9030,6 +8917,640 @@ _B2_CW_1        RSUB    HANDLE_IO, 1
                 RSUB    SCR$OSM_OFF, 1
 _B2_CW_RET      SYSCALL(leave, 1)
                 RET
+
+; ----------------------------------------------------------------------------
+; Code bank BANK_IDE (Megamiga 0.7): hard disk image code off the sector path -
+; the link files (HDF_LINK, HDF_PART_GET, moved here from the fixed ROM) and the
+; virtual RDB. Entered through the stubs next to HDF_LINK.
+; ----------------------------------------------------------------------------
+
+                .ORG    0x9000                  ; M2M$CODE_WIN
+                .DW     0x4B03                  ; bank 3: BANK_IDE
+
+; HDF_LINK: is the file R8 a link file that names a partition of the SD card?
+;
+; A link file is an .hdf file under 512 bytes that starts with
+; "MEGAMIGA-PARTITION n" (n = 1..4, upper or lower case): the drive is then
+; partition n of the card the file is on, which must have the MBR type 0x7F
+; (the type for local / experimental use: no operating system claims it) and
+; at least 64 KB. Nothing else is ever used as a disk: the FAT32 partition, an
+; empty entry or another type are refused. The partition holds the disk as a
+; whole, from its own RDB on, exactly like an HDF file.
+;
+; Input:  R8: the file handle of the Shell, at position 0
+; Output: R8: 0 = not a link file, 1..4 = the partition, 0xFF = a link file but
+;         no usable partition; for 1..4: R10:R9 = its first block, R12:R11 =
+;         its size in blocks. The SD sector buffer is released (owned by
+;         nobody) once the MBR was read.
+B3_HDF_LINK     INCRB
+                MOVE    R8, R0                  ; R0: the handle
+                MOVE    HDF_LINK_MAGIC, R8
+                RSUB    RODATA_STR, 1
+                MOVE    R8, R1                  ; R1: the magic text (RAM copy)
+_HLK_M          MOVE    @R1++, R2
+                CMP     0, R2
+                RBRA    _HLK_NUM, Z             ; the whole magic matched
+                RSUB    _HLK_RD, 1
+                RBRA    _HLK_NO, C
+                CMP     R2, R9
+                RBRA    _HLK_M, Z
+                RBRA    _HLK_NO, 1
+_HLK_NUM        RSUB    _HLK_RD, 1              ; the partition digit
+                RBRA    _HLK_NO, C
+                SUB     0x0031, R9              ; '1'..'4' -> 0..3
+                CMP     R9, 3
+                RBRA    _HLK_NO, N              ; (R9 > 3, also for < '1')
+                MOVE    R9, R3                  ; R3: partition - 1
+
+_HLK_MBR        MOVE    R0, R8                  ; the MBR: block 0, read
+                RSUB    _F32_RELEASE_BUF, 1     ; straight into the buffer
+                CMP     0, R9
+                RBRA    _HLK_BAD, !Z
+                XOR     R8, R8
+                XOR     R9, R9
+                MOVE    FAT32$DEV_BLOCK_READ, R10
+                MOVE    @R0, R11                ; the device of the file
+                RSUB    FAT32$CALL_DEV, 1
+                CMP     0, R8
+                RBRA    _HLK_BAD, !Z
+                MOVE    0x01FE, R8              ; the MBR signature 55 AA
+                RSUB    _HLK_B, 1
+                CMP     0x0055, R8
+                RBRA    _HLK_BAD, !Z
+                MOVE    0x01FF, R8
+                RSUB    _HLK_B, 1
+                CMP     0x00AA, R8
+                RBRA    _HLK_BAD, !Z
+                MOVE    R3, R4                  ; R4: the entry, 0x1BE + 16 n
+                AND     0xFFFD, SR
+                SHL     4, R4
+                ADD     0x01BE, R4
+                MOVE    R4, R8                  ; the type
+                ADD     4, R8
+                RSUB    _HLK_B, 1
+                CMP     0x007F, R8
+                RBRA    _HLK_BAD, !Z
+                MOVE    R4, R8                  ; R6:R5: first block
+                ADD     8, R8
+                RSUB    _HLK_W, 1
+                MOVE    R8, R5
+                MOVE    R4, R8
+                ADD     10, R8
+                RSUB    _HLK_W, 1
+                MOVE    R8, R6
+                MOVE    R4, R8                  ; R12:R11: size
+                ADD     12, R8
+                RSUB    _HLK_W, 1
+                MOVE    R8, R11
+                MOVE    R4, R8
+                ADD     14, R8
+                RSUB    _HLK_W, 1
+                MOVE    R8, R12
+                MOVE    R5, R8                  ; block 0 is the MBR itself
+                OR      R6, R8
+                RBRA    _HLK_BAD, Z
+                CMP     0, R12                  ; at least 128 blocks = 64 KB
+                RBRA    _HLK_OK, !Z
+                CMP     R11, 0x007F
+                RBRA    _HLK_BAD, !N            ; (R11 <= 127)
+_HLK_OK         MOVE    R5, R9
+                MOVE    R6, R10
+                MOVE    R3, R8
+                ADD     1, R8
+                RBRA    _HLK_RET, 1
+_HLK_BAD        MOVE    0x00FF, R8
+                RBRA    _HLK_RET, 1
+_HLK_NO         XOR     R8, R8
+_HLK_RET        DECRB
+                RET
+
+; HDF_PART_GET: partition R9 (1..4) of the SD card of the file handle R8 (only
+; its device word is read, see HDF_DEVREF): the checks of HDF_LINK (MBR type
+; 0x7F, not at block 0, at least 64 KB).
+; Output: R8: R9 if usable, else 0xFF; R10:R9 = its first block, R12:R11 = its
+;         size in blocks. The SD sector buffer is released.
+B3_HDF_PART_GET INCRB
+                MOVE    R8, R0
+                MOVE    R9, R3
+                SUB     1, R3
+                CMP     R3, 3
+                RBRA    _HLK_BAD, N             ; (R3 > 3, also for 0)
+                RBRA    _HLK_MBR, 1
+
+; _HLK_RD: next byte of the link file R0 (in the register bank of HDF_LINK) into R9, a-z as A-Z
+; Output: C=1 at the end of the file or on an error
+_HLK_RD         MOVE    R0, R8
+                SYSCALL(f32_fread, 1)
+                CMP     0, R10
+                RBRA    _HLKR_E, !Z
+                CMP     R9, 0x0060              ; 'a'..'z'?
+                RBRA    _HLKR_OK, !N            ; (R9 <= 0x60)
+                CMP     R9, 0x007A
+                RBRA    _HLKR_OK, N             ; (R9 > 'z')
+                SUB     0x0020, R9
+_HLKR_OK        AND     0xFFFB, SR              ; C=0
+                RET
+_HLKR_E         OR      0x0004, SR              ; C=1
+                RET
+
+; _HLK_B: byte R8 of the SD sector buffer -> R8. _HLK_W: the little-endian
+; word at R8 -> R8. R9 clobbered.
+_HLK_B          MOVE    IO$SD_DATA_POS, R9
+                MOVE    R8, @R9
+                MOVE    IO$SD_DATA, R9
+                MOVE    @R9, R8
+                AND     0x00FF, R8
+                RET
+_HLK_W          MOVE    R8, @--SP
+                ADD     1, R8                   ; high byte
+                RSUB    _HLK_B, 1
+                AND     0xFFFD, SR
+                SHL     8, R8
+                MOVE    R8, R9
+                MOVE    @SP++, R8               ; low byte
+                MOVE    R9, @--SP
+                RSUB    _HLK_B, 1
+                OR      @SP++, R8
+                RET
+
+; ----------------------------------------------------------------------------
+; Virtual RDB (Megamiga 0.7): hard disk images without a Rigid Disk Block
+;
+; UAE's "hardfiles" (and many images made with or for it) hold one file system
+; from block 0 on, without the RDB that lide.device and the scsi.device of the
+; Kickstart look for. Like ide.cpp of MiSTer, the drive then shows a virtual
+; cylinder in front of the image: block 0 a Rigid Disk Block, block 1 one
+; partition that covers the image, the rest zeros. The image starts at block
+; HDF_VRDB of the drive; IDE_LBA2BLK and IDE_SEEK subtract it, the sector engine
+; does too (its skip register; HDF_ENG_SETUP leaves the drive to the firmware
+; when the board has none). Writes to the virtual blocks are ignored, the RDB's
+; product name says "DONT REPARTITION".
+;
+; Detection (B3_VRDB_DET, at every mount of a file or a partition): block 0
+; starts with a file system id - DOS\0..DOS\7, PFS\x, PDS\x or SFS\0 - and blocks
+; 1..15 hold no "RDSK". Blank images and images with an RDB stay as they are.
+;
+; Geometry: the partition must be exactly as large as the file system was
+; formatted, because OFS/FFS put the root block in its middle. UAE's default
+; for a hardfile is 32 blocks per track, 1 surface, 2 reserved blocks and as
+; many whole cylinders as fit; MiSTer takes 32 blocks per cylinder too up to
+; about 1 GB and 64..2048 above (ide.cpp, guess_geometry). UAE's geometry is
+; used unless only MiSTer's finds an OFS/FFS root block (type 2, secondary type
+; 1) in the middle. The partition: DH0 (master) or DH1 (slave), bootable, the
+; DosType of the image, MaxTransfer 0x1FE00, Mask 0x7FFFFFFE.
+; ----------------------------------------------------------------------------
+
+; B3_VRDB_DET: the virtual RDB of the active drive: HDF_VRDB (blocks in front of
+; the image, 0 = none), HDF_VDOS_HI/LO; HDF_SECT_LO/HI grow by HDF_VRDB.
+; HDF_PREP calls it once the image is mapped (HDF_MAPOK, HDF_PART, HDF_PST_*,
+; HDF_SPC_SHIFT) and HDF_SECT_LO/HI hold its size.
+; Input/Output: none; R8..R12 clobbered. Uses the SD sector buffer; IDE_LBA_LO/HI
+; are restored (a command of the other drive may be under way).
+B3_VRDB_DET     INCRB
+                MOVE    HDF_VRDB, R0            ; the image as it is
+                MOVE    0, @R0
+                MOVE    IDE_LBA_LO, R0
+                MOVE    @R0, @--SP
+                MOVE    IDE_LBA_HI, R0
+                MOVE    @R0, @--SP
+
+                MOVE    HDF_SECT_HI, R0         ; LBA28 must hold the virtual
+                CMP     @R0, 0x0FF0             ; cylinder too (partitions: up
+                RBRA    _VRD_RET, N             ; to 128 GB)
+
+                XOR     R8, R8                  ; block 0: a file system id
+                XOR     R9, R9
+                XOR     R10, R10
+                RSUB    _VR_LONG, 1
+                RBRA    _VRD_RET, C
+                MOVE    R8, R4                  ; R4: high word, R5: low word
+                MOVE    R9, R5
+                MOVE    R5, R6                  ; the third letter is an 'S'
+                AND     0xFF00, R6
+                CMP     0x5300, R6
+                RBRA    _VRD_RET, !Z
+                CMP     0x444F, R4              ; "DO": DOS\0..DOS\7
+                RBRA    _VRD_NDOS, !Z
+                MOVE    R5, R6
+                AND     0x00FF, R6
+                CMP     R6, 7
+                RBRA    _VRD_RET, N             ; (R6 > 7)
+                RBRA    _VRD_FS, 1
+_VRD_NDOS       CMP     0x5046, R4              ; "PF": PFS\x
+                RBRA    _VRD_FS, Z
+                CMP     0x5044, R4              ; "PD": PDS\x
+                RBRA    _VRD_FS, Z
+                CMP     0x5346, R4              ; "SF": SFS\0
+                RBRA    _VRD_RET, !Z
+                CMP     0x5300, R5
+                RBRA    _VRD_RET, !Z
+
+_VRD_FS         MOVE    1, R6                   ; no RDB in blocks 1..15
+_VRD_RL         MOVE    R6, R8
+                XOR     R9, R9
+                XOR     R10, R10
+                RSUB    _VR_LONG, 1
+                RBRA    _VRD_RET, C
+                CMP     0x5244, R8              ; "RD"
+                RBRA    _VRD_RN, !Z
+                CMP     0x534B, R9              ; "SK"
+                RBRA    _VRD_RET, Z
+_VRD_RN         ADD     1, R6
+                CMP     16, R6
+                RBRA    _VRD_RL, !Z
+
+                MOVE    32, R6                  ; R6: blocks per cylinder, UAE's
+                CMP     0x444F, R4              ; (root blocks: OFS/FFS only)
+                RBRA    _VRD_SET, !Z
+                MOVE    R6, R8
+                RSUB    _VR_ROOT, 1
+                RBRA    _VRD_SET, !C
+                RSUB    _VR_MISTER, 1           ; MiSTer's, if another one
+                CMP     32, R8
+                RBRA    _VRD_SET, Z
+                MOVE    R8, R7
+                RSUB    _VR_ROOT, 1
+                RBRA    _VRD_SET, C
+                MOVE    R7, R6
+
+_VRD_SET        MOVE    HDF_VDOS_HI, R0
+                MOVE    R4, @R0
+                MOVE    HDF_VDOS_LO, R0
+                MOVE    R5, @R0
+                MOVE    HDF_SECT_LO, R0         ; the drive: one cylinder more
+                MOVE    HDF_SECT_HI, R1
+                ADD     R6, @R0
+                ADDC    0, @R1
+                MOVE    HDF_VRDB, R0
+                MOVE    R6, @R0
+
+_VRD_RET        MOVE    IDE_LBA_HI, R0
+                MOVE    @SP++, @R0
+                MOVE    IDE_LBA_LO, R0
+                MOVE    @SP++, @R0
+                DECRB
+                RET
+
+; _VR_MISTER: MiSTer's blocks per cylinder for an image of HDF_SECT_LO/HI blocks:
+; the smallest of 32, 64, .., 2048 that gives fewer than 65535 cylinders, else
+; 2048. Output: R8; R9, R10 clobbered.
+_VR_MISTER      INCRB
+                MOVE    5, R0                   ; R0: log2
+_VRM_L          MOVE    HDF_SECT_LO, R8
+                MOVE    @R8, R8
+                MOVE    HDF_SECT_HI, R9
+                MOVE    @R9, R9
+                MOVE    R0, R10
+                RSUB    IDE_SHR32, 1            ; R9:R8: cylinders
+                CMP     11, R0
+                RBRA    _VRM_D, Z
+                CMP     0, R9
+                RBRA    _VRM_N, !Z
+                CMP     0xFFFF, R8
+                RBRA    _VRM_D, !Z
+_VRM_N          ADD     1, R0
+                RBRA    _VRM_L, 1
+_VRM_D          MOVE    1, R8
+                AND     0xFFFD, SR
+                SHL     R0, R8
+                DECRB
+                RET
+
+; _VR_ROOT: is the middle block of the whole cylinders of R8 blocks (a power of
+; two) an OFS/FFS root block (long 0 = 2, T_HEADER; long 127 = 1, ST_ROOT)? A
+; partition of B blocks with 2 reserved has its root at (B - 1 + 2) / 2 = B / 2.
+; Output: C=0: yes; C=1: no. R8..R12 clobbered.
+_VR_ROOT        INCRB
+                SUB     1, R8                   ; B = size & ~(R8 - 1)
+                NOT     R8, R0
+                MOVE    HDF_SECT_LO, R8
+                MOVE    @R8, R8
+                AND     R0, R8
+                MOVE    HDF_SECT_HI, R9
+                MOVE    @R9, R9
+                MOVE    1, R10                  ; B / 2
+                RSUB    IDE_SHR32, 1
+                MOVE    R8, R0                  ; R1:R0: the root block
+                MOVE    R9, R1
+                XOR     R10, R10
+                RSUB    _VR_LONG, 1
+                RBRA    _VRR_NO, C
+                CMP     0, R8
+                RBRA    _VRR_NO, !Z
+                CMP     2, R9
+                RBRA    _VRR_NO, !Z
+                MOVE    R0, R8
+                MOVE    R1, R9
+                MOVE    508, R10
+                RSUB    _VR_LONG, 1
+                RBRA    _VRR_NO, C
+                CMP     0, R8
+                RBRA    _VRR_NO, !Z
+                CMP     1, R9
+                RBRA    _VRR_NO, !Z
+                AND     0xFFFB, SR              ; C=0
+                DECRB
+                RET
+_VRR_NO         OR      0x0004, SR              ; C=1
+                DECRB
+                RET
+
+; _VR_LONG: the big-endian long at byte R10 (0..508, a multiple of 4) of block
+; R9:R8 of the image (HDF_VRDB must be 0 here: IDE_LBA2BLK subtracts it).
+; Output: C=0: R8 = high word, R9 = low word; C=1: read error. R10..R12
+; clobbered; IDE_LBA_LO/HI = the block.
+_VR_LONG        INCRB
+                MOVE    R10, R6                 ; R6: byte position
+                MOVE    IDE_LBA_LO, R0
+                MOVE    R8, @R0
+                MOVE    IDE_LBA_HI, R0
+                MOVE    R9, @R0
+                XOR     R4, R4                  ; R4:R5: the long
+                XOR     R5, R5
+                MOVE    4, R3                   ; R3: bytes to go
+                MOVE    HDF_MAPOK, R0           ; the extent map (or a partition):
+                CMP     1, @R0                  ; one block read
+                RBRA    _VRL_SLOW, !Z
+                RSUB    IDE_LBA2BLK, 1
+                RBRA    _VRL_ERR, C
+                RSUB    IDE_SD_TAKE, 1
+                RBRA    _VRL_ERR, C
+                MOVE    HDF_FDH, R11
+                MOVE    @R11, R11
+                MOVE    FAT32$DEV_BLOCK_READ, R10
+                RSUB    FAT32$CALL_DEV, 1
+                CMP     0, R8
+                RBRA    _VRL_ERR, !Z
+_VRL_FB         MOVE    IO$SD_DATA_POS, R0
+                MOVE    R6, @R0
+                MOVE    IO$SD_DATA, R0
+                MOVE    @R0, R7
+                RSUB    _VRL_PUT, 1
+                CMP     0, R3
+                RBRA    _VRL_FB, !Z
+                RBRA    _VRL_OK, 1
+
+_VRL_SLOW       MOVE    R8, R0                  ; a fragmented file: seek to
+                MOVE    R9, R1                  ; block << 9 + R6, byte reads
+                MOVE    R0, R9
+                AND     0xFFFD, SR
+                SHL     9, R9
+                OR      R6, R9
+                MOVE    R1, R10
+                AND     0xFFFD, SR
+                SHL     9, R10
+                AND     0xFFFB, SR
+                SHR     7, R0
+                OR      R0, R10
+                MOVE    HDF_FDH, R8
+                SYSCALL(f32_fseek, 1)
+                CMP     0, R9
+                RBRA    _VRL_ERR, !Z
+_VRL_SB         MOVE    HDF_FDH, R8
+                SYSCALL(f32_fread, 1)
+                CMP     0, R10
+                RBRA    _VRL_ERR, !Z
+                MOVE    R9, R7
+                RSUB    _VRL_PUT, 1
+                CMP     0, R3
+                RBRA    _VRL_SB, !Z
+
+_VRL_OK         MOVE    R4, R8
+                MOVE    R5, R9
+                AND     0xFFFB, SR              ; C=0
+                DECRB
+                RET
+_VRL_ERR        OR      0x0004, SR              ; C=1
+                DECRB
+                RET
+
+; _VRL_PUT (the register bank of _VR_LONG): byte R7 into R4:R5 from the right,
+; R6 + 1, R3 - 1
+_VRL_PUT        AND     0x00FF, R7
+                AND     0xFFFD, SR
+                SHL     8, R4
+                MOVE    R5, R2
+                AND     0xFFFB, SR
+                SHR     8, R2
+                OR      R2, R4
+                AND     0xFFFD, SR
+                SHL     8, R5
+                OR      R7, R5
+                ADD     1, R6
+                SUB     1, R3
+                RET
+
+; B3_VRDB_WR: IDE_WRITE_SECT's first step: C=1 if sector IDE_LBA_LO/HI is a
+; virtual block (it is not written), else C=0. Registers preserved.
+B3_VRDB_WR      INCRB
+                RSUB    _VR_IS, 1
+                DECRB
+                RET
+
+; _VR_IS (the caller's register bank): C=1 if sector IDE_LBA_LO/HI is a virtual
+; block, R0 = its number; else C=0. R1 clobbered.
+_VR_IS          MOVE    HDF_VRDB, R1
+                MOVE    @R1, R1
+                RBRA    _VRI_NO, Z
+                MOVE    IDE_LBA_HI, R0
+                CMP     0, @R0
+                RBRA    _VRI_NO, !Z
+                MOVE    IDE_LBA_LO, R0
+                MOVE    @R0, R0
+                CMP     R1, R0                  ; HDF_VRDB > LBA?
+                RBRA    _VRI_NO, !N
+                OR      0x0004, SR              ; C=1
+                RET
+_VRI_NO         AND     0xFFFB, SR              ; C=0
+                RET
+
+; B3_VRDB_RD: IDE_READ_SECT's first step: is sector IDE_LBA_LO/HI a virtual
+; block? Output: C=1: yes, it is in the buffer of the board (selected); C=0: no.
+; R8..R12 clobbered. The board's buffer cannot be read back, so the checksum
+; is summed while the longs are written (_VR_PUTL).
+B3_VRDB_RD      INCRB
+                RSUB    _VR_IS, 1               ; R0: the block
+                RBRA    _VRB_RET, !C
+                RSUB    IDE_SEL, 1
+                MOVE    IDE_DATA, R1            ; zeros
+                MOVE    256, R2
+_VRB_Z          MOVE    0, @R1++
+                SUB     1, R2
+                RBRA    _VRB_Z, !Z
+                CMP     R0, 1
+                RBRA    _VRB_DONE, N            ; blocks 2.. stay zero
+
+                XOR     R6, R6                  ; R6:R7: the sum of the longs
+                XOR     R7, R7
+                MOVE    HDF_VRDB, R5
+                MOVE    @R5, R5                 ; R5: blocks per cylinder
+                XOR     R10, R10                ; R10: log2(R5)
+_VRB_LG         MOVE    1, R1
+                AND     0xFFFD, SR
+                SHL     R10, R1
+                CMP     R1, R5
+                RBRA    _VRB_LGD, Z
+                ADD     1, R10
+                RBRA    _VRB_LG, 1
+_VRB_LGD        MOVE    HDF_SECT_LO, R8         ; cylinders = drive / R5
+                MOVE    @R8, R8
+                MOVE    HDF_SECT_HI, R9
+                MOVE    @R9, R9
+                RSUB    IDE_SHR32, 1
+                MOVE    R9, R11                 ; R11:R12: cylinders
+                MOVE    R8, R12
+                CMP     0, R0
+                RBRA    _VRB_PART, !Z
+
+                MOVE    _VR_RDSK, R8            ; block 0: the RDB
+                RSUB    _VR_TAB, 1
+                MOVE    16, R1                  ; rdb_Cylinders
+                RSUB    _VRB_CYL, 1
+                MOVE    17, R1                  ; rdb_Sectors
+                RSUB    _VRB_SPT, 1
+                MOVE    18, R1                  ; rdb_Heads
+                RSUB    _VRB_HEADS, 1
+                MOVE    20, R1                  ; rdb_Park
+                RSUB    _VRB_CYL, 1
+                MOVE    24, R1                  ; rdb_WritePreComp
+                RSUB    _VRB_CYL, 1
+                MOVE    25, R1                  ; rdb_ReducedWrite
+                RSUB    _VRB_CYL, 1
+                MOVE    35, R1                  ; rdb_HiCylinder
+                RSUB    _VRB_HCYL, 1
+                MOVE    36, R1                  ; rdb_CylBlocks
+                XOR     R2, R2
+                MOVE    R5, R3
+                RSUB    _VR_PUTL, 1
+                RBRA    _VRB_SUM, 1
+
+_VRB_PART       MOVE    _VR_PART, R8            ; block 1: the partition
+                RSUB    _VR_TAB, 1
+                MOVE    9, R1                   ; pb_DriveName: BCPL "DH0"/"DH1"
+                MOVE    0x0344, R2
+                MOVE    HDF_ACTIVE, R3
+                MOVE    @R3, R3
+                ADD     0x4830, R3
+                RSUB    _VR_PUTL, 1
+                MOVE    35, R1                  ; de_Surfaces
+                RSUB    _VRB_HEADS, 1
+                MOVE    37, R1                  ; de_BlocksPerTrack
+                RSUB    _VRB_SPT, 1
+                MOVE    42, R1                  ; de_HighCyl
+                RSUB    _VRB_HCYL, 1
+                MOVE    48, R1                  ; de_DosType
+                MOVE    HDF_VDOS_HI, R2
+                MOVE    @R2, R2
+                MOVE    HDF_VDOS_LO, R3
+                MOVE    @R3, R3
+                RSUB    _VR_PUTL, 1
+
+_VRB_SUM        MOVE    2, R1                   ; the checksum: the 64 longs add
+                XOR     R2, R2                  ; up to 0
+                XOR     R3, R3
+                SUB     R7, R3
+                SUBC    R6, R2
+                RSUB    _VR_PUTL, 1
+_VRB_DONE       OR      0x0004, SR              ; C=1
+_VRB_RET        DECRB
+                RET
+
+; (the register bank of B3_VRDB_RD) long R1 of the block := cylinders (_VRB_CYL),
+; cylinders - 1 (_VRB_HCYL), sectors = min(R5, 128) (_VRB_SPT), heads = R5 /
+; sectors (_VRB_HEADS)
+_VRB_CYL        MOVE    R11, R2
+                MOVE    R12, R3
+                RBRA    _VR_PUTL, 1
+_VRB_HCYL       MOVE    R11, R2
+                MOVE    R12, R3
+                SUB     1, R3
+                SUBC    0, R2
+                RBRA    _VR_PUTL, 1
+_VRB_SPT        XOR     R2, R2
+                MOVE    R5, R3
+                CMP     R3, 128
+                RBRA    _VR_PUTL, !N            ; (R3 <= 128)
+                MOVE    128, R3
+                RBRA    _VR_PUTL, 1
+_VRB_HEADS      XOR     R2, R2
+                MOVE    1, R3
+                CMP     R5, 128
+                RBRA    _VR_PUTL, !N
+                MOVE    R5, R3
+                AND     0xFFFB, SR
+                SHR     7, R3
+                RBRA    _VR_PUTL, 1
+
+; _VR_TAB (the register bank of B3_VRDB_RD): the longs of table R8 (long, high
+; word, low word; 0xFFFF ends it) into the block. R1..R4 clobbered.
+_VR_TAB         MOVE    @R8++, R1
+                CMP     0xFFFF, R1
+                RBRA    _VRT_RET, Z
+                MOVE    @R8++, R2
+                MOVE    @R8++, R3
+                RSUB    _VR_PUTL, 1
+                RBRA    _VR_TAB, 1
+_VRT_RET        RET
+
+; _VR_PUTL (the register bank of B3_VRDB_RD): long R1 of the block := R2:R3 (high,
+; low), summed into R6:R7. R4 clobbered.
+_VR_PUTL        ADD     R3, R7
+                ADDC    R2, R6
+                MOVE    R1, R4
+                AND     0xFFFD, SR
+                SHL     1, R4
+                ADD     IDE_DATA, R4
+                MOVE    R2, @R4++
+                MOVE    R3, @R4
+                RET
+
+; RigidDiskBlock (devices/hardblocks.h), the fixed longs: long, high, low
+_VR_RDSK        .DW     0, 0x5244, 0x534B       ; rdb_ID "RDSK"
+                .DW     1, 0x0000, 0x0040       ; rdb_SummedLongs
+                .DW     3, 0x0000, 0x0007       ; rdb_HostID
+                .DW     4, 0x0000, 0x0200       ; rdb_BlockBytes
+                .DW     5, 0x0000, 0x0012       ; rdb_Flags: last LUN, disk id valid
+                .DW     6, 0xFFFF, 0xFFFF       ; rdb_BadBlockList: none
+                .DW     7, 0x0000, 0x0001       ; rdb_PartitionList: block 1
+                .DW     8, 0xFFFF, 0xFFFF       ; rdb_FileSysHeaderList: none
+                .DW     9, 0xFFFF, 0xFFFF       ; rdb_DriveInit: none
+                .DW     10, 0xFFFF, 0xFFFF      ; rdb_Reserved1[6]
+                .DW     11, 0xFFFF, 0xFFFF
+                .DW     12, 0xFFFF, 0xFFFF
+                .DW     13, 0xFFFF, 0xFFFF
+                .DW     14, 0xFFFF, 0xFFFF
+                .DW     15, 0xFFFF, 0xFFFF
+                .DW     19, 0x0000, 0x0001      ; rdb_Interleave
+                .DW     26, 0x0000, 0x0003      ; rdb_StepRate
+                .DW     33, 0x0000, 0x0001      ; rdb_RDBBlocksHi
+                .DW     34, 0x0000, 0x0001      ; rdb_LoCylinder
+                .DW     38, 0x0000, 0x0001      ; rdb_HighRDSKBlock
+                .DW     40, 0x4D45, 0x4741      ; rdb_DiskVendor "MEGAMIGA"
+                .DW     41, 0x4D49, 0x4741
+                .DW     42, 0x444F, 0x4E54      ; rdb_DiskProduct "DONT REPARTITION"
+                .DW     43, 0x2052, 0x4550
+                .DW     44, 0x4152, 0x5449
+                .DW     45, 0x5449, 0x4F4E
+                .DW     46, 0x5652, 0x4442      ; rdb_DiskRevision "VRDB"
+                .DW     0xFFFF
+
+; PartitionBlock, the fixed longs (pb_Environment = DosEnvec from long 32 on)
+_VR_PART        .DW     0, 0x5041, 0x5254       ; pb_ID "PART"
+                .DW     1, 0x0000, 0x0040       ; pb_SummedLongs
+                .DW     3, 0x0000, 0x0007       ; pb_HostID
+                .DW     4, 0xFFFF, 0xFFFF       ; pb_Next: none
+                .DW     5, 0x0000, 0x0001       ; pb_Flags: bootable
+                .DW     32, 0x0000, 0x0010      ; de_TableSize: up to de_DosType
+                .DW     33, 0x0000, 0x0080      ; de_SizeBlock: 128 longs
+                .DW     36, 0x0000, 0x0001      ; de_SectorPerBlock
+                .DW     38, 0x0000, 0x0002      ; de_Reserved
+                .DW     41, 0x0000, 0x0001      ; de_LowCyl
+                .DW     43, 0x0000, 0x001E      ; de_NumBuffers
+                .DW     45, 0x0001, 0xFE00      ; de_MaxTransfer
+                .DW     46, 0x7FFF, 0xFFFE      ; de_Mask
+                .DW     0xFFFF
+
+; End of the bank BANK_IDE
 #endif
 
 ; ----------------------------------------------------------------------------
@@ -9130,6 +9651,10 @@ HDF_PST_HI      .BLOCK 1
 HDF_HEADS       .BLOCK 1                        ; CHS geometry (INITIALIZE DEVICE
 HDF_SPT         .BLOCK 1                        ; PARAMETERS), see IDE_TF_LBA
 HDF_MULT        .BLOCK 1                        ; multiple count (SET MULTIPLE)
+HDF_VRDB        .BLOCK 1                        ; Megamiga 0.7: blocks of the virtual
+                                                ; RDB in front of the image (0: none)
+HDF_VDOS_HI     .BLOCK 1                        ; ... and the DosType of its
+HDF_VDOS_LO     .BLOCK 1                        ; partition (B3_VRDB_DET)
 HDF_MAP         .BLOCK HDF_MAP_WORDS            ; FAT32$FILE_MAP extent map
 HDF_SAVE        .BLOCK HDF_BLK_WORDS            ; the other drive
 HDF_SAVE_END    .BLOCK 1
