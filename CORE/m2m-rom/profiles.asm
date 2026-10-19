@@ -136,6 +136,35 @@ PRF_K_STOP      .EQU    63
 PRF_K_ESC       .EQU    71
 PRF_K_LEFT      .EQU    74
 
+; PRF_DBG (temporary, 2026-10-19 HW bring-up): "PRF <text> <R9 hex>" on the log
+_P_DBG          INCRB
+                MOVE    R8, R0
+                MOVE    R9, R1
+                MOVE    _PS_DBG, R8
+                SYSCALL(puts, 1)
+                MOVE    R0, R8
+                SYSCALL(puts, 1)
+                MOVE    0x0020, R8
+                SYSCALL(putc, 1)
+                MOVE    R1, R8
+                SYSCALL(puthex, 1)
+                SYSCALL(crlf, 1)
+                MOVE    R0, R8
+                MOVE    R1, R9
+                DECRB
+                RET
+_PS_DBG         .ASCII_W "PRF "
+_PD_BOOT        .ASCII_W "boot"
+_PD_DEV         .ASCII_W "dev"
+_PD_CD          .ASCII_W "cd profiles"
+_PD_CDA         .ASCII_W "cd amiga"
+_PD_MKDIR       .ASCII_W "mkdir"
+_PD_WRITE       .ASCII_W "write ok"
+_PD_LIST        .ASCII_W "list n"
+_PD_NAME        .ASCII_W "name len"
+_PD_PAINT       .ASCII_W "paint"
+_PD_SEL         .ASCII_W "select n"
+
 ; ----------------------------------------------------------------------------
 ; Small helpers (INCRB style: results in R8..R12 or C)
 ; ----------------------------------------------------------------------------
@@ -685,6 +714,10 @@ _P_LI_C         MOVE    @R3++, @R10++
 _P_LI_CD        MOVE    R6, R8
                 RSUB    _P_CDREST, 1
                 RSUB    _P_SORT, 1
+                MOVE    _PD_LIST, R8
+                MOVE    PRF_LN, R9
+                MOVE    @R9, R9
+                RSUB    _P_DBG, 1
 _P_LI_RET       SYSCALL(leave, 1)
                 RET
 
@@ -731,27 +764,41 @@ _P_SO_RET       SYSCALL(leave, 1)
 ; Registers preserved.
 _P_ENSURE       SYSCALL(enter, 1)
                 RSUB    _P_DEV, 1
-                RBRA    _P_EN_RET, !C
+                MOVE    R8, R0
+                MOVE    _PD_DEV, R8
+                RSUB    _P_DBG, 1
+                MOVE    R0, R8
+                CMP     0, R9
+                RBRA    _P_EN_RET, !Z
                 MOVE    R8, R0                  ; R0: device
                 RSUB    _P_CDSAVE, 1
                 MOVE    _PS_DIR, R9
                 XOR     R10, R10
                 SYSCALL(f32_cd, 1)
+                MOVE    _PD_CD, R8
+                RSUB    _P_DBG, 1
                 CMP     0, R9
                 RBRA    _P_EN_HAS, Z
                 MOVE    R0, R8                  ; no directory: create it
                 MOVE    _PS_AMIGA, R9           ; in /amiga
                 XOR     R10, R10
                 SYSCALL(f32_cd, 1)
+                MOVE    _PD_CDA, R8
+                RSUB    _P_DBG, 1
                 CMP     0, R9
                 RBRA    _P_EN_CDR, !Z
-                MOVE    R0, R8
+                MOVE    _PS_DIRNAME, R8         ; the name in RAM: the write
+                MOVE    PRF_FNAME, R9           ; layer runs in another code
+                SYSCALL(strcpy, 1)              ; bank (this one is not mapped
+                MOVE    R0, R8                  ; there)
                 RSUB    _P_PB, 1
                 MOVE    CFGS_PB, R1
                 ADD     FAT32$PB_NAME, R1
-                MOVE    _PS_DIRNAME, @R1
+                MOVE    PRF_FNAME, @R1
                 MOVE    CFGS_PB, R8
                 RSUB    FAT32$W_MKDIR, 1
+                MOVE    _PD_MKDIR, R8
+                RSUB    _P_DBG, 1
                 MOVE    R9, R1
                 MOVE    R0, R8
                 RSUB    _P_CDREST, 1
@@ -771,6 +818,10 @@ _P_EN_D         MOVE    R1, R8
                 ADD     R1, R2
                 MOVE    @R2, R8
                 RSUB    _P_WRITE, 1
+                MOVE    SR, R9
+                AND     0x0004, R9
+                MOVE    _PD_WRITE, R8
+                RSUB    _P_DBG, 1
                 ADD     1, R1
                 CMP     PRF_DEFN, R1
                 RBRA    _P_EN_D, !Z
@@ -1180,26 +1231,46 @@ _P_KEYEV        MOVE    M2M$RAMROM_DEV, R8
 ; Entry points (FAR_CALL stubs PRF_* in the fixed ROM)
 ; ----------------------------------------------------------------------------
 
-; B3_PRF_KGET / B3_PRF_KSET: CFGS_GET / CFGS_SET (same registers) on the text
-; of the active profile - bank 2 (B2_PROF_*): the files a profile remembers are
-; its lines "kick", "hdf0" and "hdf1"; a change marks the profile dirty.
+; B3_PRF_KGET / B3_PRF_KSET: CFGS_GET / CFGS_SET on the text of the active
+; profile for bank 2 (B2_PROF_*): the files a profile remembers are its lines
+; "hdf0", "hdf1" and "kick". R8 is the NUMBER of the key (0..2), not a string:
+; a string of bank 2 cannot be read while this bank is mapped. R9/R10 as for
+; CFGS_GET/SET (RAM). A change marks the profile dirty. Registers preserved.
 B3_PRF_KGET     INCRB
+                MOVE    R8, R1
+                ADD     _P_FKEYS, R8
+                MOVE    @R8, R8
                 RSUB    _P_SWAP, 1
                 RSUB    CFGS_GET, 1
                 MOVE    SR, R0                  ; (C of CFGS_GET)
                 RSUB    _P_SWAP, 1
+                MOVE    R1, R8
                 AND     0x0004, R0
                 AND     0xFFFB, SR
                 OR      R0, SR
                 DECRB
                 RET
-B3_PRF_KSET     RBRA    _P_KSET, 1
+B3_PRF_KSET     INCRB
+                MOVE    R8, R1
+                ADD     _P_FKEYS, R8
+                MOVE    @R8, R8
+                RSUB    _P_KSET, 1
+                MOVE    R1, R8
+                DECRB
+                RET
+_P_FKEYS        .DW     _PF_H0, _PF_H1, _PF_K
+_PF_H0          .ASCII_W "hdf0"
+_PF_H1          .ASCII_W "hdf1"
+_PF_K           .ASCII_W "kick"
 
 ; B3_PRF_BOOT (PREP_START, before PROFILE_APPLY): the default profiles if
 ; needed, then the active one - the one the settings file names, else the first
 ; of the directory, else the A500 defaults in memory - into the menu block.
 ; Registers preserved.
 B3_PRF_BOOT     SYSCALL(enter, 1)
+                MOVE    _PD_BOOT, R8
+                XOR     R9, R9
+                RSUB    _P_DBG, 1
                 MOVE    PRF_NAME, R0
                 MOVE    0, @R0
                 MOVE    PRF_DIRTY, R0
@@ -1245,6 +1316,10 @@ _P_BO_DEF       XOR     R8, R8                  ; nothing on the card: the
                 RBRA    _P_BO_NAME, 1
 _P_BO_OK        RSUB    _P_APPLY, 1
 _P_BO_NAME      RSUB    _P_ACTIVATE, 1
+                MOVE    PRF_NAME, R8
+                SYSCALL(strlen, 1)
+                MOVE    _PD_NAME, R8
+                RSUB    _P_DBG, 1
                 SYSCALL(leave, 1)
                 RET
 
@@ -1270,6 +1345,10 @@ PRF_GRPS        .DW     AEXP_OPTM_G_P1CPU, AEXP_OPTM_G_P1CS, AEXP_OPTM_G_P1HDC
 ; menu (OPTM_LIVE_TEXT: the heap copy of the item and, if visible, the screen).
 ; The caller makes sure the menu exists. Registers preserved.
 _P_PAINT        SYSCALL(enter, 1)
+                MOVE    PRF_NAME, R8
+                SYSCALL(strlen, 1)
+                MOVE    _PD_PAINT, R8
+                RSUB    _P_DBG, 1
                 MOVE    PRF_LINE, R0            ; " " + the name, cut or filled
                 MOVE    0x0020, @R0++           ; with blanks to PRF_LBL_LEN
                 MOVE    PRF_NAME, R1
@@ -1338,6 +1417,9 @@ B3_PRF_SELECT   SYSCALL(enter, 1)
                 RSUB    _P_LIST, 1
                 MOVE    PRF_LN, R0
                 MOVE    @R0, R0                 ; R0: profiles
+                MOVE    _PD_SEL, R8
+                MOVE    R0, R9
+                RSUB    _P_DBG, 1
                 XOR     R1, R1                  ; R1: cursor (R0 = Add New)
 _P_SL_F         CMP     R1, R0                  ; on the active profile
                 RBRA    _P_SL_D, Z

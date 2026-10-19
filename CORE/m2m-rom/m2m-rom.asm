@@ -8464,22 +8464,16 @@ _SRN_E          MOVE    CFGS_PB, R9              ; the entry address
 ; ----------------------------------------------------------------------------
 
 ; Megamiga 0.7: the keys are lines of the active profile's file (profiles.asm,
-; code bank 3: PRF_KGET / PRF_KSET work on its text): (ROM id - PROF_HDF_ID)
-; -> hdf0, hdf1, kick. (0.6.1..0.6.4: "a500.kick" & co. in the settings file.)
-PROF_KEYTAB     .DW     _PK_H0, _PK_H1, _PK_K
-_PK_H0          .ASCII_W "hdf0"
-_PK_H1          .ASCII_W "hdf1"
-_PK_K           .ASCII_W "kick"
+; code bank 3: PRF_KGET / PRF_KSET work on its text, the key by its NUMBER
+; (ROM id - PROF_HDF_ID): 0 hdf0, 1 hdf1, 2 kick - a string of this bank could
+; not be read there). (0.6.1..0.6.4: "a500.kick" & co. in the settings file.)
 _PR_S_PART      .ASCII_W "partition:"           ; a value: an SD card partition
 _PR_S_PLEN      .EQU    10
 
-; _PR_KEY: the key of ROM id R9 -> R8. Other registers kept.
-_PR_KEY         INCRB
-                MOVE    R9, R0
-                SUB     PROF_HDF_ID, R0
-                ADD     PROF_KEYTAB, R0
-                MOVE    @R0, R8
-                DECRB
+; _PR_KEY: the number of the key of ROM id R9 -> R8 (PRF_KGET / PRF_KSET).
+; Other registers kept.
+_PR_KEY         MOVE    R9, R8
+                SUB     PROF_HDF_ID, R8
                 RET
 
 ; B2_PROF_REMEMBER: the user loaded the file handle R8 (opened through the
