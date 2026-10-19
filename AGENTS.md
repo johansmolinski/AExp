@@ -640,6 +640,21 @@ the dated facts.
   `impl_1/*_utilization_placed.rpt`, `impl_1/*_timing_summary_routed.rpt`,
   `impl_1/*_route_status.rpt`. Per-module BRAM: ask for
   `report_utilization -hierarchical`.
+- **Build incrementally wherever feasible - do not rely on placement luck.**
+  Builds run on the Fedora host (`~/aexp-work/remote/rbuild.sh`, README there).
+  Firmware-only change: patch the firmware into the last good build
+  (`CORE/patch_firmware.sh`, below), no synthesis at all. HDL change: start from
+  the last build that met timing with the most similar sources
+  (`REF=<build> rbuild.sh start ...`, `REF_DIR` for `build_all.sh`): incremental
+  synthesis from its `synth_1` checkpoint (since 2026-10-19; unchanged logic keeps
+  its cell names) plus incremental implementation from its routed checkpoint.
+  Prefer a reference with positive slack - one that met timing at exactly 0.000
+  passes little on. A fresh placement only when no similar passing build exists
+  or the change is large; then it re-rolls (`REROLL_MAX_MISS`, `IMPL_MARGIN`).
+  Vivado is deterministic: the same sources, reference and settings give the same
+  result, and firmware (block RAM contents) does not change placement, so
+  re-running a failed build unchanged is pointless - change the margin, the
+  reference or the design.
 - **Firmware-only changes need no synthesis** (Megamiga, 2026-10-12): after a
   full build run `CORE/patch_firmware.sh save <dir>` (keeps the routed
   checkpoint + the firmware images of that build); later
