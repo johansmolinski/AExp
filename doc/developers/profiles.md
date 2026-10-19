@@ -19,8 +19,8 @@ options, and they always belong to the active profile.
 ## Menu
 
 Main menu: the four profile radio lines become one line that shows the active
-profile and opens the file browser in `/amiga/profiles`, and "Save as New
-Profile" below it:
+profile and opens the profile selector (the file browser in `/amiga/profiles`),
+and "Rename Profile" below it:
 
 ```
  Megamiga
@@ -29,7 +29,6 @@ Profile" below it:
  Mount SDCard
  -----------------------
  Profile: A1200
- Save as New Profile
  Rename Profile
  -----------------------
  Profile Settings
@@ -73,8 +72,21 @@ the rows and switches that today exist four times:
  Back to main menu
 ```
 
+The profile selector (user, 2026-10-19): the profiles, then a separator bar
+and "Add New Profile" at the bottom:
+
+```
+ A1200
+ A4000
+ A500
+ A600
+ Work 040
+ -----------------------
+ Add New Profile
+```
+
 The menu shrinks from 252 to about 182 items (3 profile blocks and 3 radio
-lines go, "Save as New Profile" comes). Profile Settings stays as it is now
+lines go, "Rename Profile" comes). Profile Settings stays as it is now
 (29 of 29 rows); the main menu has room.
 
 ## Profile file
@@ -128,9 +140,15 @@ The AR3 ROM stays a session load as today (not remembered per profile).
   chosen or forgotten) marks the profile dirty; it is written back to its file
   when the menu closes, together with the settings file (ROSM_SAVE). The file is
   rewritten whole (FAT32 write layer: W_SETSIZE + write).
-- **Save as New Profile.** Asks for a name (the editor below; Return on an
-  empty name takes the first free `User N`), writes the current settings to
-  `<name>.prof`, makes it the active profile and shows its name.
+- **Add New Profile** (the last entry of the profile selector). Asks for a
+  name (the editor below; Return on an empty name takes the first free
+  `User N`), writes the settings of the active profile to `<name>.prof` (a
+  copy to start from), makes it the active profile and shows its name. This
+  replaces the "Save as New Profile" menu line of the first draft.
+- **The selector entry** is no file: the file browser's extra entries
+  (`BROWSE_EXTRA`, M2M exception 17) are listed behind `<..>` today; for this
+  they go to the END of the list, behind a separator bar (a dirbrowse.asm
+  change: a flag for "below the files").
 - **Rename Profile.** Asks for a new name (prefilled with the old one) and
   renames the file of the active profile (FAT32$W_RENAME); `profile=` in the
   settings file follows. Renaming outside the core (PC, `SDCard:`) still works.
@@ -143,6 +161,7 @@ A one-line editor in the menu window: `Name: Work 040_` with a cursor.
   Accepted: `A-Z a-z 0-9`, space and `! # $ % & ' ( ) + , - . ; = @ [ ] ^ _ `
   `` ` `` `{ } ~`. Not accepted (nothing happens): `" * / : < > ? \ |` and
   control characters - the characters FAT32 forbids in long names.
+- Used by Add New Profile and Rename Profile.
 - Keys: Left/Right move the cursor, Delete (backspace) deletes in front of it,
   Return accepts, Run/Stop cancels. At most 24 characters (the menu shows
   "Profile: " + the first 12).
