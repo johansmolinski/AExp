@@ -492,6 +492,7 @@ architecture synthesis of main is
    component rtg is
       port (
          clk      : in  std_logic;
+         present  : in  std_logic;   -- Megamiga 0.7: the profile's Graphics Card switch
          aen      : in  std_logic;
          rd       : in  std_logic;
          wr       : in  std_logic;
@@ -1084,6 +1085,7 @@ begin
    i_rtg : rtg
       port map (
          clk      => clk_main_i,
+         present  => rtg_card_i,    -- Megamiga 0.7: off = no card (writes ignored, reads 0)
          aen      => rtg_aen,
          rd       => fc_rnw,
          wr       => rtg_wr,
