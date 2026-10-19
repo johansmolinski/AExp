@@ -8873,8 +8873,8 @@ _PPE_RET        RET
 ; (config.vhd), i.e. of the menu's structure - the same for every settings
 ; file of this menu, whatever is selected. A file without it, or with another
 ; one (a core with another menu), is reset when it is loaded: OPTM_SIZE bytes,
-; byte 0 = 0xFF (the standard selectors), no text - its settings, including
-; the files the machine profiles remember, are gone; the core says so on the
+; byte 0 = 0xFF (the standard selectors), no text - its settings are gone (the
+; profiles are files of their own since 0.7); the core says so on the
 ; screen at the start (PREP_START). A new file gets the line at its first
 ; save. Not caught: options of one radio group swapped (same group words).
 ; ----------------------------------------------------------------------------
@@ -8889,9 +8889,8 @@ _B2_SIG_TXT     .ASCII_P "\n"
                 .ASCII_P " would end up on the wrong options. It was\n"
                 .ASCII_P " replaced by a new one with the defaults.\n"
                 .ASCII_P "\n"
-                .ASCII_P " The machine profiles no longer remember\n"
-                .ASCII_P " their Kickstart and hard disks: choose\n"
-                .ASCII_P " them again in Profile Settings.\n"
+                .ASCII_P " The machine profiles in /amiga/profiles\n"
+                .ASCII_P " are not affected.\n"
                 .ASCII_P "\n"
                 .ASCII_W " Press any key to continue.\n"
 

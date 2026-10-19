@@ -9,8 +9,7 @@ expansion and an IDE hard disk (HDF images on the SD card) that Kickstart
 boots from; version 0.2 turned the machine into an Amiga 500+ (ECS, 2 MB Chip
 RAM, 512 KB Kickstart ROMs, all Amiga memory in the board SDRAM), and version
 0.3 adds the 68020, 16 MB Zorro III Fast RAM, the AGA chipset with SuperHires,
-and three machine profiles - A500, A600 and A1200 - on the main page of the
-menu; version 0.6 adds a 68040 with MMU, FPU and caches at 42 MHz, and
+and machine profiles (A500, A600 and A1200; files of your own since 0.7); version 0.6 adds a 68040 with MMU, FPU and caches at 42 MHz, and
 0.6.1 a shared folder (`SDCard:`), both SD card slots at once and hard disks
 served by the FPGA itself; 0.6.2 adds freezer cartridges (HRTmon built in, the
 Action Replay III with your own ROM), and 0.6.3 shows Picasso96 screens on
@@ -58,12 +57,12 @@ Credits
 Features
 --------
 
-* Four machine profiles on the main page of the menu (Megamiga 0.3, the
-  A4000 since 0.6.4): **A500** (68000, OCS, 512 KB Chip + 512 KB Slow RAM),
-  **A600** (68000, ECS, 2 MB Chip RAM), **A1200** (68020, AGA, 2 MB Chip RAM)
-  and **A4000** (68040, AGA, 2 MB Chip RAM, 16 MB Zorro III RAM), each with
-  its own Kickstart and hard disks, and each editable (see Machine profiles
-  below)
+* Machine profiles (Megamiga 0.3; files you can add, copy and name since
+  0.7): **A500** (68000, OCS, 512 KB Chip + 512 KB Slow RAM), **A600** (68000,
+  ECS, 2 MB Chip RAM), **A1200** (68020, AGA, 2 MB Chip RAM) and **A4000**
+  (68040, AGA, 2 MB Chip RAM, 16 MB Zorro III RAM) to start with, each with
+  its own Kickstart and hard disks, and as many of your own as you like (see
+  Machine profiles below)
 * OCS, ECS or AGA, PAL - AGA with the 68020 and an A1200 Kickstart 3.x makes
   an A1200-class machine (256 colours, HAM8, the AGA fetch modes,
   SuperHires; the 31 kHz modes are not displayed yet)
@@ -117,30 +116,47 @@ Features
 
 ### Machine profiles
 
-The main page of the menu (<kbd>Help</kbd>) offers four machines:
+A machine profile is a file in `/amiga/profiles` on the SD card (the card the
+settings file is on): `A1200.prof` is the profile "A1200". At the first start
+the core creates four of them:
 
-| Profile       | CPU   | Chipset | Chip RAM | Slow RAM | Fast RAM            |
-|---------------|-------|---------|----------|----------|---------------------|
-| A500 (OCS)    | 68000 | OCS     | 512 KB   | 512 KB   | -                   |
-| A600 (ECS)    | 68000 | ECS     | 2 MB     | -        | -                   |
-| A1200 (AGA)   | 68020 | AGA     | 2 MB     | -        | -                   |
-| A4000 (AGA)   | 68040 | AGA     | 2 MB     | -        | 16 MB Zorro III     |
+| Profile | CPU   | Chipset | Chip RAM | Slow RAM | Fast RAM            |
+|---------|-------|---------|----------|----------|---------------------|
+| A500    | 68000 | OCS     | 512 KB   | 512 KB   | -                   |
+| A600    | 68000 | ECS     | 2 MB     | -        | -                   |
+| A1200   | 68020 | AGA     | 2 MB     | -        | -                   |
+| A4000   | 68040 | AGA     | 2 MB     | -        | 16 MB Zorro III     |
+
+It does that only while `/amiga/profiles` is missing or holds no profile: a
+directory with your own profiles stays as it is, also when you deleted the
+four.
 
 The A4000 profile is the A1200's chipset with the 68040 and Zorro III RAM;
 the core has no A4000 mainboard chips (Ramsey, Fat Gary, the A4000 IDE port),
 so give it an A1200 Kickstart 3.x (an A4000 ROM is untested) and use the IDE
 board for hard disks as in the other profiles. The A600 profile has 2 MB Chip
-RAM since 0.6.4 (a real A600 has 1 MB; pick that in Profile Settings if a
-program needs it).
+RAM (a real A600 has 1 MB; pick that in Profile Settings if a program needs
+it).
 
-Selecting a profile reconfigures the Amiga and restarts it (a cold boot): it
-loads the Kickstart you chose for that profile - `kick.rom` if you chose none
-- and mounts the hard disks you chose for it (none chosen: no hard disk).
-Nothing is loaded by its file name any more: each profile remembers the files
-you pick for it in **Profile Settings**. The profile is remembered, and at
-power-on the core starts with it.
+The main page of the menu (<kbd>Help</kbd>) shows the active profile:
+**Profile: A1200**. Select it for the list of the profiles, a separator bar
+and **Add New Profile** below it. Choosing a profile reconfigures the Amiga
+and restarts it (a cold boot), loads the Kickstart you chose for that profile
+- `kick.rom` if you chose none - and mounts its hard disks. The active profile
+is remembered: at power-on the core starts with it.
 
-**Profile Settings** shows the details of the selected profile, and you can
+**Add New Profile** asks for a name and makes a copy of the active profile
+under it, which becomes the active one; <kbd>Return</kbd> on an empty name
+takes "User 1", "User 2" and so on. **Rename Profile** on the main page
+gives the active profile a new name. The name is typed on the MEGA65
+keyboard (<kbd>Shift</kbd> for capitals and the shifted symbols,
+<kbd>Left</kbd>/<kbd>Right</kbd>, <kbd>Inst/Del</kbd> deletes,
+<kbd>Shift</kbd>+<kbd>Clr/Home</kbd> clears, <kbd>Return</kbd> accepts,
+<kbd>Run/Stop</kbd> cancels); only characters a file name may have are
+accepted (no `" * / : < > ? \ |`), at most 20. You can also copy, rename and
+delete the `.prof` files on a computer or from the Amiga through `SDCard:`.
+
+**Profile Settings** shows the details of the active profile, and you can
 change each of them: CPU (68000, 68020 or 68040), chipset, the **Hard Disk
 Controller** (None, **Gayle** = the A600/A1200's built-in IDE port, or
 **RIPPLE** = a Zorro II IDE board, see Hard disks below), Chip RAM, Slow RAM
@@ -151,14 +167,37 @@ move to a choice, <kbd>Return</kbd> or <kbd>Space</kbd> selects it.
 Below them, **Zorro Boards** lists the expansion boards the profile has:
 **Zorro II RAM 8 MB**, **Zorro III RAM 16 MB** and **Zorro III RAM 32 MB**
 (two boards, switch on one or both for 48 MB), the **Graphics Card** (RTG)
-and the **Network Card**, each on or off. Every profile keeps its own
-settings. What the profile's CPU cannot use is greyed out and the cursor
-skips it: the Zorro III boards and the graphics card need a 68020 or 68040,
-HRTmon does not run on the 68040 and the Action Replay needs the 68000. The hard disk lines (**HDF 0** = master, **HDF 1** = slave) and the
-**Kickstart** line there pick the profile's files: the file is loaded at once
-(the Amiga restarts) and the profile keeps it, also after a power-off.
-<kbd>Space</kbd> on a mounted HDF line ejects the disk and the profile
-forgets it.
+and the **Network Card**, each on or off. What the profile's CPU cannot use
+is greyed out, switched off and skipped by the cursor: the Zorro III boards
+and the graphics card need a 68020 or 68040, HRTmon does not run on the 68040
+and the Action Replay needs the 68000. The hard disk lines (**HDF 0** =
+master, **HDF 1** = slave) and the **Kickstart** line there pick the
+profile's files: the file is loaded at once (the Amiga restarts) and the
+profile keeps it. <kbd>Space</kbd> on a mounted HDF line ejects the disk and
+the profile forgets it. Every change is written to the profile's file when
+you close the menu.
+
+A profile file is text, one setting per line, for example:
+
+```
+cpu=68040
+chipset=AGA
+hdc=gayle
+chip=2M
+slow=none
+cart=none
+z2ram=off
+z3ram16=on
+z3ram32=off
+gfx=on
+net=on
+kick=SD1:/amiga/kick31-a1200.rom
+hdf0=SD1:/amiga/disks/work.hdf
+```
+
+(`cpu` 68000/68020/68040, `chipset` OCS/ECS/AGA, `hdc` none/gayle/ripple,
+`chip` 512K/1M/2M, `slow` none/512K, `cart` none/hrtmon/ar3, the boards on/off;
+upper or lower case, a missing line takes the A500 value.)
 
 The floppy drives stay on the main page; the display, audio and keyboard
 options are in **Settings**.
@@ -182,30 +221,30 @@ options are in **Settings**.
    `/amiga/kick.rom` is optional: it is the Kickstart of every profile you
    have not given one. Kickstart 1.3 knows neither Zorro III RAM nor the AGA
    chipset, so give the A1200 and A4000 profiles an A1200 3.x ROM.
-2. **Pick a profile.** Press <kbd>Help</kbd>, move to **A500 (OCS)**,
-   **A600 (ECS)**, **A1200 (AGA)** or **A4000 (AGA)** and press <kbd>Return</kbd>. The Amiga
-   restarts with that machine.
+2. **Pick a profile.** Press <kbd>Help</kbd>, select **Profile:** and choose
+   one. The Amiga restarts with that machine.
 3. **Give it its files.** Open **Profile Settings**, select **Kickstart** and
    pick the ROM in the file browser; then, if you want hard disks, **HDF 0**
    (the master, unit 0) and **HDF 1** (the slave, unit 1): an `.hdf` file or
    an Amiga partition of a card (see Hard disks below). Each choice restarts
-   the Amiga and is stored for this profile, with the card it is on
+   the Amiga and is stored in the profile, with the card it is on
    (`SD1:/amiga/kick13.rom`, `SD0:partition:2`). A profile without hard disks
    is a floppy-only machine.
 4. **Adjust it (optional).** In **Profile Settings** change the CPU, chipset,
-   Chip RAM or the RAM expansions of the selected profile - for example 8 MB
-   Fast RAM for the A500 with a hard disk, or a 68000 for A1200 games that
-   dislike the 68020. Each change restarts the Amiga and is stored for that
-   profile only.
+   Chip RAM or the RAM expansions - for example 8 MB Fast RAM for the A500
+   with a hard disk, or a 68000 for A1200 games that dislike the 68020. Each
+   change restarts the Amiga and is stored in that profile only. For a
+   variant (a second A1200 with other disks), use **Add New Profile** first.
 
-The choices live in the settings file, so keep `megamiga-<version>.cfg` on
-the card. A file that is gone (deleted, renamed, or on the other card) counts
-as not chosen: pick it again.
+The profiles keep their files by path, so keep the files where they are. A
+file that is gone (deleted, renamed, or on the other card) counts as not
+chosen: pick it again.
 
 A settings file belongs to the menu of the core that wrote it. When a core
 with a different menu (a newer or older version) finds it, it resets the
-file to the defaults and says so on the screen at the start: the menu
-settings and the files the profiles remember are gone, choose them again.
+file to the defaults and says so on the screen at the start; the profiles in
+`/amiga/profiles` are not touched (since 0.7 the files a profile remembers
+are in its own file).
 
 ### Kickstart ROM
 
