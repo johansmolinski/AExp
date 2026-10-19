@@ -961,9 +961,19 @@ _P_AT_L         MOVE    R3, @R10++
                 SYSCALL(leave, 1)
                 RET
 
-; _P_CLR: the inner area of the frame: spaces, standard colours. Registers
+; _P_CLR: the frame of the menu drawn again (without the junctions of the
+; menu's separator lines), the inner area: spaces, standard colours. Registers
 ; preserved.
 _P_CLR          SYSCALL(enter, 1)
+                MOVE    OPTM_X, R8              ; the plain frame
+                MOVE    @R8, R8
+                MOVE    OPTM_Y, R9
+                MOVE    @R9, R9
+                MOVE    OPTM_DX, R10
+                MOVE    @R10, R10
+                MOVE    OPTM_DY, R11
+                MOVE    @R11, R11
+                RSUB    SCR$PRINTFRAME, 1
                 MOVE    PRF_LINE, R0            ; a line of spaces
                 MOVE    OPTM_DX, R1
                 MOVE    @R1, R1
