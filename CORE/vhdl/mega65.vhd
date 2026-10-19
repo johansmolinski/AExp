@@ -1029,24 +1029,26 @@ constant C_MENU_VGA_STD       : natural := 169;   -- VGA: Standard (scandoubled 
 constant C_MENU_VGA_15KHZHSVS : natural := 173;   -- VGA: raw 15.625 kHz RGB with separate HS/VS
 constant C_MENU_VGA_15KHZCS   : natural := 174;   -- VGA: raw 15.625 kHz RGB with composite sync (SCART)
 
--- OSM Scaling follows the C64 layout: line 169 (100%, default) maps to bit 0,
--- while line 177 (50%) maps to bit 8 for the framework's first_nonzero_bit decode.
+-- OSM Scaling follows the C64 layout: line 180 (100%, default) maps to bit 0,
+-- while line 188 (50%) maps to bit 8 for the framework's first_nonzero_bit decode.
 -- (Megamiga 0.6.4: these three ranges were 2 lines too low since the "Mount
 -- SDCard" lines of 0.6.1: the headline and the line were in them, the last two
--- items were not. Volume 100% played at 90%, 5% and 0% did nothing.)
-subtype C_MENU_OSM_SCALING is natural range 178 downto 170;
+-- items were not. Volume 100% played at 90%, 5% and 0% did nothing. The menu
+-- rows of 0.7 moved them again: removing the separators under the headlines
+-- left all three 8..10 lines too low until 2026-10-19.)
+subtype C_MENU_OSM_SCALING is natural range 188 downto 180;
 
--- Volume radio (master volume, 5% steps): line 186 (100%, default) down to line 206
+-- Volume radio (master volume, 5% steps): line 195 (100%, default) down to line 215
 -- (0% = mute). Decoded below into main_volume (0..20 step index) and applied in
 -- main.vhd as a perceptual Q15 attenuation (C_VOL_LUT) on the final Paula mix,
 -- ahead of the framework's split into the HDMI and analog audio paths.
-subtype C_MENU_VOLUME is natural range 207 downto 187;
+subtype C_MENU_VOLUME is natural range 215 downto 195;
 
--- Stereo crossfeed radio ("Stereo: %s" submenu): line 212 (Full Stereo, default)
--- down to line 215 (Mono). Decoded below into main_stereo_mix using MiSTer's
+-- Stereo crossfeed radio ("Stereo: %s" submenu): line 220 (Full Stereo, default)
+-- down to line 223 (Mono). Decoded below into main_stereo_mix using MiSTer's
 -- aud_mix encoding (00 = full separation, 01 = 87.5%/12.5%, 10 = 75%/25%,
 -- 11 = mono) and applied in main.vhd's audio_filters ahead of the master volume.
-subtype C_MENU_STEREO is natural range 216 downto 213;
+subtype C_MENU_STEREO is natural range 223 downto 220;
 
 -- Paula output filters (MiSTer Minimig.sv parity), both single-select toggles
 -- with OPTM_G_STDSEL = default ON. A500 Filter inserts the fixed 4400 Hz

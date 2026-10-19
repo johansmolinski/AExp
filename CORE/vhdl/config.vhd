@@ -556,9 +556,9 @@ constant OPTM_DY           : natural := 29;
 --            adapter, some scalers and capture boxes).
 --   line 65: HDMI Flicker-free toggle (C_MENU_HDMI_FF)
 --   line 69: VGA Standard / 73: VGA 15 kHz with HS/VS / 74: VGA 15 kHz with CSYNC
---   lines 81..89: OSM Scaling radio (C_MENU_OSM_SCALING); 100% (81, default) down to 50% (89)
---   lines 98..118: Volume radio (C_MENU_VOLUME); 100% (98, default) down to 0% (118)
---   lines 124..127: Stereo crossfeed radio (C_MENU_STEREO); Full Stereo (124, default) /
+--   lines 180..188: OSM Scaling radio (C_MENU_OSM_SCALING); 100% (180, default) down to 50% (188)
+--   lines 195..215: Volume radio (C_MENU_VOLUME); 100% (195, default) down to 0% (215)
+--   lines 220..223: Stereo crossfeed radio (C_MENU_STEREO); Full Stereo (220, default) /
 --                 Wide Stereo / Narrow Stereo / Mono -> MiSTer aud_mix encoding
 --   line 130: A500 Filter toggle (C_MENU_A500FILT), default ON; the fixed
 --            4400 Hz low-pass behind Paula's DAC (off = A1200-style brightness)
