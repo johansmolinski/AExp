@@ -169,6 +169,16 @@ Megamiga fork (johansmolinski):
   upstream as ranzbak/AP68040-pipelined #1); Gayle: ATA signature after a reset
   (`ide_board.vhd`), so libata finds the disk (HW-confirmed linux040-d); kernel on
   fedora `~/linux68k` (clean kit `linux-g`), ILA flow + benches `~/aexp-work/linux/{ila,sim}`.
+- `profiles` (2026-10-19, Minimig branch `profiles`, QNICE `map-progress`): machine
+  profiles are files, one `/amiga/profiles/NN_<name>.prof` each (the number sets the
+  order and is hidden; defaults 01_A500..04_A4000 only when the folder is missing or
+  empty): one Profile Settings block, a "Profile:" line opening the firmware's selector
+  (Left/Right reorder, "Add New Profile"), "Rename Profile" with a name editor (raw
+  keys, FAT32-legal characters); Kickstart/HDF choices in the profile; the Graphics Card
+  switch truly removes RTG; HDF mount progress bar (`FAT32$FILE_MAP_CB`) and one cluster
+  walk. Firmware code bank 4 `BANK_PROF` (`profiles.asm`, B4_*), design
+  `doc/developers/profiles.md`, TB `~/aexp-work/profiles` (16 scenarios + mutants).
+  HW-confirmed (prof-p6), merged with vrdb (its bank 3 -> profiles' 4).
 - `vrdb` (2026-10-19): HDF images without an RDB (UAE hardfiles, files and SD
   partitions): a virtual cylinder in front of the image (RDSK + one PART, DH0/DH1, the
   image's DosType; UAE's geometry, MiSTer's when only that one finds the root block).
@@ -222,7 +232,7 @@ the dated facts.
 
 ## Repository map
 
-- `M2M/` — the framework. **NEVER modify**, with TWENTY sanctioned
+- `M2M/` — the framework. **NEVER modify**, with TWENTY-ONE sanctioned
   exceptions (all testbeds for a later M2M upstream merge, tagged
   `M2M-UPSTREAM <name>` in-code, greppable): (1) `interlace` — new
   `video_fl_i` input through framework → av_pipeline → digital_pipeline
@@ -253,6 +263,10 @@ the dated facts.
   cartridge freeze). Issue #8,
   2026-07-11 — implemented, awaiting synthesis; **the 4th exception still
   needs sy2002's explicit sign-off** (spec §8).
+  Megamiga 2026-10-19 (profiles): `m2m_keyb.vhd` also exports the UNGATED key
+  status (`key_raw_n_o` -> `framework.vhd` `main_key_raw_n_o` -> the four board
+  tops -> the core), so the firmware's profile name editor can read real typing
+  while the menu hides the keyboard from the core; default unconnected = unchanged.
   (5) `osm-scale` — a RAM-inference override: `tdp_ram.vhd` gains a
   `RAM_STYLE_SELECT` generic (default `"auto"` = every existing caller
   unchanged) driving the block RAM's `ram_style`; `ascal.vhd` uses it to pin its

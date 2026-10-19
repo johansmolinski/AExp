@@ -3079,6 +3079,33 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       - and the direct `_VR_LONG` records 13 incl. one right after a WRITE's dirty steal;
       forged states (record 14) cover 256/2048-block cylinders beyond the emulator's 4 GB;
       v_is_noff equivalent); eng - skip 0/32 x Gayle/RIPPLE pass, 9/9 HDL mutants killed.
+  - **Profiles as files (branch `profiles` from main, Minimig branch `profiles`, QNICE
+    branch `map-progress`, 2026-10-19; design `doc/developers/profiles.md`).** One file per
+    machine profile, `/amiga/profiles/NN_<name>.prof` (text `key=value`: cpu, chipset, hdc,
+    chip, slow, cart, the Zorro boards, kick, hdf0, hdf1); the four defaults (01_A500..
+    04_A4000) only when the folder is missing or holds no profile. The main menu has one
+    "Profile:" line (name painted live) that opens the firmware's selector (Up/Down,
+    Return, Run/Stop; Left/Right move the highlighted profile and renumber the files;
+    "Add New Profile" behind a separator) and "Rename Profile"; Profile Settings shows ONE
+    block for the active profile. Name editor: real typing through the ungated key status
+    (`m2m_keyb.vhd` `key_raw_n_o`, an addition to M2M exception 4), FAT32-legal characters
+    only. The settings file keeps `profile=<name>` (no number). Also: the Graphics Card
+    switch removes the RTG board completely (Minimig `rtg: present input`), the HDF mount
+    shows a progress bar (`FAT32$FILE_MAP_CB` in QNICE, `HDF_MAPBAR`) and the cluster chain
+    is walked once (HDF_ENG_SETUP copies HDF_MAP when it fits), the selector's frame
+    junctions. Firmware: `CORE/m2m-rom/profiles.asm`, code bank `BANK_PROF`. Tests:
+    `~/aexp-work/profiles` (emulator + FAT32 images, 16 scenarios incl. sort order and
+    rename, 35 mutants). Builds: `prof-c` (full) + firmware patches up to `prof-p6`,
+    **hardware-confirmed by the user 2026-10-19** ("they work great").
+    - Merged into main after vrdb (2026-10-19): both branches had added code bank 3, so
+      BANK_IDE stays 3 and BANK_PROF became 4 (marker 0x4B04, labels B3_* -> B4_*); the
+      temporary PRF debug output was removed first (128bfee, profiles TB 16/16). Submodules
+      fast-forwarded: Minimig `develop` -> `profiles` (eebc314), QNICE `fat32-fastseek` ->
+      `map-progress` (78aeaac). Merged firmware: fixed ROM 32631/32768, banks 3: 951 and
+      4: 3286 words, HEAP 0xB4A8 + 17248 leaves 1736 stack words (1536 needed); the
+      profiles TB (B3_/B4_ picked from the source) 16/16 and the vrdb fw TB case1 (HDF_MAPBAR
+      stubbed with a plain FAT32$FILE_MAP) pass on the merged tree. The help page text of
+      profiles (config.vhd) needs the next full build.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

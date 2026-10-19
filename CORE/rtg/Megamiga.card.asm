@@ -414,15 +414,28 @@ FindCard:
         moveq   #BOARD_PROD,d1
         jsr     _LVOFindConfigDev(a6)
         tst.l   d0
-        beq.s   .close
+        beq.s   .fixed
         movea.l d0,a0
         bclr    #1,14(a0)               ; cd_Flags: CDB_CONFIGME - the board is ours
         move.l  32(a0),d3               ; cd_BoardAddr: the board memory
         move.l  d3,d2
         add.l   #BOARD_REGS,d2          ; the registers
+        bra.s   .close
+; Megamiga 0.7: no board - the fixed addresses only if the card answers there: with the
+; profile's Graphics Card switched off (and on a 68000) its ID register reads 0, and
+; FindCard says "no card", so Picasso96 offers no RTG screenmodes.
+.fixed: movea.l d2,a0
+        cmpi.w  #$4d01,$e(a0)           ; ID / VERSION ($B8010E)
+        beq.s   .close
+        moveq   #0,d3                   ; no card
 .close: movea.l a6,a1
         movea.l $4.w,a6
         jsr     _LVOCloseLibrary(a6)
+        tst.l   d3
+        bne.s   .set
+        movem.l (sp)+,d2-d3/a2/a6
+        moveq   #0,d0                   ; FALSE: no card
+        rts
 .set:   move.l  #MEMORY_SIZE,PSSO_BoardInfo_MemorySize(a2)
         move.l  d2,PSSO_BoardInfo_RegisterBase(a2)
         move.l  d3,PSSO_BoardInfo_MemoryBase(a2)

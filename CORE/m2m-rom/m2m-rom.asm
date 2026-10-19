@@ -1017,19 +1017,8 @@ PREP_START      INCRB
 
                 ; Megamiga 0.3: the Kickstart and the hard disk of the saved
                 ; machine profile (the HDL already runs its CPU/chipset/RAM)
-                XOR     R0, R0                  ; R0: profile 0..3
-                MOVE    AEXP_OSM_PROF_A600, R8
-                RSUB    M2M$GET_SETTING, 1
-                ADD     R9, R0
-                MOVE    AEXP_OSM_PROF_A1200, R8
-                RSUB    M2M$GET_SETTING, 1
-                ADD     R9, R0
-                ADD     R9, R0
-                MOVE    AEXP_OSM_PROF_A4000, R8
-                RSUB    M2M$GET_SETTING, 1
-                ADD     R9, R0
-                ADD     R9, R0
-                ADD     R9, R0
+                RSUB    PRF_BOOT, 1             ; 0.7: the active profile file
+                XOR     R0, R0                  ; R0: profile (0.7: always 0)
                 MOVE    R0, R8
                 XOR     R9, R9                  ; 0 = boot
                 RSUB    PROFILE_APPLY, 1
@@ -1079,20 +1068,24 @@ OSM_SEL_POST    INCRB
                 MOVE    OSM_SUB_ACTIVE, R0
                 MOVE    0, @R0
 
+                ; Megamiga 0.7: profiles as files. " Profile:" opens the
+                ; profile selector, " Rename Profile" the name editor (both
+                ; momentary); a setting of the block marks the profile dirty
+                CMP     AEXP_OPTM_G_PROFILE, R8
+                RBRA    _OSM_SP_PRN, !Z
+                RSUB    PRF_SELECT, 1
+                RBRA    _OSP_MOMENT, 1
+_OSM_SP_PRN     CMP     AEXP_OPTM_G_PROFREN, R8
+                RBRA    _OSM_SP_PCH, !Z
+                RSUB    PRF_RENAME, 1
+                RBRA    _OSP_MOMENT, 1
+_OSM_SP_PCH     RSUB    PRF_CHANGED, 1
+
                 ; HDMI Filter selection changed: re-push the matching (H, V)
                 ; coefficient pair into the ascal polyphase RAM. NO core
                 ; reset -- only the coefficient RAM content changes; the
                 ; Amiga keeps running. The user sees the new filter from the
                 ; next frame.
-                ; Megamiga 0.3: a machine profile was selected (R9 = 0..3):
-                ; load its Kickstart and hard disk (the HDL cold-boots)
-                CMP     AEXP_OPTM_G_PROFILE, R8
-                RBRA    _OSM_SP_FLT, !Z
-                MOVE    R9, R8
-                MOVE    1, R9
-                RSUB    PROFILE_APPLY, 1
-                RBRA    _OSM_SEL_POST_R, 1
-
 _OSM_SP_FLT     CMP     AEXP_OPTM_G_FILTER, R8
                 RBRA    _OSM_SP_DRV, !Z
                 RSUB    LOAD_HDMI_FILTER, 1
@@ -1702,6 +1695,7 @@ HANDLE_CORE_IO  SYSCALL(enter, 1)
 
                 ; profile file names that were loaded before the menu existed
                 RSUB    PROF_PEND_APPLY, 1
+                RSUB    PRF_STEP, 1             ; 0.7: the profile line, write-back
 
                 ; screen centering (issue #5): throttle the mode detector. A mode
                 ; change only needs to be reacted to within a few ms, so run
@@ -2296,6 +2290,8 @@ HWF_OSM_INIT    INCRB
                 MOVE    HWF_DRV_NONE, @R0
                 MOVE    HWF_LAST_CNT, R0
                 MOVE    0, @R0
+                MOVE    PRF_DIRTY, R0           ; 0.7: nothing to write back
+                MOVE    0, @R0                  ; before PRF_BOOT (PRF_STEP)
                 MOVE    IO$CYC_MID, R0
                 MOVE    HWF_OSM_TICK, R1
                 MOVE    @R0, @R1
@@ -2861,6 +2857,23 @@ PROF_SAVED      RSUB    FAR_CALL, 1
                 .DW     BANK_F32F, B2_PROF_SAVED
 PROF_FORGET     RSUB    FAR_CALL, 1
                 .DW     BANK_F32F, B2_PROF_FORGET
+; Megamiga 0.7: profiles as files (profiles.asm, code bank 3)
+PRF_BOOT        RSUB    FAR_CALL, 1
+                .DW     BANK_PROF, B4_PRF_BOOT
+PRF_SELECT      RSUB    FAR_CALL, 1
+                .DW     BANK_PROF, B4_PRF_SELECT
+PRF_RENAME      RSUB    FAR_CALL, 1
+                .DW     BANK_PROF, B4_PRF_RENAME
+PRF_STEP        RSUB    FAR_CALL, 1
+                .DW     BANK_PROF, B4_PRF_STEP
+PRF_CHANGED     RSUB    FAR_CALL, 1
+                .DW     BANK_PROF, B4_PRF_CHANGED
+PRF_KGET        RSUB    FAR_CALL, 1
+                .DW     BANK_PROF, B4_PRF_KGET
+PRF_KSET        RSUB    FAR_CALL, 1
+                .DW     BANK_PROF, B4_PRF_KSET
+HDF_MAPBAR      RSUB    FAR_CALL, 1             ; HDF_PREP: the extent map
+                .DW     BANK_PROF, B4_HDF_MAP
 ; the signature of the settings file (M2M-UPSTREAM cfg-strings, options.asm)
 CFG_SIGCHECK    RSUB    FAR_CALL, 1
                 .DW     BANK_F32F, B2_CFG_CHECK
@@ -3345,10 +3358,7 @@ _HDFP_FILE      MOVE    R2, R1                  ; a whole number of sectors
                 ; extent map: seeks without FAT reads. A file with more
                 ; extents than the map holds still works, through the
                 ; cluster-stepping FAT32$FILE_SEEK.
-                MOVE    HDF_FDH, R8
-                MOVE    HDF_MAP, R9
-                MOVE    HDF_MAP_WORDS, R10
-                RSUB    FAT32$FILE_MAP, 1       ; (not in the M2M syscall table)
+                RSUB    HDF_MAPBAR, 1           ; (0.7: with a progress bar)
                 MOVE    HDF_MAPOK, R1
                 MOVE    1, @R1
                 CMP     0, R9
@@ -3602,15 +3612,30 @@ _HES_U          MOVE    R8, R7                  ; R7: drive
                 ; a file: the extent map into window 1
 _HES_FILE       MOVE    M2M$RAMROM_4KWIN, R1
                 MOVE    1, @R1
-                MOVE    HDF_FDH, R8
                 MOVE    IDE_ENG_MAP, R9
                 CMP     0, R7
                 RBRA    _HES_M0, Z
                 ADD     IDE_ENG_MAPW, R9
-_HES_M0         MOVE    IDE_ENG_MAPW, R10
+                ; Megamiga 0.7: HDF_PREP has just mapped the file into HDF_MAP;
+                ; if it fit (up to 64 extents), the engine gets a copy instead
+                ; of a second walk of the whole cluster chain (the slow part of
+                ; mounting a large HDF). The map format does not depend on the
+                ; size of the buffer.
+_HES_M0         MOVE    HDF_MAPOK, R4
+                CMP     1, @R4
+                RBRA    _HES_WALK, !Z
+                MOVE    HDF_MAP, R4
+                MOVE    HDF_MAP_WORDS, R5
+_HES_CP         MOVE    @R4++, @R9++
+                SUB     1, R5
+                RBRA    _HES_CP, !Z
+                XOR     R4, R4                  ; R4: result (OK)
+                RBRA    _HES_MAPD, 1
+_HES_WALK       MOVE    HDF_FDH, R8
+                MOVE    IDE_ENG_MAPW, R10
                 RSUB    FAT32$FILE_MAP, 1       ; (not in the M2M syscall table)
                 MOVE    R9, R4                  ; R4: result
-                RSUB    IDE_SEL, 1
+_HES_MAPD       RSUB    IDE_SEL, 1
                 CMP     0, R4
                 RBRA    _HES_RET, !Z            ; too many extents: firmware
                 ; base = DEV_CLUSTER - (2 << shift): the block of cluster 0
@@ -5572,6 +5597,7 @@ BANK_SHARE      .EQU    0                       ; the shared folder
 BANK_F32W       .EQU    1                       ; FAT32 write layer: core
 BANK_F32F       .EQU    2                       ; FAT32 write layer: files
 BANK_IDE        .EQU    3                       ; 0.7: link files, virtual RDB
+BANK_PROF       .EQU    4                       ; 0.7: profiles as files
 
 #ifdef RELEASE
                 .ORG    0x9000                  ; M2M$CODE_WIN (.ORG takes no symbol)
@@ -8328,54 +8354,17 @@ _SRN_E          MOVE    CFGS_PB, R9              ; the entry address
 ; which has room), behind FAR_CALL stubs.
 ; ----------------------------------------------------------------------------
 
-; the keys: profile x 3 + (ROM id - PROF_HDF_ID): hdf0, hdf1, kick
-PROF_KEYTAB     .DW     _PK_500H0, _PK_500H1, _PK_500K
-                .DW     _PK_600H0, _PK_600H1, _PK_600K
-                .DW     _PK_1200H0, _PK_1200H1, _PK_1200K
-                .DW     _PK_4000H0, _PK_4000H1, _PK_4000K
-_PK_500H0       .ASCII_W "a500.hdf0"
-_PK_500H1       .ASCII_W "a500.hdf1"
-_PK_500K        .ASCII_W "a500.kick"
-_PK_600H0       .ASCII_W "a600.hdf0"
-_PK_600H1       .ASCII_W "a600.hdf1"
-_PK_600K        .ASCII_W "a600.kick"
-_PK_1200H0      .ASCII_W "a1200.hdf0"
-_PK_1200H1      .ASCII_W "a1200.hdf1"
-_PK_1200K       .ASCII_W "a1200.kick"
-_PK_4000H0      .ASCII_W "a4000.hdf0"
-_PK_4000H1      .ASCII_W "a4000.hdf1"
-_PK_4000K       .ASCII_W "a4000.kick"
+; Megamiga 0.7: the keys are lines of the active profile's file (profiles.asm,
+; code bank 3: PRF_KGET / PRF_KSET work on its text, the key by its NUMBER
+; (ROM id - PROF_HDF_ID): 0 hdf0, 1 hdf1, 2 kick - a string of this bank could
+; not be read there). (0.6.1..0.6.4: "a500.kick" & co. in the settings file.)
 _PR_S_PART      .ASCII_W "partition:"           ; a value: an SD card partition
 _PR_S_PLEN      .EQU    10
 
-; _PR_KEY: the key of profile R8 and ROM id R9 -> R8. Other registers kept.
-_PR_KEY         INCRB
-                MOVE    R8, R0                  ; x 3
-                ADD     R8, R0
-                ADD     R8, R0
-                ADD     R9, R0
-                SUB     PROF_HDF_ID, R0
-                ADD     PROF_KEYTAB, R0
-                MOVE    @R0, R8
-                DECRB
-                RET
-
-; _PR_CUR: the profile that is selected in the menu -> R8 (0..3). R9 used.
-_PR_CUR         MOVE    R10, @--SP
-                MOVE    AEXP_OSM_PROF_A600, R8
-                RSUB    M2M$GET_SETTING, 1
-                MOVE    R9, R10
-                MOVE    AEXP_OSM_PROF_A1200, R8
-                RSUB    M2M$GET_SETTING, 1
-                ADD     R9, R10
-                ADD     R9, R10
-                MOVE    AEXP_OSM_PROF_A4000, R8
-                RSUB    M2M$GET_SETTING, 1
-                ADD     R9, R10
-                ADD     R9, R10
-                ADD     R9, R10
-                MOVE    R10, R8
-                MOVE    @SP++, R10
+; _PR_KEY: the number of the key of ROM id R9 -> R8 (PRF_KGET / PRF_KSET).
+; Other registers kept.
+_PR_KEY         MOVE    R9, R8
+                SUB     PROF_HDF_ID, R8
                 RET
 
 ; B2_PROF_REMEMBER: the user loaded the file handle R8 (opened through the
@@ -8406,11 +8395,10 @@ _PRR_FILE       RSUB    _PR_PATHOF, 1           ; PROF_PATH
                 RBRA    _PRR_OK, C
                 MOVE    PROF_PATH, R0           ; unknown: forget it (the
                 MOVE    0, @R0                  ; standard file then)
-_PRR_OK         RSUB    _PR_CUR, 1
-                MOVE    R1, R9
+_PRR_OK         MOVE    R1, R9
                 RSUB    _PR_KEY, 1
                 MOVE    PROF_PATH, R9
-                RSUB    CFGS_SET, 1
+                RSUB    PRF_KSET, 1             ; (the active profile's text)
                 SYSCALL(leave, 1)
                 RET
 
@@ -8418,16 +8406,15 @@ _PRR_OK         RSUB    _PR_CUR, 1
 ; ejected it). All registers preserved.
 B2_PROF_FORGET  SYSCALL(enter, 1)
                 MOVE    R9, R0                  ; R0: ROM id
-                RSUB    _PR_CUR, 1              ; (R9 used)
-                MOVE    R0, R9
                 RSUB    _PR_KEY, 1
                 MOVE    PROF_PATH, R9           ; the empty value removes it
                 MOVE    0, @R9
-                RSUB    CFGS_SET, 1
+                RSUB    PRF_KSET, 1             ; (the active profile's text)
                 SYSCALL(leave, 1)
                 RET
 
-; B2_PROF_SAVED: profile R8 remembers a file for ROM id R9 and it opens:
+; B2_PROF_SAVED: the active profile remembers a file for ROM id R9 and it opens
+; (0.7: R8, the profile, is ignored):
 ; C=1, PROF_FDH is open, R8 = its name (for the menu line, in PROF_PNAME);
 ; C=0 otherwise, R8 = 0 if it remembers none, 1 if it cannot be opened.
 ; R9..R12 preserved.
@@ -8439,7 +8426,7 @@ B2_PROF_SAVED   INCRB
                 RSUB    _PR_KEY, 1
                 MOVE    PROF_PATH, R9
                 MOVE    128, R10
-                RSUB    CFGS_GET, 1
+                RSUB    PRF_KGET, 1             ; (the active profile's text)
                 RBRA    _PRS_NO, !C
                 MOVE    PROF_PATH, R10
                 CMP     0, @R10
@@ -8773,8 +8760,8 @@ _PPE_RET        RET
 ; (config.vhd), i.e. of the menu's structure - the same for every settings
 ; file of this menu, whatever is selected. A file without it, or with another
 ; one (a core with another menu), is reset when it is loaded: OPTM_SIZE bytes,
-; byte 0 = 0xFF (the standard selectors), no text - its settings, including
-; the files the machine profiles remember, are gone; the core says so on the
+; byte 0 = 0xFF (the standard selectors), no text - its settings are gone (the
+; profiles are files of their own since 0.7); the core says so on the
 ; screen at the start (PREP_START). A new file gets the line at its first
 ; save. Not caught: options of one radio group swapped (same group words).
 ; ----------------------------------------------------------------------------
@@ -8789,9 +8776,8 @@ _B2_SIG_TXT     .ASCII_P "\n"
                 .ASCII_P " would end up on the wrong options. It was\n"
                 .ASCII_P " replaced by a new one with the defaults.\n"
                 .ASCII_P "\n"
-                .ASCII_P " The machine profiles no longer remember\n"
-                .ASCII_P " their Kickstart and hard disks: choose\n"
-                .ASCII_P " them again in Profile Settings.\n"
+                .ASCII_P " The machine profiles in /amiga/profiles\n"
+                .ASCII_P " are not affected.\n"
                 .ASCII_P "\n"
                 .ASCII_W " Press any key to continue.\n"
 
@@ -9603,6 +9589,10 @@ _VR_PART        .DW     0, 0x5041, 0x5254       ; pb_ID "PART"
                 .DW     0xFFFF
 
 ; End of the bank BANK_IDE
+
+                .ORG    0x9000                  ; M2M$CODE_WIN
+                .DW     0x4B04                  ; bank 4: BANK_PROF
+#include "profiles.asm"
 #endif
 
 ; ----------------------------------------------------------------------------
@@ -9650,6 +9640,24 @@ FL_NOBAR        .BLOCK 1                        ; PROFILE_APPLY: FAST_LOAD witho
 PROF_FDH        .BLOCK FAT32$FDH_STRUCT_SIZE    ; PROFILE_APPLY: the Kickstart / HDF file
 PROF_PENDF      .BLOCK 1                        ; PROF_NAME: a name waits for the menu
 PROF_PEND       .BLOCK PROF_PEND_NUM            ; its path labels (0 = none), by ROM id
+; Megamiga 0.7: profiles as files (profiles.asm). NOT between PROF_PENDF and
+; PROF_PEND: PROFILE_APPLY clears PROF_PENDF and PROF_PEND in one run.
+PRF_NAME        .BLOCK 21                       ; the active profile (PRF_NLEN)
+PRF_FILE        .BLOCK 25                       ; ... its file "NN_<name>" (PRF_FLEN)
+PRF_FULL        .BLOCK 25                       ; a file name being chosen/made
+PRF_TXT         .BLOCK CFGS_MAX                 ; its text
+PRF_LEN         .BLOCK 1
+PRF_DIRTY       .BLOCK 1                        ; 1: to be written back
+PRF_PAINT       .BLOCK 1                        ; 1: the menu line shows the name
+PRF_FDH         .BLOCK FAT32$FDH_STRUCT_SIZE
+PRF_FNAME       .BLOCK 30                       ; "<file>.prof"
+PRF_PATH        .BLOCK 46                       ; "/amiga/profiles/<file>.prof"
+PRF_SAVCD       .BLOCK 2                        ; the current directory, saved
+PRF_VAL         .BLOCK 16                       ; a value (PRF_VALN)
+PRF_EDBUF       .BLOCK 21                       ; a name being edited/chosen
+PRF_LINE        .BLOCK 24                       ; one line of the inner area
+PRF_LN          .BLOCK 1                        ; the profiles in PRF_LIST
+PRF_LIST        .BLOCK 500                      ; PRF_LMAX x PRF_FLEN
 PROF_PATH       .BLOCK 128                      ; a remembered path (cfg text)
 PROF_DEVP       .BLOCK 1                        ; _PR_PATHOF: the device handle
 PROF_PNAME      .BLOCK 63                       ; PROF_PEND_NUM x PROF_PN_LEN:
@@ -9891,7 +9899,12 @@ SHR_RNOBJ       .BLOCK 8                        ; RENAME: the object
 ; Boards section with Graphics/Network Card, Virtual Drive Sound; the 19
 ; separators under headlines are no items any more (+200 characters, 252 items):
 ; demand 4476, MENU_HEAP_SIZE 4480, headroom 4, release HEAP_SIZE -192.
-MENU_HEAP_SIZE  .EQU 4480
+;MENU_HEAP_SIZE  .EQU 4480
+; Megamiga 0.7 profiles as files: ONE profile block, the " Profile:" and
+; " Rename Profile" lines instead of the radio (181 items, 2020 characters):
+; demand 3242, MENU_HEAP_SIZE 3264, headroom 22. The variables of profiles.asm
+; (PRF_*, 1103 words) take the rest: see HEAP_SIZE.
+MENU_HEAP_SIZE  .EQU 3264
 
 #ifndef RELEASE
 
@@ -9952,7 +9965,15 @@ HEAP            .BLOCK 1
 ;HEAP_SIZE       .EQU 14208                      ; 18528 - 4320 = 14208
 ;HEAP_SIZE       .EQU 14112                      ; 18528 - 4416 = 14112
 ;HEAP_SIZE       .EQU 14240                      ; 18528 - 4288 = 14240
-HEAP_SIZE       .EQU 14048                      ; 18528 - 4480 = 14048
+;HEAP_SIZE       .EQU 14048                      ; 18528 - 4480 = 14048
+; Megamiga 0.7 profiles as files: PRF_* added 1103 words of variables, so the
+; combined total is 1120 words smaller: 17408; HEAP 0xB418 + 17408 = 0xF818,
+; VAR$STACK_START 0xFED0: 1720 words for the stack (1703 before).
+;HEAP_SIZE       .EQU 14144                      ; 17408 - 3264 = 14144
+; The sort order (file names "NN_<name>"): PRF_FILE, PRF_FULL, longer file
+; names and list entries, 138 words more: the combined total is 160 words
+; smaller: 17248.
+HEAP_SIZE       .EQU 13984                      ; 17248 - 3264 = 13984
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

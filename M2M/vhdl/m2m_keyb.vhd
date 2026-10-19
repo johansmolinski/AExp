@@ -40,6 +40,10 @@ entity m2m_keyb is
       enable_core_i        : in std_logic;                     -- 0 = core is decoupled from the keyboard, 1 = standard operation
       key_num_o            : out integer range 0 to 79;        -- cycles through all keys with SCAN_FREQUENCY
       key_pressed_n_o      : out std_logic;                    -- low active: debounced feedback: is kb_key_num_o pressed right now?
+      -- M2M-UPSTREAM osm-hotkey (Megamiga 2026-10-19): the same status, but NOT gated by
+      -- enable_core_i, so a core can read the whole keyboard while the OSM is open (Megamiga:
+      -- the firmware's name editor); a core that does not use it leaves it open
+      key_raw_n_o          : out std_logic;
 
       -- M2M-UPSTREAM osm-hotkey (AExp 2026-07-10): the key(s) that drive the OSM-open
       -- bit (qnice_keys bit 7) are chosen by the core, so a core can offer the user a
@@ -83,6 +87,7 @@ begin
    -- output the keyboard interface for the core
    key_num_o         <= key_num;
    key_pressed_n_o   <= key_status_n when enable_core_i else '1';
+   key_raw_n_o       <= key_status_n;                       -- M2M-UPSTREAM osm-hotkey (2026-10-19)
    
    -- output the keyboard interface for QNICE
    qnice_keys_n_o    <= keys_n;
