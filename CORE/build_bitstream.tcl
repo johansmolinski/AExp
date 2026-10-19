@@ -15,11 +15,13 @@ open_project CORE-${board}.xpr
 
 reset_run synth_1               ;# force a clean rebuild (invalidates impl_1)
 # Incremental synthesis from the reference build (REF_SYNTH_DCP, set by
-# build_all.sh from REF_DIR): unchanged logic keeps its cell names, so the
-# incremental implementation can match - and keep - nearly all of the
-# reference placement. A fresh synthesis renames ~10% of the cells after even
-# a small source change, and those are placed anew (hmenu-f, 2026-10-19: 84.5%
-# reuse for three changed menu-bit ranges). Cleared afterwards, like the hooks.
+# build_all.sh from REF_DIR): where Vivado reuses the reference netlist,
+# unchanged logic keeps its cell names and the incremental implementation can
+# keep more of the reference placement (a fresh synthesis renamed ~10% of the
+# cells for three changed menu-bit ranges in mega65.vhd: hmenu-f, 84.5% reuse).
+# Vivado itself decides: for a large change ("Change is too high", e.g. hmenu-h,
+# an edit of mega65.vhd) it falls back to a normal synthesis, which is
+# accepted. Cleared afterwards, like the hooks.
 set synth_ref ""
 if {[info exists ::env(REF_SYNTH_DCP)] && $::env(REF_SYNTH_DCP) ne ""} {
     set synth_ref $::env(REF_SYNTH_DCP)

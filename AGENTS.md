@@ -646,8 +646,13 @@ the dated facts.
   (`CORE/patch_firmware.sh`, below), no synthesis at all. HDL change: start from
   the last build that met timing with the most similar sources
   (`REF=<build> rbuild.sh start ...`, `REF_DIR` for `build_all.sh`): incremental
-  synthesis from its `synth_1` checkpoint (since 2026-10-19; unchanged logic keeps
-  its cell names) plus incremental implementation from its routed checkpoint.
+  implementation from its routed checkpoint, and incremental synthesis from its
+  `synth_1` checkpoint (since 2026-10-19). Vivado decides whether that synthesis
+  reuse applies: it declines when the change is too large ("Incremental synthesis
+  run: no ... Change is too high" in `synth_1/runme.log`, e.g. any edit of
+  `mega65.vhd`, 2026-10-19) and runs a normal synthesis - accept that, do not force
+  `-incremental_mode aggressive`. The less the reference's netlist changes, the more
+  of its placement survives: hmenu-f reused 84.5%.
   Prefer a reference with positive slack - one that met timing at exactly 0.000
   passes little on. A fresh placement only when no similar passing build exists
   or the change is large; then it re-rolls (`REROLL_MAX_MISS`, `IMPL_MARGIN`).
