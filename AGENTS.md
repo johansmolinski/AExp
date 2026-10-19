@@ -32,8 +32,11 @@ the history file.
   (network card), 0.5.1 (AmigaVision fix), 0.5.2 (32K ROM, hard disks
   on SD card partitions), 0.6.0 (68040, Megamiga.card), 0.6.1 (fast hard
   disks, both SD cards, SDCard:, explicit profiles), 0.6.2 (freezer
-  cartridges HRTmon + Action Replay III), 0.6.3 (RTG native resolution).
-  All hardware-confirmed
+  cartridges HRTmon + Action Replay III), 0.6.3 (RTG native resolution), 0.6.4
+  (2026-10-19: profiles as files, A4000 profile, Gayle IDE, menu rows, IDE DMA +
+  SD at 50 MHz, 48 MB Zorro III, RDB-less HDFs, quick HDF, drive sound, ADFs
+  straight from SD; release bit = quickhdf-b; DMA lide.rom from lide.device
+  branch `megamiga-dma`). All hardware-confirmed
   by the user, the PMOD serial port by an outside tester.
 
 ### Increment index (details: `doc/developers/history.md`)

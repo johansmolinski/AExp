@@ -445,12 +445,15 @@ order of the drives, with either controller.
 
 1. For the Zorro II board only: copy the `lide.rom` from the core's release
    package to `/amiga/lide.rom`. Without it that profile works as before,
-   just without the hard disk. The release ships lide.device 40.12 with one
-   fix for Workbench 1.3's Format (source: branch `aexp-td-format-fix` of
-   [johansmolinski/lide.device](https://github.com/johansmolinski/lide.device/tree/aexp-td-format-fix));
-   the official `lide.rom` of a
+   just without the hard disk. The release ships lide.device 40.12 with two
+   Megamiga additions: the fix for Workbench 1.3's Format, and DMA - the board
+   copies the sectors into Fast RAM itself instead of the CPU (version string
+   "Megamiga DMA 1"; buffers in Chip RAM or not on a long-word boundary still
+   go through the CPU). Source: branch `megamiga-dma` of
+   [johansmolinski/lide.device](https://github.com/johansmolinski/lide.device/tree/megamiga-dma).
+   The official `lide.rom` of a
    [lide.device release](https://github.com/LIV2/lide.device/releases) works
-   too, except for a full format (see below).
+   too, without DMA and except for a full format (see below).
 2. Copy your `*.hdf` images to either SD card.
 3. Open the menu with <kbd>Help</kbd>, go to **Profile Settings** and select
    **HDF 0:** (master) or **HDF 1:** (slave). Pick the image in the file
@@ -604,13 +607,16 @@ image file itself must be writable: on `SDCard:` it is, on a CD-ROM it is not
 
 Reading and writing sectors is done by the FPGA: it streams them straight
 between the IDE board and the SD card, on the card's native 4-bit bus at
-25 MHz (SPI at 25 MHz where the card is in SPI mode, see
-[Two SD cards](#two-sd-cards)). An `.hdf` file in up to 511 pieces on the
-card - nearly every file - and every partition are served this way; a very
-fragmented file still works, through the menu's control CPU, but much more
-slowly (copy it once to defragment it). Measured with SysInfo: about
-4.8 MB/s on the 4-bit bus and 2.8 MB/s with SPI at 25 MHz (before 0.6.1, with
-every sector copied by the control CPU: 0.1-0.25 MB/s). A disk stays
+50 MHz where the card supports it, else 25 MHz (SPI at 25 MHz where the card
+is in SPI mode, see [Two SD cards](#two-sd-cards)). An `.hdf` file in up to
+511 pieces on the card - nearly every file - and every partition are served
+this way; a very fragmented file still works, through the menu's control
+CPU, but much more slowly (copy it once to defragment it). With the
+release's `lide.rom` the RIPPLE board also copies the sectors into Fast RAM
+by itself (DMA). Measured with SysInfo: 14.8 MB/s on the 68040 with
+Kickstart 3.2, the RIPPLE board with DMA and the internal card at 50 MHz
+(0.6.1, 4-bit at 25 MHz without DMA: about 4.8 MB/s; SPI at 25 MHz: about
+2.8 MB/s). A disk stays
 mounted until you eject it, mount another image on its line, select a machine
 profile or swap the SD card; mounting an
 image always restarts the Amiga, because Kickstart only looks for hard disks
@@ -1047,7 +1053,8 @@ floppy images on the other, in any combination.
 * **Shared folder.** `SDCard:` is always `/amiga` of the external card.
 * **Pulling a card** affects only what is on that card: its drives become
   empty, and the other card keeps working.
-* **Speed.** The internal card runs on the native 4-bit SD bus at 25 MHz.
+* **Speed.** The internal card runs on the native 4-bit SD bus at 50 MHz
+  (25 MHz if the card cannot do that).
   The external card normally runs in SPI mode at 25 MHz: the MEGA65 reads it
   in SPI mode before the core starts, and a card leaves SPI mode only when it
   loses power. Taking it out and putting it back in while the core runs gives

@@ -3238,6 +3238,23 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
   0.6.3, help page 5 got two lines about RTG native resolution (in place of
   the footer padding). Old tip kept as local branch `rtg-native-prerebase`.
 
+- **MEGAMIGA 0.6.4 RELEASED (2026-10-19, tag `V0.6.4` on main, GitHub release asset
+  `Megamiga-0.6.4-R6.zip`, R6 only).** Everything on main since 0.6.3: the A4000
+  profile, dev-0.7.0 (Gayle IDE, READ/WRITE MULTIPLE, CHS in the engine, turbo
+  Kickstart), ADFs straight from the SD card, the IDE data stream, IDE DMA + SD at
+  50 MHz, the plain line doubler, 48 MB Zorro III, the menu rows (drive sound,
+  settings signature), the 68040 fixes for Linux, RDB-less HDFs (vrdb), profiles as
+  files and the quick HDF. Not in it: AROS's 1 MB Kickstart (branch `aros`, not yet on
+  the hardware; the user: skip it). Release bitstream = `quickhdf-b` (REF main-a,
+  WNS +0.088, WHS +0.036), hardware-confirmed by the user before the release; its
+  sources equal the release commit except docs. Package: the DMA lide.rom ("Megamiga
+  DMA 1", lide.device fork branch `megamiga-dma` 51862e4, pushed for the release),
+  Megamiga_RTG.adf rebuilt (the Megamiga.card that reports no card with the Graphics
+  Card off - not tested on hardware), Net/Share ADFs unchanged, settings file 182 bytes
+  of 0xFF (a new file: no signature warning), README.txt and notes064.md in
+  `~/aexp-builds/release/`. The 0.6.3 settings file is reset by the signature, the
+  per-profile files of 0.6.3 are not carried over (release notes say so).
+
 - **MEGAMIGA 0.6.3 RELEASED (2026-10-16, tag `V0.6.3` on main, GitHub
   release asset `Megamiga-0.6.3-R6.zip`, R6 only).** RTG native resolution
   (M2M exception 19) with the 1080p30 fix (ascal first at the HyperRAM, line
