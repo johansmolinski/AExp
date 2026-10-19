@@ -497,6 +497,7 @@ _P_READ         SYSCALL(enter, 1)
                 RBRA    _P_RD_NO, !C
                 MOVE    PRF_TXT, R0
                 XOR     R1, R1
+                MOVE    1, R2                   ; R2: 1 = in a key
                 MOVE    PRF_FDH, R8
 _P_RD_L         CMP     CFGS_MAXC, R1
                 RBRA    _P_RD_E, Z
@@ -505,7 +506,20 @@ _P_RD_L         CMP     CFGS_MAXC, R1
                 RBRA    _P_RD_E, !Z
                 CMP     0x000D, R9              ; (CR LF from a PC: the CR goes)
                 RBRA    _P_RD_L, Z
-                MOVE    R9, @R0++
+                CMP     0x000A, R9              ; a new line: a key again
+                RBRA    _P_RD_1, !Z
+                MOVE    1, R2
+_P_RD_1         CMP     0x003D, R9              ; "=": the value
+                RBRA    _P_RD_2, !Z
+                XOR     R2, R2
+_P_RD_2         CMP     0, R2                   ; keys in lower case (the keys
+                RBRA    _P_RD_3, Z              ; are case-insensitive, the
+                CMP     0x0041, R9              ; key/value code is not)
+                RBRA    _P_RD_3, N              ; ("A" > R9)
+                CMP     R9, 0x005A
+                RBRA    _P_RD_3, N              ; (R9 > "Z")
+                ADD     0x0020, R9
+_P_RD_3         MOVE    R9, @R0++
                 ADD     1, R1
                 RBRA    _P_RD_L, 1
 _P_RD_E         MOVE    0, @R0
