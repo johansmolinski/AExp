@@ -3036,6 +3036,11 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     512 KB (cleared), then 256 KB (cleared + mirror), then AR3 64 bytes, no write
     outside the three banks: PASS; `mut.sh` 7/7 killed (no_e0, wrong_half, no_clear,
     no_redone, short_clear, no_mirror, no_gate).
+    Build `aros-a` (154f721): with REF=linux040-d Vivado segfaulted in synthesis right
+    after `read_checkpoint -incremental` of linux040-d's synth_1 checkpoint (hs_err,
+    signal 11); again with an implementation-only reference (`~/builds/linux040-d-impl`:
+    just the impl_1 link, so build_all finds no synthesis reference): WNS +0.086,
+    WHS +0.010 at the first pass. Not on the hardware yet.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
