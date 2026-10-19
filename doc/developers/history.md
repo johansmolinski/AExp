@@ -2965,6 +2965,11 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     - Fedora: the build disk's btrfs ran out of metadata space (all chunks allocated to
       data, 41 GB "free"): `sudo btrfs balance start -dusage=5 /home` after deleting two
       disposable build directories gave 37 GiB unallocated.
+    - Build `linux040-b` (main 50b43ce + the four fixes + the Gayle signature): WNS +0.002,
+      WHS +0.036. On the MEGA65 the OSD menu did not come up; likely cause: main had
+      moved on to the menu rows (OPTM_SIZE 248 -> 252, same file name), so the card's
+      settings file did not fit the older menu. Rebased onto main
+      4b13425 (hmenu), Minimig `linux040` onto 95069c1 (`rtgena`), no code conflicts.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
