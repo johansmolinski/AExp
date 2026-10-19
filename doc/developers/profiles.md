@@ -19,8 +19,7 @@ options, and they always belong to the active profile.
 ## Menu
 
 Main menu: the four profile radio lines become one line that shows the active
-profile and opens the profile selector (the file browser in `/amiga/profiles`),
-and "Rename Profile" below it:
+profile and opens the profile selector, and "Rename Profile" below it:
 
 ```
  Megamiga
@@ -145,10 +144,14 @@ The AR3 ROM stays a session load as today (not remembered per profile).
   `User N`), writes the settings of the active profile to `<name>.prof` (a
   copy to start from), makes it the active profile and shows its name. This
   replaces the "Save as New Profile" menu line of the first draft.
-- **The selector entry** is no file: the file browser's extra entries
-  (`BROWSE_EXTRA`, M2M exception 17) are listed behind `<..>` today; for this
-  they go to the END of the list, behind a separator bar (a dirbrowse.asm
-  change: a flag for "below the files").
+- **The profile selector** is the firmware's own list, not the file browser:
+  the browser keeps one shared position (the next ADF browse would start in
+  `/amiga/profiles`), starts in the configured directory and lists extra
+  entries only at the top. The selector lists the `.prof` files of
+  `/amiga/profiles` (sorted, without the extension), a separator bar and "Add
+  New Profile"; Up/Down, Return, Run/Stop. The menu line " Profile: <name>" is
+  a momentary item (like "Freeze cartridge") whose name the firmware paints
+  in place (OPTM_LIVE_TEXT, as the Hardware Floppy status).
 - **Rename Profile.** Asks for a new name (prefilled with the old one) and
   renames the file of the active profile (FAT32$W_RENAME); `profile=` in the
   settings file follows. Renaming outside the core (PC, `SDCard:`) still works.
@@ -181,10 +184,9 @@ A one-line editor in the menu window: `Name: Work 040_` with a cursor.
 
 ## Implementation
 
-- `config.vhd`: one block (C_MENU_PROF_BASE, stride gone), the profile line (a
-  manual ROM load: browser + PREP_LOAD_IMAGE get the file), "Save as New
-  Profile", OPTM_DEP/OPTM_AVAIL for one block, all C_MENU_* behind it renumbered
-  (xcheck.py).
+- `config.vhd`: one block (C_MENU_PROF_BASE, stride gone), the profile line
+  and "Rename Profile" (momentary items), OPTM_AVAIL for one block, all C_MENU_*
+  behind it renumbered (xcheck.py).
 - `mega65.vhd`: prof_decode reads the one block (no v_base); the profile index
   is gone from the HDL.
 - Keyboard: m2m_keyb.vhd `key_raw_n_o` -> framework -> board tops R3..R6 ->
