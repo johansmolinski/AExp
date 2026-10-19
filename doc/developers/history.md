@@ -3106,6 +3106,37 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       profiles TB (B3_/B4_ picked from the source) 16/16 and the vrdb fw TB case1 (HDF_MAPBAR
       stubbed with a plain FAT32$FILE_MAP) pass on the merged tree. The help page text of
       profiles (config.vhd) needs the next full build.
+  - **Quick HDF (branch `quickhdf` from main e558567, 2026-10-19).** The user: a quick
+    "hdf: <Load>" on the main page like df0:, which takes the profile's HDFs out until Space
+    ejects it or the core restarts - for the WHDLoad libraries of one HDF per game. Their
+    choice on the eject: the profile's disks come back.
+    - Menu: " hdf:%s" at line 7 (below the drive lines; `~/aexp-work/quickhdf/insert.py` moved
+      every line >= 7 and the C_MENU_* constants, xcheck 57/57), OPTM_G_QHDF 83, manual
+      CRT/ROM load 3 (HDF 0/1, Kickstart, AR3 -> 4..7: PROF_HDF_ID 4, PROF_KICK_ID 6), its
+      own CSR device C_DEV_AMIGA_IDEQ 0x010E (mega65.vhd i_ideq_csr, as the slave line's).
+      OPTM_SIZE 182: the settings signature resets the settings file once. MENU_HEAP_SIZE
+      3264 -> 3296 (demand 3242 + 9 + 4 + 25 = 3280), release HEAP_SIZE -32.
+    - Firmware: QHDF_ON (zeroed by IDE_INIT); PREP_LOAD_IMAGE -> QHDF_PREP (bank 3: the
+      slave out, HDF_PREP as the master, the profile lines keep STATUS OK where they show a
+      name; refused while the profile's disks were in: PROF_HDFS mounts them again); the
+      HDF lines while QHDF_ON only note the file (QHDF_HREM: EOF for the Shell, then
+      PROF_REMEMBER). PROFILE_APPLY's disk part is `PROF_HDFS` (R8 profile, R9 switch) with
+      two guards: no mount over the quick disk (the name only) and no drop (the line goes
+      IDLE instead). Space: HANDLE_UNMOUNT_KEY asks HDF_SPACE_OK / HDF_SPACE (bank 3) for
+      lines HDF 0, HDF 1 and hdf: - quick on, an HDF line forgets its file; on hdf: the
+      quick disk is dropped, PROF_HDFS(0, switch) mounts the profile's, no drive left = the
+      board leaves the chain and the Amiga restarts. The browser offers .hdf files and 0x7F
+      partitions on the line too. Fixed ROM 32707/32768, bank 3 1182 words.
+    - Tests: `~/aexp-work/quickhdf/fw` (the vrdb fw harness + the real PROF_HDFS against
+      PROF_SAVED/NAME/FORGET stubs, records 15..19: profile files, quick load, Space per line,
+      profile switch, a profile-line load while quick) - 2198 records, all seven cases pass;
+      222/222 mutants killed (24 q_*: the drop before PROF_HDFS is needed when the profile's
+      HDF 0 cannot be mounted; the line-IDLE guard was a real bug the switch record found).
+      Not in the harness: the dispatch in PREP_LOAD_IMAGE and HANDLE_UNMOUNT_KEY's line test.
+    - Builds: `quickhdf-a` - Vivado 2022.2 segfaulted in the incremental synthesis cache dump
+      (HARTNDb::dumpUnoptimizedCache): build_all.sh `NO_REF_SYNTH=1` (fresh synthesis, the
+      implementation still from REF); `quickhdf-b` (REF main-a): WNS +0.088, WHS +0.036,
+      **hardware-confirmed by the user 2026-10-19** ("It works").
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
