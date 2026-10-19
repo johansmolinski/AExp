@@ -2938,6 +2938,8 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       files get it, the reset file on disk, SD0 untouched when SD1's is reset;
       `mut_sig.py` 13/13). Bitstream `hmenu-p1`: the firmware patched into linux040-d
       (CORE/patch_firmware.sh; its hardware sources are identical to main cddf519).
+      HW-confirmed by the user 2026-10-19: the old file was reset ("made for another
+      menu"), the saved new one loads without a warning at the next start.
   - **Linux boots to a busybox shell on the 68040 (2026-10-17..19, branch `linux040` from
     main 50b43ce, Minimig branch `linux040` from ea6144a).** Kernel: Linux 6.18.57 LTS built
     on fedora (`~/linux68k/build.sh`: `amiga_defconfig` for the 68040 only, -Os, busybox-static
