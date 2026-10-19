@@ -3058,6 +3058,27 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       `H_OLDHW=1` = a board without the skip register), `~/aexp-work/vrdb/eng`
       (tb_ide_z3b + SKIP: every LBA command shifted, commands below the skip must reach
       the firmware; skip 0 and 32, Gayle and RIPPLE with DMA).
+    - Geometry fix after the first hardware test (vrdb-a, the user's SWOS WHDLoad image, 4 MB
+      = 8192 blocks, A1200 profile on the Gayle): it booted, then "read error on disk block
+      8045". Kickstart 3.1's scsi.device addresses by CHS with the IDENTIFY geometry and
+      stops at its capacity: 16 x 63 gave 8 cylinders = 8064 of the 8224 blocks. Like
+      MiSTer, a drive with a virtual RDB now reports the partition's geometry (IDENTIFY
+      words 1/3/6 via `B3_VRDB_ID`: min(spc, 128) sectors, spc / that heads, cylinders =
+      blocks / spc up to 65535) and gets it as the default CHS geometry at the mount
+      (`HDF_HEADS/SPT`, so also the engine's geometry register); `HDF_VRDB_DET` moved
+      behind the 16/63 defaults in HDF_PREP. (Plain RDB images can hit the same limit on
+      the Gayle when their RDB cylinders reach past 16 x 63 ones; MiSTer reports the RDB's
+      geometry for those too - not done here.)
+    - Builds: `vrdb-a` (REF linux040-d, incremental synthesis + implementation; WNS +0.047
+      after post-route phys_opt, WHS +0.010), firmware patch `vrdb-p1` (68a31d8) =
+      **hardware-confirmed by the user 2026-10-19: SWOS loads without errors.** Fixed ROM
+      32572/32768, bank 3 951 words.
+    - Test results: fw - six image cases + the H_OLDHW variant pass (2154 records in
+      case1), 198/198 mutants killed (81 v_* + the fw-ide4 set; the root-check mutants
+      needed per-case PART3B variants - MiSTer root only / both / neither / a T_DATA decoy
+      - and the direct `_VR_LONG` records 13 incl. one right after a WRITE's dirty steal;
+      forged states (record 14) cover 256/2048-block cylinders beyond the emulator's 4 GB;
+      v_is_noff equivalent); eng - skip 0/32 x Gayle/RIPPLE pass, 9/9 HDL mutants killed.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
