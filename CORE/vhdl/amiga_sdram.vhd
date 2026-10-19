@@ -40,6 +40,11 @@
 --     of bytes cross to the core clock through a FIFO and are written to the kick bank. A word
 --     of the first 256 KB is also written to the second 256 KB, so a 256 KB Kickstart (1.x) is
 --     mirrored like on real hardware; a 512 KB Kickstart then overwrites the mirror.
+--     Megamiga 0.7: a 1 MB Kickstart (AROS; qnice_kick_1mb_i, the file size in the CSR) puts
+--     its first 512 KB where minimig_sram_bridge.v reads $E00000-$E7FFFF (A22..A19 = 1100,
+--     gary's sel_kick1mb), the second 512 KB into the kick bank. The mirror works per half
+--     (later words overwrite it). Before the first word of a smaller Kickstart the $E00000
+--     half is cleared, so that no AROS extension is left there for Kickstart 3.x to find.
 --   * Cold-boot scrub (amiga_cold_boot.vhd): zero words in chip RAM at scrub_addr_i while
 --     scrub_i is high (the SysBase pointer at $4, so that Kickstart cold-starts).
 -- Every word is presented for 8 core clocks (= 2 controller slots) followed by 8 idle clocks,
@@ -122,6 +127,7 @@ entity amiga_sdram is
       qnice_ce_i     : in    std_logic;
       qnice_we_i     : in    std_logic;
       qnice_wait_o   : out   std_logic;
+      qnice_kick_1mb_i : in  std_logic := '0';               -- Megamiga 0.7: a 1 MB Kickstart
       kick_busy_o    : out   std_logic;                      -- core clock: words still in flight
       -- Megamiga: the Action Replay III ROM loader, the same byte stream into the AR3 bank
       -- (QNICE device C_DEV_AMIGA_AR3, byte address = file offset 0..256 KB - 1; mega65.vhd
@@ -230,6 +236,7 @@ architecture synthesis of amiga_sdram is
    end component sdram_ctrl;
 
    constant C_KICK_BANK : std_logic_vector(3 downto 0) := "1111";   -- minimig_sram_bridge.v
+   constant C_E0_BANK   : std_logic_vector(3 downto 0) := "1100";   -- $E00000 (1 MB Kickstart)
    constant C_HOLD      : natural := 8;                              -- core clocks per phase
 
    -- Megamiga: the cartridge banks of the 8 MB chipset space (A22..A19, see minimig.v):
@@ -288,15 +295,22 @@ architecture synthesis of amiga_sdram is
    signal m_data    : std_logic_vector(15 downto 0) := (others => '0');
    signal m_mirror  : std_logic := '0';                        -- second write pending
    signal m_scrub   : std_logic := '0';                        -- current write is a scrub
+   -- Megamiga 0.7: clearing the $E00000 half before a 256/512 KB Kickstart
+   signal e_run     : std_logic := '0';                        -- clearing
+   signal e_done    : std_logic := '0';                        -- cleared for this load
+   signal e_idx     : unsigned(17 downto 0) := (others => '0');
+   signal f_head_clr : std_logic;                              -- FIFO head: word 0, clear first
 
-   -- Kickstart loader FIFO: {AR3, word address 17:0, data 15:0} (Megamiga: + the AR3 tag)
+   -- Kickstart loader FIFO: {AR3, E0, CLR, word address 17:0, data 15:0} (Megamiga: + the AR3
+   -- tag; 0.7: E0 = the word goes to the $E00000 half, CLR = a 256/512 KB Kickstart, whose
+   -- word 0 waits until the $E00000 half is cleared)
    signal q_hi      : std_logic_vector(7 downto 0) := (others => '0');
    signal q_wr_en   : std_logic := '0';
-   signal q_din     : std_logic_vector(34 downto 0) := (others => '0');
+   signal q_din     : std_logic_vector(36 downto 0) := (others => '0');
    signal q_full    : std_logic;
    signal q_wr_rst_busy : std_logic;
    signal f_rd_en   : std_logic;
-   signal f_dout    : std_logic_vector(34 downto 0);
+   signal f_dout    : std_logic_vector(36 downto 0);
 
    -- Megamiga: cartridge init (core clock)
    signal c_run     : std_logic := '0';                        -- words left to write
@@ -352,7 +366,8 @@ begin
    -- Kickstart words still in flight (core clock): the FIFO is not empty or the writer has
    -- not finished the last word (or its mirror). amiga_cold_boot keeps the Amiga in reset
    -- while this is high after a Kickstart load from the OSM.
-   kick_busy_o <= '1' when f_empty = '0' or m_state /= M_IDLE or m_mirror = '1' else '0';
+   kick_busy_o <= '1' when f_empty = '0' or m_state /= M_IDLE or m_mirror = '1' or
+                           e_run = '1' else '0';
 
    p_qnice_bytes : process (qnice_clk_i)
    begin
@@ -363,10 +378,13 @@ begin
             if qnice_addr_i(0) = '0' then
                q_hi <= qnice_data_i(7 downto 0);                       -- even byte: high byte
             elsif qnice_ar3_ce_i = '1' then                            -- Megamiga: AR3 ROM word
-               q_din   <= '1' & '0' & qnice_addr_i(17 downto 1) & q_hi & qnice_data_i(7 downto 0);
+               q_din   <= '1' & "00" & '0' & qnice_addr_i(17 downto 1) & q_hi &
+                          qnice_data_i(7 downto 0);
                q_wr_en <= '1';
-            else
-               q_din   <= '0' & qnice_addr_i(18 downto 1) & q_hi & qnice_data_i(7 downto 0);
+            else                                                       -- Kickstart word
+               q_din   <= '0' & (qnice_kick_1mb_i and not qnice_addr_i(19)) &
+                          (not qnice_kick_1mb_i) & qnice_addr_i(18 downto 1) & q_hi &
+                          qnice_data_i(7 downto 0);
                q_wr_en <= '1';
             end if;
          end if;
@@ -377,8 +395,8 @@ begin
       generic map (
          FIFO_MEMORY_TYPE    => "distributed",
          FIFO_WRITE_DEPTH    => 16,
-         WRITE_DATA_WIDTH    => 35,
-         READ_DATA_WIDTH     => 35,
+         WRITE_DATA_WIDTH    => 37,
+         READ_DATA_WIDTH     => 37,
          READ_MODE           => "fwft",
          FIFO_READ_LATENCY   => 0,
          CDC_SYNC_STAGES     => 2,
@@ -407,8 +425,11 @@ begin
    -- Maintenance writer (core clock): scrub words first, then Kickstart words
    ---------------------------------------------------------------------------------------
 
+   f_head_clr <= '1' when f_dout(36) = '0' and f_dout(34) = '1' and
+                          unsigned(f_dout(33 downto 16)) = 0 else '0';
    f_rd_en <= '1' when m_state = M_IDLE and scrub_i = '0' and f_empty = '0' and
-                       f_rd_rst_busy = '0' and m_mirror = '0' else '0';
+                       f_rd_rst_busy = '0' and m_mirror = '0' and e_run = '0' and
+                       (f_head_clr = '0' or e_done = '1') else '0';
 
    p_maint : process (clk_i)
    begin
@@ -438,7 +459,23 @@ begin
                   m_active   <= '1';
                   m_cnt      <= C_HOLD - 1;
                   m_state    <= M_WRITE;
-               elsif f_rd_en = '1' and f_dout(34) = '1' then         -- Megamiga: AR3 ROM word
+               elsif e_run = '1' then                                -- 0.7: clear $E00000
+                  m_addr   <= C_E0_BANK & std_logic_vector(e_idx);
+                  m_data   <= (others => '0');
+                  m_scrub  <= '0';
+                  m_active <= '1';
+                  m_cnt    <= C_HOLD - 1;
+                  m_state  <= M_WRITE;
+                  e_idx    <= e_idx + 1;
+                  if e_idx = 2**18 - 1 then
+                     e_run  <= '0';
+                     e_done <= '1';
+                  end if;
+               elsif f_empty = '0' and f_rd_rst_busy = '0' and f_head_clr = '1' and
+                     e_done = '0' then                               -- word 0 of a 256/512 KB
+                  e_run <= '1';                                      -- Kickstart: clear first
+                  e_idx <= (others => '0');
+               elsif f_rd_en = '1' and f_dout(36) = '1' then         -- Megamiga: AR3 ROM word
                   m_addr   <= C_AR3_BANK & f_dout(33 downto 16);     -- (bit 33 = '0': the ROM half)
                   m_data   <= f_dout(15 downto 0);
                   m_scrub  <= '0';
@@ -446,7 +483,14 @@ begin
                   m_cnt    <= C_HOLD - 1;
                   m_state  <= M_WRITE;
                elsif f_rd_en = '1' then                              -- next Kickstart word
-                  m_addr   <= C_KICK_BANK & f_dout(33 downto 16);
+                  if f_dout(35) = '1' then                           -- 0.7: 1 MB, first half
+                     m_addr <= C_E0_BANK & f_dout(33 downto 16);
+                  else
+                     m_addr <= C_KICK_BANK & f_dout(33 downto 16);
+                  end if;
+                  if unsigned(f_dout(33 downto 16)) /= 0 then        -- the next word 0 is
+                     e_done <= '0';                                  -- another load
+                  end if;
                   m_data   <= f_dout(15 downto 0);
                   m_mirror <= not f_dout(33);                        -- word in the first 256 KB
                   m_scrub  <= '0';
@@ -507,6 +551,8 @@ begin
             m_mirror <= '0';
             c_run    <= '0';
             c_tail   <= '0';
+            e_run    <= '0';
+            e_done   <= '0';
          end if;
       end if;
    end process p_maint;

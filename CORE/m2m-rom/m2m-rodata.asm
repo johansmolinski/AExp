@@ -46,8 +46,8 @@ WRN_ADF_FAT     .ASCII_P "\n\nThe ADF file cannot be read from\n"
 
 ; Warnings of the Kickstart selector
 WRN_KICK_SIZE   .ASCII_P "\n\nThis is not a Kickstart ROM image:\n"
-                .ASCII_P "the file size must be 256 KB or 512 KB\n"
-                .ASCII_W "(a raw, unencrypted ROM dump).\n"
+                .ASCII_P "the file size must be 256 KB, 512 KB\n"
+                .ASCII_W "or 1 MB (a raw, unencrypted ROM dump).\n"
 WRN_KICK_FAT    .ASCII_P "\n\nThe Kickstart file cannot be read from\n"
                 .ASCII_P "the SD card (FAT32 error). The ROM is\n"
                 .ASCII_W "incomplete: load another one.\n"

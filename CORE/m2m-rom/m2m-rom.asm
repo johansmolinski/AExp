@@ -617,7 +617,11 @@ FL_BAR_PROG     .DW     M2M$LD_PROGRESS, 0
 ; KICK_PREP: the PREP_LOAD_IMAGE part of the Kickstart selector (Memory menu)
 ;
 ; Accepts 256 KB (Kickstart 1.x, mirrored by the hardware) and 512 KB ROMs and
-; loads them with FAST_LOAD into the Kickstart device. The Shell has already
+; loads them with FAST_LOAD into the Kickstart device. Megamiga 0.7: also 1 MB
+; ROMs (AROS): the file's first half is the $E00000 half, the second the
+; $F80000 half. The file size goes into the CSR (FS_LO/FS_HI) first, so that
+; amiga_sdram.vhd knows where the first 512 KB belong (and clears the $E00000
+; half for a smaller ROM). The Shell has already
 ; set the CSR of the device to LOADING, which holds the Amiga in reset
 ; (mega65.vhd, amiga_cold_boot.vhd); the STATUS=OK that follows this callback
 ; releases it with a cold boot. On an error the Shell leaves the CSR at
@@ -638,14 +642,23 @@ KICK_PREP       INCRB
                 MOVE    R0, R1
                 ADD     FAT32$FDH_SIZE_HI, R1
                 MOVE    @R1, R3
-                CMP     0, R2                   ; 256 KB = 0x00040000 or
-                RBRA    _KP_BADSZ, !Z           ; 512 KB = 0x00080000
-                CMP     KICK_256K_HI, R3
+                CMP     0, R2                   ; 256 KB = 0x00040000,
+                RBRA    _KP_BADSZ, !Z           ; 512 KB = 0x00080000 or
+                CMP     KICK_256K_HI, R3        ; 1 MB = 0x00100000
                 RBRA    _KP_LOAD, Z
                 CMP     KICK_512K_HI, R3
+                RBRA    _KP_LOAD, Z
+                CMP     KICK_1M_HI, R3
                 RBRA    _KP_BADSZ, !Z
 
-_KP_LOAD        MOVE    R0, R8
+_KP_LOAD        MOVE    AEXP_DEV_KICK, R8       ; the size for the HDL
+                MOVE    CRTROM_CSR_FS_LO, R9
+                MOVE    R2, R10
+                RSUB    CRTROM_CSR_W, 1
+                MOVE    CRTROM_CSR_FS_HI, R9
+                MOVE    R3, R10
+                RSUB    CRTROM_CSR_W, 1
+                MOVE    R0, R8
                 MOVE    AEXP_DEV_KICK, R9
                 RSUB    FAST_LOAD, 1
                 CMP     0, R9
@@ -5525,6 +5538,7 @@ PROF_PEND_NUM   .EQU    3                       ; PROF_HDF_ID..PROF_KICK_ID
 PROF_PN_LEN     .EQU    21                      ; a name in PROF_PNAME (+ zero)
 KICK_256K_HI    .EQU    0x0004
 KICK_512K_HI    .EQU    0x0008
+KICK_1M_HI      .EQU    0x0010                  ; Megamiga 0.7: AROS (1 MB)
 
 ; The ADF track buffer (CORE/vhdl/adf_sd.vhd - keep in sync!): behind the device
 ; of each drive, window ADF_TB_REGWIN holds the registers of that drive and

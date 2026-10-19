@@ -3014,6 +3014,28 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       first pass. **Hardware-confirmed by the user on 2026-10-19** (linux040-d, kernel kit
       linux-g, A1200 profile with the 68040 and Gayle IDE): the OSD is back, Linux boots
       to the busybox shell, libata finds the ATA disk and lists its partitions.
+  - **1 MB Kickstart for AROS (branch `aros` from main 33fdb93, 2026-10-19).** The user
+    wants AROS as a Megamiga target; its ROM is 1 MB: a 512 KB extension at $E00000 and
+    the main half at $F80000 (MiSTer's minimig_config.cpp UploadKickstart: file
+    0..512K -> $E00000, 512K..1M -> $F80000). Minimig already decodes $E00000-$E7FFFF
+    (gary `sel_kick1mb`, bankmapper bank 4, sram bridge A22..A19 = 1100 = SDRAM bank 0
+    $600000-$67FFFF, free: chip 0000-0011, HRTmon 0100, AR3 0101, slow 1000-1010, kick
+    1111), and every CPU reaches it over the chip bus (cpu_wrapper decodes nothing
+    there; the TG68K turbo Kickstart is $F80000 only). Firmware: `KICK_PREP` (the only
+    Kickstart load path: selector, profile Kickstart, kick.rom fallback) accepts 1 MB
+    (`KICK_1M_HI`) and writes the file size into the CSR (FS_LO/FS_HI) before
+    FAST_LOAD; WRN_KICK_SIZE names 1 MB. ROM 32724/32768. mega65.vhd: the CSR length
+    (`qnice_req_length_o`, was open) = $100000 -> `qnice_kick_1mb`. amiga_sdram.vhd: the
+    loader FIFO word grows to 37 bits (E0 = the word goes to $E00000, CLR = a 256/512 KB
+    load); the mirror works per half unchanged (later words overwrite it); word 0 of a
+    256/512 KB load waits until the writer has cleared the $E00000 half (256K words,
+    ~0.15 s), so no AROS extension stays visible to Kickstart 3.x (MiSTer copies the
+    512 KB ROM there instead; a real A1200 has nothing at $E00000). TB
+    `~/aexp-work/aros` (run.sh, ghdl; sdram_ctrl stub recording the chipset-port writes,
+    real loader + FIFO stub; runs on fedora with ghdl-llvm in a few minutes): 1 MB, then
+    512 KB (cleared), then 256 KB (cleared + mirror), then AR3 64 bytes, no write
+    outside the three banks: PASS; `mut.sh` 7/7 killed (no_e0, wrong_half, no_clear,
+    no_redone, short_clear, no_mirror, no_gate).
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

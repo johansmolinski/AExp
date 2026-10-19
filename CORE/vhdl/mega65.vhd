@@ -362,6 +362,8 @@ signal qnice_kick_csr_wait    : std_logic;
 signal qnice_kick_req         : std_logic_vector(3 downto 0);
 signal qnice_kick_resp        : std_logic_vector(3 downto 0);
 signal qnice_kick_ldng        : std_logic;
+signal qnice_kick_len         : std_logic_vector(22 downto 0);   -- Megamiga 0.7: file size (CSR)
+signal qnice_kick_1mb         : std_logic;                        -- a 1 MB (AROS) Kickstart
 signal main_kick_ldng         : std_logic;
 signal main_kick_busy         : std_logic;
 signal main_kick_hold         : std_logic;
@@ -1966,6 +1968,7 @@ begin
          qnice_ce_i     => qnice_kick_ce,
          qnice_we_i     => qnice_dev_we_i,
          qnice_wait_o   => qnice_kick_wait,
+         qnice_kick_1mb_i => qnice_kick_1mb,
          kick_busy_o    => main_kick_busy,
          qnice_ar3_ce_i => qnice_ar3_ce,
          cart_init_i    => main_cart_init,
@@ -2289,7 +2292,7 @@ begin
    --
    -- Device map (QNICE dev_addr is a BYTE address into the Amiga memories;
    -- even byte = data bits 15:8 (lane U), odd byte = bits 7:0 (lane L)):
-   --   0x0100  C_DEV_AMIGA_KICK  256 KB  Kickstart ROM (mandatory auto-load target)
+   --   0x0100  C_DEV_AMIGA_KICK    1 MB  Kickstart ROM (256 KB, 512 KB or 1 MB: AROS)
    --   0x0103  C_DEV_AMIGA_ADF0  df0 ADF mount buffer in HyperRAM + CSR window 0xFFFF
    --           (adf_mount_wrapper packs its own byte order - byte address bit 0
    --           selects the HyperRAM word's LOW byte lane for EVEN addresses)
@@ -2331,7 +2334,7 @@ begin
          qnice_wait_o         => qnice_kick_csr_wait,
          qnice_csr_o          => qnice_kick_csr,
          qnice_req_status_o   => qnice_kick_req,
-         qnice_req_length_o   => open,
+         qnice_req_length_o   => qnice_kick_len,
          qnice_resp_status_i  => qnice_kick_resp,
          qnice_resp_error_i   => x"0",
          qnice_resp_address_i => (others => '0')
@@ -2339,6 +2342,9 @@ begin
 
    qnice_kick_resp <= C_CSR_RESP_READY when qnice_kick_req = C_CSR_REQ_OK else C_CSR_RESP_IDLE;
    qnice_kick_ldng <= '1' when qnice_kick_req = C_CSR_REQ_LDNG else '0';
+   -- Megamiga 0.7: KICK_PREP writes the file size into the CSR before it loads; a 1 MB ROM
+   -- (AROS) puts its first half at $E00000 (amiga_sdram.vhd)
+   qnice_kick_1mb  <= '1' when unsigned(qnice_kick_len) = 16#100000# else '0';
 
    i_cdc_kick_ldng : entity work.cdc_stable
       generic map (
