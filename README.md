@@ -117,8 +117,10 @@ Features
 ### Machine profiles
 
 A machine profile is a file in `/amiga/profiles` on the SD card (the card the
-settings file is on): `A1200.prof` is the profile "A1200". At the first start
-the core creates four of them:
+settings file is on): `03_A1200.prof` is the profile "A1200". The number and
+the underscore in front of the name set the order of the list and are not
+shown; files without a number (`Work.prof`) come after the numbered ones, in
+alphabetical order. At the first start the core creates four profiles:
 
 | Profile | CPU   | Chipset | Chip RAM | Slow RAM | Fast RAM            |
 |---------|-------|---------|----------|----------|---------------------|
@@ -145,10 +147,14 @@ and restarts it (a cold boot), loads the Kickstart you chose for that profile
 - `kick.rom` if you chose none - and mounts its hard disks. The active profile
 is remembered: at power-on the core starts with it.
 
+In that list <kbd>Left</kbd> moves the highlighted profile up and
+<kbd>Right</kbd> moves it down; the core then renames the files `01_...`,
+`02_...` and so on in the new order.
+
 **Add New Profile** asks for a name and makes a copy of the active profile
-under it, which becomes the active one; <kbd>Return</kbd> on an empty name
+under it at the end of the list, which becomes the active one; <kbd>Return</kbd> on an empty name
 takes "User 1", "User 2" and so on. **Rename Profile** on the main page
-gives the active profile a new name. The name is typed on the MEGA65
+gives the active profile a new name (it keeps its place in the list). The name is typed on the MEGA65
 keyboard (<kbd>Shift</kbd> for capitals and the shifted symbols,
 <kbd>Left</kbd>/<kbd>Right</kbd>, <kbd>Inst/Del</kbd> deletes,
 <kbd>Shift</kbd>+<kbd>Clr/Home</kbd> clears, <kbd>Return</kbd> accepts,

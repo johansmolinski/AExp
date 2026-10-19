@@ -156,6 +156,28 @@ The AR3 ROM stays a session load as today (not remembered per profile).
   renames the file of the active profile (FAT32$W_RENAME); `profile=` in the
   settings file follows. Renaming outside the core (PC, `SDCard:`) still works.
 
+## Order (2026-10-19)
+
+The user: a number and an underscore in front of the file name set the order
+and are hidden; Left/Right in the selector move the highlighted profile.
+
+- File name = `<number>_<name>.prof` (1 to 3 digits; the firmware writes two:
+  `01_A500.prof`) or `<name>.prof`. The menu shows only `<name>`; names are
+  unique by `<name>` (upper and lower case alike). A file whose name would be
+  empty without the number (`01_.prof`) is shown whole.
+- Order: by number, files without one behind all numbered ones, ties by name
+  (`_P_LCMP`, insertion sort).
+- Selector: Left = the highlighted profile one up, Right = one down (not past
+  the first/last, nothing on "Add New Profile"); the list is swapped in memory
+  and then every file renamed to `NN_<name>` in list order (`_P_RENUM`, files
+  that have their number keep it; FAT32$W_RENAME refuses an existing name, so
+  two files with the same `<name>` cannot be merged). The cursor follows.
+- Add New Profile numbers the list first and appends `NN+1_<name>`; Rename
+  keeps the number (an unnumbered file: the list is numbered first, so a new
+  name like `7_up` is not read as number 7).
+- The settings file keeps `profile=<name>` without the number, so a reorder
+  never touches it. Defaults: `01_A500`, `02_A600`, `03_A1200`, `04_A4000`.
+
 ## Name editor
 
 A one-line editor in the menu window: `Name: Work 040_` with a cursor.

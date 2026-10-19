@@ -9070,19 +9070,21 @@ PROF_PEND       .BLOCK PROF_PEND_NUM            ; its path labels (0 = none), by
 ; Megamiga 0.7: profiles as files (profiles.asm). NOT between PROF_PENDF and
 ; PROF_PEND: PROFILE_APPLY clears PROF_PENDF and PROF_PEND in one run.
 PRF_NAME        .BLOCK 21                       ; the active profile (PRF_NLEN)
+PRF_FILE        .BLOCK 25                       ; ... its file "NN_<name>" (PRF_FLEN)
+PRF_FULL        .BLOCK 25                       ; a file name being chosen/made
 PRF_TXT         .BLOCK CFGS_MAX                 ; its text
 PRF_LEN         .BLOCK 1
 PRF_DIRTY       .BLOCK 1                        ; 1: to be written back
 PRF_PAINT       .BLOCK 1                        ; 1: the menu line shows the name
 PRF_FDH         .BLOCK FAT32$FDH_STRUCT_SIZE
-PRF_FNAME       .BLOCK 26                       ; "<name>.prof"
-PRF_PATH        .BLOCK 42                       ; "/amiga/profiles/<name>.prof"
+PRF_FNAME       .BLOCK 30                       ; "<file>.prof"
+PRF_PATH        .BLOCK 46                       ; "/amiga/profiles/<file>.prof"
 PRF_SAVCD       .BLOCK 2                        ; the current directory, saved
 PRF_VAL         .BLOCK 16                       ; a value (PRF_VALN)
 PRF_EDBUF       .BLOCK 21                       ; a name being edited/chosen
 PRF_LINE        .BLOCK 24                       ; one line of the inner area
 PRF_LN          .BLOCK 1                        ; the profiles in PRF_LIST
-PRF_LIST        .BLOCK 420                      ; PRF_LMAX x PRF_NLEN
+PRF_LIST        .BLOCK 500                      ; PRF_LMAX x PRF_FLEN
 PROF_PATH       .BLOCK 128                      ; a remembered path (cfg text)
 PROF_DEVP       .BLOCK 1                        ; _PR_PATHOF: the device handle
 PROF_PNAME      .BLOCK 63                       ; PROF_PEND_NUM x PROF_PN_LEN:
@@ -9390,7 +9392,11 @@ HEAP            .BLOCK 1
 ; Megamiga 0.7 profiles as files: PRF_* added 1103 words of variables, so the
 ; combined total is 1120 words smaller: 17408; HEAP 0xB418 + 17408 = 0xF818,
 ; VAR$STACK_START 0xFED0: 1720 words for the stack (1703 before).
-HEAP_SIZE       .EQU 14144                      ; 17408 - 3264 = 14144
+;HEAP_SIZE       .EQU 14144                      ; 17408 - 3264 = 14144
+; The sort order (file names "NN_<name>"): PRF_FILE, PRF_FULL, longer file
+; names and list entries, 138 words more: the combined total is 160 words
+; smaller: 17248.
+HEAP_SIZE       .EQU 13984                      ; 17248 - 3264 = 13984
 HEAP            .BLOCK 1
 
 ; The monitor variables use 22 words, round to 32 for being safe and subtract

@@ -21,6 +21,14 @@
 ; the whole keyboard through C_DEV_AMIGA_KEYS (mega65.vhd) and accepts only
 ; the characters FAT32 allows in long names.
 ;
+; The order of the profiles: a file name may start with a number and "_"
+; ("02_A600.prof"), which the menu does not show. The profiles are sorted by
+; that number (files without one behind the others), then by name. In the
+; selector Left moves the profile under the cursor up and Right down: the files
+; are then renamed "01_<name>", "02_<name>", ... in the new order (_P_RENUM).
+; The settings file names the active profile without the number, so a renumber
+; does not touch it. PRF_NAME is the name, PRF_FILE the file name ("full name").
+;
 ; Every routine that changes the current directory of the card (f32_cd)
 ; restores it: the file browser walks into directories relative to it.
 ;
@@ -29,6 +37,8 @@
 
 PRF_NMAX        .EQU    20                      ; characters of a name
 PRF_NLEN        .EQU    21                      ; a name + its zero
+PRF_FMAX        .EQU    24                      ; a file name: "123_" + a name
+PRF_FLEN        .EQU    25                      ; ... + its zero
 PRF_LMAX        .EQU    20                      ; profiles the selector lists
 PRF_VALN        .EQU    16                      ; a value + its zero
 PRF_LBL_OFS     .EQU    9                       ; " Profile:" | the name
@@ -47,6 +57,7 @@ _PS_ETITLE      .ASCII_W " Profile name:"
 _PS_EHELP1      .ASCII_W " Return: OK"
 _PS_EHELP2      .ASCII_W " Run/Stop: cancel"
 _PS_EXISTS      .ASCII_W " That name exists."
+_PS_MOVE        .ASCII_W " Left/Right: reorder"
 _PS_ON          .ASCII_W "on"
 _PS_OFF         .ASCII_W "off"
 
@@ -98,11 +109,12 @@ PRF_DEFS        .DW     0, 0, 2, 0, 1, 0, 0, 0, 0, 0, 1     ; A500
                 .DW     0, 1, 1, 2, 0, 0, 0, 0, 0, 0, 1     ; A600
                 .DW     1, 2, 1, 2, 0, 0, 0, 0, 0, 1, 1     ; A1200
                 .DW     2, 2, 2, 2, 0, 0, 0, 1, 0, 1, 1     ; A4000
-PRF_DNAMES      .DW     _PD_A500, _PD_A600, _PD_A1200, _PD_A4000
+PRF_DNAMES      .DW     _PD_F500, _PD_F600, _PD_F1200, _PD_F4000
+_PD_F500        .ASCII_W "01_A500"
+_PD_F600        .ASCII_W "02_A600"
+_PD_F1200       .ASCII_W "03_A1200"
+_PD_F4000       .ASCII_W "04_A4000"
 _PD_A500        .ASCII_W "A500"
-_PD_A600        .ASCII_W "A600"
-_PD_A1200       .ASCII_W "A1200"
-_PD_A4000       .ASCII_W "A4000"
 
 ; the MEGA65 keyboard (key numbers of m2m_keyb.vhd) as characters: two words
 ; per key, without and with Shift, as the MEGA65 keycaps print them
@@ -248,6 +260,92 @@ _P_IC1          MOVE    @R0++, R8
                 RBRA    _P_IC1, !Z
 _P_IC2          MOVE    R3, R8
                 DECRB
+                RET
+
+; _P_PFX: the file name R8 ("<number>_<name>" or "<name>") -> R9 = its number
+; (1 to 3 digits; 0xFFFF: none), R10 = its name (what the menu shows). R8
+; preserved.
+_P_PFX          INCRB
+                MOVE    R8, R0
+                XOR     R1, R1                  ; R1: number
+                XOR     R2, R2                  ; R2: digits
+_P_PF_L         MOVE    @R0, R3
+                CMP     0x0030, R3              ; "0" > R3?
+                RBRA    _P_PF_E, N
+                CMP     R3, 0x0039              ; R3 > "9"?
+                RBRA    _P_PF_E, N
+                MOVE    R1, R4                  ; R1 := R1 x 10 + the digit
+                AND     0xFFFD, SR              ; (SHL fills with X)
+                SHL     3, R1
+                AND     0xFFFD, SR
+                SHL     1, R4
+                ADD     R4, R1
+                SUB     0x0030, R3
+                ADD     R3, R1
+                ADD     1, R0
+                ADD     1, R2
+                CMP     4, R2                   ; four digits: no number
+                RBRA    _P_PF_L, !Z
+                RBRA    _P_PF_NO, 1
+_P_PF_E         CMP     0, R2
+                RBRA    _P_PF_NO, Z
+                CMP     0x005F, R3              ; "_"
+                RBRA    _P_PF_NO, !Z
+                ADD     1, R0
+                CMP     0, @R0                  ; a name must follow
+                RBRA    _P_PF_NO, Z
+                MOVE    R1, R9
+                MOVE    R0, R10
+                DECRB
+                RET
+_P_PF_NO        MOVE    0xFFFF, R9
+                MOVE    R8, R10
+                DECRB
+                RET
+
+; _P_LCMP: the order of the profiles R8 and R9 (file names): by their numbers
+; (none: behind all), then by their names, upper and lower case alike: R10 = 0
+; equal, negative R8 first, positive R9 first. R8, R9 preserved.
+_P_LCMP         INCRB
+                MOVE    R8, R0
+                MOVE    R9, R1
+                RSUB    _P_PFX, 1
+                MOVE    R9, R2                  ; R2: number of R8
+                MOVE    R10, R3                 ; R3: name of R8
+                MOVE    R1, R8
+                RSUB    _P_PFX, 1               ; R9: number, R10: name of R9
+                CMP     R2, R9                  ; R8's number higher?
+                RBRA    _P_LC_GT, N
+                CMP     R9, R2                  ; R9's number higher?
+                RBRA    _P_LC_LT, N
+                MOVE    R3, R8
+                MOVE    R10, R9
+                RSUB    _P_ICMP, 1
+                RBRA    _P_LC_R, 1
+_P_LC_GT        MOVE    1, R10
+                RBRA    _P_LC_R, 1
+_P_LC_LT        MOVE    0xFFFF, R10
+_P_LC_R         MOVE    R0, R8
+                MOVE    R1, R9
+                DECRB
+                RET
+
+; _P_MKFULL: PRF_FULL := number R8 (1..99, two digits) + "_" + name R9.
+; Registers preserved.
+_P_MKFULL       SYSCALL(enter, 1)
+                MOVE    R9, R0
+                MOVE    10, R9
+                SYSCALL(divu, 1)                ; R10: tens, R11: ones
+                MOVE    PRF_FULL, R1
+                ADD     0x0030, R10
+                MOVE    R10, @R1++
+                ADD     0x0030, R11
+                MOVE    R11, @R1++
+                MOVE    0x005F, @R1++
+                MOVE    R0, R8
+                MOVE    R1, R9
+                SYSCALL(strcpy, 1)
+                SYSCALL(leave, 1)
                 RET
 
 ; _P_ADDR: the address of a radio/toggle item: R8 = offset in the block ->
@@ -686,8 +784,8 @@ _P_LI_L         MOVE    R7, R8
                 CMP     6, R9                   ; at least "x.prof"
                 RBRA    _P_LI_L, N
                 MOVE    R9, R1                  ; R1: length
-                SUB     5, R1                   ; R1: the name's length
-                CMP     R1, PRF_NMAX            ; too long for the menu
+                SUB     5, R1                   ; R1: the file name's length
+                CMP     R1, PRF_FMAX            ; too long
                 RBRA    _P_LI_L, N
                 MOVE    R8, R2
                 ADD     R1, R2
@@ -700,16 +798,21 @@ _P_LI_L         MOVE    R7, R8
                 CMP     PRF_LMAX, @R2
                 RBRA    _P_LI_CD, Z
                 MOVE    @R2, R8                 ; the slot
-                MOVE    PRF_NLEN, R9
-                SYSCALL(mulu, 1)
-                ADD     PRF_LIST, R10
-                MOVE    _DIRBR_ENTRY, R3        ; copy the name
+                RSUB    _P_LNAME, 1
+                MOVE    R8, R5                  ; R5: the slot
+                MOVE    _DIRBR_ENTRY, R3        ; copy the file name
                 ADD     FAT32$DE_NAME, R3
                 MOVE    R1, R4
-_P_LI_C         MOVE    @R3++, @R10++
+_P_LI_C         MOVE    @R3++, @R8++
                 SUB     1, R4
                 RBRA    _P_LI_C, !Z
-                MOVE    0, @R10
+                MOVE    0, @R8
+                MOVE    R5, R8                  ; its name fits the menu?
+                RSUB    _P_PFX, 1
+                MOVE    R10, R8
+                SYSCALL(strlen, 1)
+                CMP     R9, PRF_NMAX
+                RBRA    _P_LI_L, N              ; (no: the slot is used again)
                 ADD     1, @R2
                 RBRA    _P_LI_L, 1
 _P_LI_CD        MOVE    R6, R8
@@ -722,8 +825,8 @@ _P_LI_CD        MOVE    R6, R8
 _P_LI_RET       SYSCALL(leave, 1)
                 RET
 
-; _P_SORT: PRF_LIST alphabetically (upper and lower case alike; insertion
-; sort, PRF_LMAX names at most). Registers preserved.
+; _P_SORT: PRF_LIST in the order of _P_LCMP (insertion sort, PRF_LMAX names
+; at most). Registers preserved.
 _P_SORT         SYSCALL(enter, 1)
                 MOVE    1, R0                   ; R0: i
 _P_SO_I         MOVE    PRF_LN, R1
@@ -733,25 +836,17 @@ _P_SO_I         MOVE    PRF_LN, R1
                 MOVE    R0, R1                  ; R1: j
 _P_SO_J         CMP     0, R1
                 RBRA    _P_SO_NX, Z
-                MOVE    R1, R8                  ; R2: name j - 1, R3: name j
-                SUB     1, R8
-                MOVE    PRF_NLEN, R9
-                SYSCALL(mulu, 1)
-                MOVE    R10, R2
-                ADD     PRF_LIST, R2
-                MOVE    R2, R3
-                ADD     PRF_NLEN, R3
+                MOVE    R1, R2                  ; R2: j - 1
+                SUB     1, R2
                 MOVE    R2, R8
-                MOVE    R3, R9
-                RSUB    _P_ICMP, 1
-                CMP     R10, 0                  ; name j - 1 > name j? (CMP a, b:
+                RSUB    _P_LNAME, 1
+                MOVE    R8, R9
+                ADD     PRF_FLEN, R9
+                RSUB    _P_LCMP, 1
+                CMP     R10, 0                  ; j - 1 behind j? (CMP a, b:
                 RBRA    _P_SO_NX, !V            ; V = a > b, signed)
-                MOVE    PRF_NLEN, R4            ; swap them
-_P_SO_SW        MOVE    @R2, R5
-                MOVE    @R3, @R2++
-                MOVE    R5, @R3++
-                SUB     1, R4
-                RBRA    _P_SO_SW, !Z
+                MOVE    R2, R8                  ; swap them
+                RSUB    _P_LSWAP, 1
                 SUB     1, R1
                 RBRA    _P_SO_J, 1
 _P_SO_NX        ADD     1, R0
@@ -832,10 +927,17 @@ _P_EN_CDR       MOVE    R0, R8
 _P_EN_RET       SYSCALL(leave, 1)
                 RET
 
-; _P_ACTIVATE: PRF_EDBUF is the active profile now: PRF_NAME, "profile=" in the
-; settings file, the menu line repainted. Registers preserved.
+; _P_ACTIVATE: the profile of file name R8 is the active one now: PRF_FILE,
+; PRF_NAME, "profile=<name>" in the settings file, the menu line repainted.
+; Registers preserved.
 _P_ACTIVATE     SYSCALL(enter, 1)
-                MOVE    PRF_EDBUF, R8
+                MOVE    PRF_FILE, R9
+                CMP     R8, R9
+                RBRA    _P_AC_1, Z
+                SYSCALL(strcpy, 1)
+_P_AC_1         MOVE    PRF_FILE, R8
+                RSUB    _P_PFX, 1
+                MOVE    R10, R8
                 MOVE    PRF_NAME, R9
                 SYSCALL(strcpy, 1)
                 MOVE    _PS_KEY, R8
@@ -852,32 +954,147 @@ _P_FLUSH        SYSCALL(enter, 1)
                 CMP     0, @R0
                 RBRA    _P_FL_RET, Z
                 RSUB    _P_SERIAL, 1
-                MOVE    PRF_NAME, R8
+                MOVE    PRF_FILE, R8
                 RSUB    _P_WRITE, 1
                 MOVE    PRF_DIRTY, R0           ; (failed: not again and again)
                 MOVE    0, @R0
 _P_FL_RET       SYSCALL(leave, 1)
                 RET
 
-; _P_INLIST: C=1 if the name R8 is in PRF_LIST (upper and lower case alike).
-; Registers preserved.
-_P_INLIST       SYSCALL(enter, 1)
+; _P_INLIST: C=1 if a profile of PRF_LIST has the name R8 (upper and lower
+; case alike; the name without its number); R9 = its file name then. R8
+; preserved, R10 used.
+_P_INLIST       INCRB
+                MOVE    R8, R2                  ; R2: the name
                 MOVE    PRF_LN, R0
                 MOVE    @R0, R0
-                MOVE    PRF_LIST, R9
+                MOVE    PRF_LIST, R1
 _P_IL_L         CMP     0, R0
                 RBRA    _P_IL_NO, Z
+                MOVE    R1, R8
+                RSUB    _P_PFX, 1               ; R10: its name
+                MOVE    R2, R8
+                MOVE    R10, R9
                 RSUB    _P_ICMP, 1
                 CMP     0, R10
                 RBRA    _P_IL_YES, Z
-                ADD     PRF_NLEN, R9
+                ADD     PRF_FLEN, R1
                 SUB     1, R0
                 RBRA    _P_IL_L, 1
-_P_IL_YES       SYSCALL(leave, 1)
+_P_IL_YES       MOVE    R1, R9
+                DECRB
                 OR      0x0004, SR
                 RET
-_P_IL_NO        SYSCALL(leave, 1)
+_P_IL_NO        MOVE    R2, R8
+                DECRB
                 AND     0xFFFB, SR
+                RET
+
+; _P_LSWAP: the entries R8 and R8 + 1 of PRF_LIST change places. Registers
+; preserved.
+_P_LSWAP        SYSCALL(enter, 1)
+                RSUB    _P_LNAME, 1
+                MOVE    R8, R0
+                MOVE    R8, R1
+                ADD     PRF_FLEN, R1
+                MOVE    PRF_FLEN, R2
+_P_LS_L         MOVE    @R0, R3
+                MOVE    @R1, @R0++
+                MOVE    R3, @R1++
+                SUB     1, R2
+                RBRA    _P_LS_L, !Z
+                SYSCALL(leave, 1)
+                RET
+
+; _P_RENFILE: the file of profile R8 renamed to R9 (file names; R9 in RAM, not
+; PRF_FNAME/PRF_PATH); C=1 if it worked (FAT32$W_RENAME refuses a name that
+; exists). Registers preserved.
+_P_RENFILE      SYSCALL(enter, 1)
+                MOVE    R9, R5                  ; R5: the new name
+                RSUB    _P_OPEN, 1              ; (R8: its device)
+                RBRA    _P_RF_NO, !C
+                MOVE    R8, R0                  ; R0: device
+                RSUB    _P_CDSAVE, 1
+                MOVE    _PS_DIR, R9
+                XOR     R10, R10
+                SYSCALL(f32_cd, 1)
+                CMP     0, R9
+                RBRA    _P_RF_CD, !Z
+                MOVE    R0, R8
+                RSUB    _P_PB, 1                ; PB_DEV, PB_DIR
+                MOVE    CFGS_PB, R1
+                ADD     FAT32$PB_EA, R1         ; PB_EA: the old entry
+                MOVE    PRF_FDH, R2
+                ADD     FAT32$FDH_EA_CL_LO, R2
+                MOVE    @R2++, @R1++
+                MOVE    @R2++, @R1++
+                MOVE    @R2, @R1
+                MOVE    CFGS_PB, R1             ; PB_DIR2 = PB_DIR
+                MOVE    R1, R2
+                ADD     FAT32$PB_DIR_LO, R1
+                ADD     FAT32$PB_DIR2_LO, R2
+                MOVE    @R1++, @R2++
+                MOVE    @R1, @R2
+                MOVE    R5, R8                  ; PB_NAME: "<new>.prof"
+                RSUB    _P_FNAME, 1
+                MOVE    CFGS_PB, R1
+                ADD     FAT32$PB_NAME, R1
+                MOVE    PRF_FNAME, @R1
+                MOVE    CFGS_PB, R8
+                RSUB    FAT32$W_RENAME, 1
+                MOVE    R9, R1                  ; R1: error
+                MOVE    R0, R8
+                RSUB    _P_CDREST, 1
+                CMP     0, R1
+                RBRA    _P_RF_NO, !Z
+                SYSCALL(leave, 1)
+                OR      0x0004, SR
+                RET
+_P_RF_CD        MOVE    R0, R8
+                RSUB    _P_CDREST, 1
+_P_RF_NO        SYSCALL(leave, 1)
+                AND     0xFFFB, SR
+                RET
+
+; _P_RENUM: the files of PRF_LIST renamed "01_<name>", "02_<name>", ... in the
+; order of the list (a file with its number already stays); the list and
+; PRF_FILE follow. Registers preserved.
+_P_RENUM        SYSCALL(enter, 1)
+                XOR     R0, R0                  ; R0: entry
+_P_RU_L         MOVE    PRF_LN, R1
+                CMP     @R1, R0
+                RBRA    _P_RU_RET, Z
+                MOVE    R0, R8
+                RSUB    _P_LNAME, 1
+                MOVE    R8, R1                  ; R1: its file name
+                RSUB    _P_PFX, 1               ; R10: its name
+                MOVE    R0, R8
+                ADD     1, R8
+                MOVE    R10, R9
+                RSUB    _P_MKFULL, 1            ; PRF_FULL: the new file name
+                MOVE    R1, R8
+                MOVE    PRF_FULL, R9
+                SYSCALL(strcmp, 1)
+                CMP     0, R10
+                RBRA    _P_RU_NX, Z
+                MOVE    R1, R8
+                MOVE    PRF_FULL, R9
+                RSUB    _P_RENFILE, 1
+                RBRA    _P_RU_NX, !C
+                MOVE    R1, R8                  ; the active one?
+                MOVE    PRF_FILE, R9
+                RSUB    _P_ICMP, 1
+                MOVE    R10, R2
+                MOVE    PRF_FULL, R8            ; the list follows
+                MOVE    R1, R9
+                SYSCALL(strcpy, 1)
+                CMP     0, R2
+                RBRA    _P_RU_NX, !Z
+                MOVE    PRF_FILE, R9            ; and PRF_FILE
+                SYSCALL(strcpy, 1)
+_P_RU_NX        ADD     1, R0
+                RBRA    _P_RU_L, 1
+_P_RU_RET       SYSCALL(leave, 1)
                 RET
 
 ; _P_USERN: PRF_EDBUF := "User N", the first N (1..99) that is no profile yet.
@@ -1284,6 +1501,8 @@ B3_PRF_BOOT     SYSCALL(enter, 1)
                 RSUB    _P_DBG, 1
                 MOVE    PRF_NAME, R0
                 MOVE    0, @R0
+                MOVE    PRF_FILE, R0
+                MOVE    0, @R0
                 MOVE    PRF_DIRTY, R0
                 MOVE    0, @R0
                 MOVE    PRF_PAINT, R0
@@ -1293,40 +1512,39 @@ B3_PRF_BOOT     SYSCALL(enter, 1)
                 MOVE    PRF_TXT, R0
                 MOVE    0, @R0
                 RSUB    _P_ENSURE, 1
+                RSUB    _P_LIST, 1
                 MOVE    _PS_KEY, R8             ; the one the settings file names
                 MOVE    PRF_EDBUF, R9
                 MOVE    PRF_NLEN, R10
                 RSUB    CFGS_GET, 1
-                RBRA    _P_BO_LIST, !C
+                RBRA    _P_BO_A500, !C
                 MOVE    PRF_EDBUF, R8
-                RSUB    _P_READ, 1
-                RBRA    _P_BO_OK, C
-_P_BO_LIST      MOVE    _PD_A500, R8            ; else A500 (the default of
-                MOVE    PRF_EDBUF, R9           ; a new setup, as before),
-                SYSCALL(strcpy, 1)              ; else the first one
-                MOVE    PRF_EDBUF, R8
-                RSUB    _P_READ, 1
-                RBRA    _P_BO_OK, C
-                RSUB    _P_LIST, 1
+                RSUB    _P_INLIST, 1            ; R9: its file name
+                RBRA    _P_BO_GO, C
+_P_BO_A500      MOVE    _PD_A500, R8            ; else A500 (the default of
+                RSUB    _P_INLIST, 1            ; a new setup, as before),
+                RBRA    _P_BO_GO, C             ; else the first one
                 MOVE    PRF_LN, R0
                 CMP     0, @R0
                 RBRA    _P_BO_DEF, Z
-                MOVE    PRF_LIST, R8
-                MOVE    PRF_EDBUF, R9
+                MOVE    PRF_LIST, R9
+_P_BO_GO        MOVE    R9, R8
+                MOVE    PRF_FULL, R9
                 SYSCALL(strcpy, 1)
-                MOVE    PRF_EDBUF, R8
+                MOVE    PRF_FULL, R8
                 RSUB    _P_READ, 1
                 RBRA    _P_BO_OK, C
 _P_BO_DEF       XOR     R8, R8                  ; nothing on the card: the
                 RSUB    _P_DEFBITS, 1           ; A500 in memory
                 MOVE    _PD_A500, R8
-                MOVE    PRF_EDBUF, R9
+                MOVE    PRF_FULL, R9
                 SYSCALL(strcpy, 1)
                 MOVE    PRF_DIRTY, R0
                 MOVE    0, @R0
                 RBRA    _P_BO_NAME, 1
 _P_BO_OK        RSUB    _P_APPLY, 1
-_P_BO_NAME      RSUB    _P_ACTIVATE, 1
+_P_BO_NAME      MOVE    PRF_FULL, R8
+                RSUB    _P_ACTIVATE, 1
                 MOVE    PRF_NAME, R8
                 SYSCALL(strlen, 1)
                 MOVE    _PD_NAME, R8
@@ -1436,7 +1654,7 @@ _P_SL_F         CMP     R1, R0                  ; on the active profile
                 RBRA    _P_SL_D, Z
                 MOVE    R1, R8
                 RSUB    _P_LNAME, 1
-                MOVE    PRF_NAME, R9
+                MOVE    PRF_FILE, R9
                 RSUB    _P_ICMP, 1
                 CMP     0, R10
                 RBRA    _P_SL_D, Z
@@ -1462,12 +1680,14 @@ _P_SL_N         CMP     R2, R0
                 MOVE    R2, R8
                 RSUB    _P_LNAME, 1
                 MOVE    R8, R4
-                MOVE    PRF_NAME, R9
+                MOVE    PRF_FILE, R9
                 RSUB    _P_ICMP, 1
                 CMP     0, R10
                 RBRA    _P_SL_N1, !Z
                 MOVE    M2M$OPT_SEL_MULTI, @R3  ; the active one
-_P_SL_N1        MOVE    R4, R8
+_P_SL_N1        MOVE    R4, R8                  ; its name (without the number)
+                RSUB    _P_PFX, 1
+                MOVE    R10, R8
                 MOVE    PRF_LINE, R9
                 ADD     1, R9
                 SYSCALL(strcpy, 1)
@@ -1483,6 +1703,12 @@ _P_SL_A         MOVE    R0, R8                  ; the separator, Add New
                 MOVE    _PS_ADD, R8
                 MOVE    R0, R11
                 ADD     3, R11
+                RSUB    _P_PUT, 1
+                CMP     2, R0                   ; something to reorder?
+                RBRA    _P_SL_SEL, N            ; (2 > R0)
+                MOVE    _PS_MOVE, R8
+                MOVE    R0, R11
+                ADD     5, R11
                 RSUB    _P_PUT, 1
 
 _P_SL_SEL       MOVE    R1, R8                  ; the cursor bar
@@ -1512,7 +1738,28 @@ _P_SL_K1        CMP     M2M$KEY_DOWN, R4
                 RBRA    _P_SL_SEL, !N
                 XOR     R1, R1
                 RBRA    _P_SL_SEL, 1
-_P_SL_K2        CMP     M2M$KEY_RETURN, R4
+_P_SL_K2        CMP     M2M$KEY_LEFT, R4        ; Left: the profile moves up
+                RBRA    _P_SL_K3, !Z
+                CMP     0, R1                   ; (not the first, not Add New)
+                RBRA    _P_SL_SEL, Z
+                CMP     R1, R0
+                RBRA    _P_SL_SEL, Z
+                SUB     1, R1
+                MOVE    R1, R8
+                RBRA    _P_SL_MV, 1
+_P_SL_K3        CMP     M2M$KEY_RIGHT, R4       ; Right: down
+                RBRA    _P_SL_K4, !Z
+                MOVE    R1, R8                  ; (not the last, not Add New:
+                ADD     1, R8                   ; R1 + 1 >= R0)
+                CMP     R8, R0
+                RBRA    _P_SL_SEL, Z
+                RBRA    _P_SL_SEL, N
+                MOVE    R1, R8
+                ADD     1, R1
+_P_SL_MV        RSUB    _P_LSWAP, 1             ; entries R8 and R8 + 1, then
+                RSUB    _P_RENUM, 1             ; the files in the new order
+                RBRA    _P_SL_D0, 1             ; (the cursor follows)
+_P_SL_K4        CMP     M2M$KEY_RETURN, R4
                 RBRA    _P_SL_GO, Z
                 CMP     M2M$KEY_SPACE, R4
                 RBRA    _P_SL_GO, Z
@@ -1527,17 +1774,18 @@ _P_SL_GO        CMP     R1, R0                  ; Add New Profile
                 MOVE    R1, R8                  ; a profile: the active one
                 RSUB    _P_LNAME, 1             ; already?
                 MOVE    R8, R4
-                MOVE    PRF_NAME, R9
+                MOVE    PRF_FILE, R9
                 RSUB    _P_ICMP, 1
                 CMP     0, R10
                 RBRA    _P_SL_END, Z
                 MOVE    R4, R8
-                MOVE    PRF_EDBUF, R9
+                MOVE    PRF_FULL, R9
                 SYSCALL(strcpy, 1)
-                MOVE    PRF_EDBUF, R8
+                MOVE    PRF_FULL, R8
                 RSUB    _P_READ, 1
                 RBRA    _P_SL_END, !C           ; (gone meanwhile: nothing)
                 RSUB    _P_APPLY, 1
+                MOVE    PRF_FULL, R8
                 RSUB    _P_ACTIVATE, 1
                 XOR     R8, R8                  ; its Kickstart and hard disks
                 MOVE    1, R9                   ; (a switch: the HDL cold-boots)
@@ -1558,15 +1806,16 @@ _P_ROW          CMP     R8, R0
 _P_RO_A         ADD     3, R8                   ; Add New: below the bar
                 RET
 
-; _P_LNAME: entry R8 of PRF_LIST -> R8 = its name. R9..R11 used.
-_P_LNAME        MOVE    PRF_NLEN, R9
+; _P_LNAME: entry R8 of PRF_LIST -> R8 = its file name. R9..R11 used.
+_P_LNAME        MOVE    PRF_FLEN, R9
                 SYSCALL(mulu, 1)
                 MOVE    R10, R8
                 ADD     PRF_LIST, R8
                 RET
 
 ; _P_ADDNEW: Add New Profile: the name (empty: "User N"), then a copy of the
-; active profile under it, which becomes the active one. Registers preserved.
+; active profile under it, which becomes the active one: the last of the list
+; (the list is numbered first). Registers preserved.
 _P_ADDNEW       SYSCALL(enter, 1)
                 MOVE    PRF_EMPTY, R8
                 XOR     R9, R9
@@ -1582,10 +1831,17 @@ _P_AN_HAVE      MOVE    PRF_EDBUF, R8
                 MOVE    PRF_EDBUF, R8           ; that name exists: again
                 MOVE    _PS_EXISTS, R9
                 RBRA    _P_AN_ED, 1
-_P_AN_NEW       RSUB    _P_SERIAL, 1            ; the settings of the active
-                MOVE    PRF_EDBUF, R8           ; profile under the new name
+_P_AN_NEW       RSUB    _P_RENUM, 1             ; 01_, 02_, ... and the new one
+                MOVE    PRF_LN, R8              ; behind them
+                MOVE    @R8, R8
+                ADD     1, R8
+                MOVE    PRF_EDBUF, R9
+                RSUB    _P_MKFULL, 1
+                RSUB    _P_SERIAL, 1            ; the settings of the active
+                MOVE    PRF_FULL, R8            ; profile under the new name
                 RSUB    _P_WRITE, 1
                 RBRA    _P_AN_RET, !C
+                MOVE    PRF_FULL, R8
                 RSUB    _P_ACTIVATE, 1
 _P_AN_RET       SYSCALL(leave, 1)
                 RET
@@ -1615,52 +1871,37 @@ _P_RN_ED        RSUB    _P_EDIT, 1
                 RBRA    _P_RN_GO, !C
                 MOVE    _PS_EXISTS, R9          ; exists: again
                 RBRA    _P_RN_ED, 1
-_P_RN_GO        MOVE    PRF_NAME, R8            ; the file of the old name
-                RSUB    _P_OPEN, 1              ; (R8: its device)
-                RBRA    _P_RN_NOF, !C
-                MOVE    R8, R0                  ; R0: device
-                RSUB    _P_CDSAVE, 1
-                MOVE    _PS_DIR, R9
-                XOR     R10, R10
-                SYSCALL(f32_cd, 1)
-                CMP     0, R9
-                RBRA    _P_RN_CD, !Z
-                MOVE    R0, R8
-                RSUB    _P_PB, 1                ; PB_DEV, PB_DIR
-                MOVE    CFGS_PB, R1
-                ADD     FAT32$PB_EA, R1         ; PB_EA: the old entry
-                MOVE    PRF_FDH, R2
-                ADD     FAT32$FDH_EA_CL_LO, R2
-                MOVE    @R2++, @R1++
-                MOVE    @R2++, @R1++
-                MOVE    @R2, @R1
-                MOVE    CFGS_PB, R1             ; PB_DIR2 = PB_DIR
-                MOVE    R1, R2
-                ADD     FAT32$PB_DIR_LO, R1
-                ADD     FAT32$PB_DIR2_LO, R2
+_P_RN_GO        MOVE    PRF_FILE, R8            ; the new file name: the number
+                RSUB    _P_PFX, 1               ; of the old one + the new name
+                CMP     0xFFFF, R9              ; (none yet: the list is
+                RBRA    _P_RN_G1, !Z            ; numbered first, so a name
+                RSUB    _P_RENUM, 1             ; like "7_up" stays as it is)
+                MOVE    PRF_FILE, R8
+                RSUB    _P_PFX, 1
+_P_RN_G1        MOVE    PRF_FILE, R1
+                MOVE    PRF_FULL, R2
+_P_RN_P         CMP     R1, R10
+                RBRA    _P_RN_P2, Z
                 MOVE    @R1++, @R2++
-                MOVE    @R1, @R2
-                MOVE    PRF_EDBUF, R8           ; PB_NAME: "<new>.prof"
-                RSUB    _P_FNAME, 1
-                MOVE    CFGS_PB, R1
-                ADD     FAT32$PB_NAME, R1
-                MOVE    PRF_FNAME, @R1
-                MOVE    CFGS_PB, R8
-                RSUB    FAT32$W_RENAME, 1
-                MOVE    R9, R1                  ; R1: error
-                MOVE    R0, R8
-                RSUB    _P_CDREST, 1
-                CMP     0, R1
-                RBRA    _P_RN_END, !Z
+                RBRA    _P_RN_P, 1
+_P_RN_P2        MOVE    PRF_EDBUF, R8
+                MOVE    R2, R9
+                SYSCALL(strcpy, 1)
+                MOVE    PRF_FILE, R8            ; the file of the old name
+                RSUB    _P_OPEN, 1
+                RBRA    _P_RN_NOF, !C
+                MOVE    PRF_FILE, R8
+                MOVE    PRF_FULL, R9
+                RSUB    _P_RENFILE, 1
+                RBRA    _P_RN_END, !C
+                MOVE    PRF_FULL, R8
                 RSUB    _P_ACTIVATE, 1
                 RBRA    _P_RN_END, 1
-_P_RN_CD        MOVE    R0, R8
-                RSUB    _P_CDREST, 1
-                RBRA    _P_RN_END, 1
 _P_RN_NOF       RSUB    _P_SERIAL, 1            ; no file (the A500 defaults
-                MOVE    PRF_EDBUF, R8           ; in memory): one with the new
+                MOVE    PRF_FULL, R8            ; in memory): one with the new
                 RSUB    _P_WRITE, 1             ; name
                 RBRA    _P_RN_END, !C
+                MOVE    PRF_FULL, R8
                 RSUB    _P_ACTIVATE, 1
 _P_RN_END       RSUB    _P_CLR, 1
                 RSUB    _P_PAINT, 1
