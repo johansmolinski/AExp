@@ -429,14 +429,38 @@ Installers that ask for the hard disk's device (the AmigaOS 3.2 one, for
 example) take `lide.device` too. Never mount the same image as master and slave at
 once: the two drives would write to one file without knowing of each other.
 
-The image must be a whole hard disk with a partition table (a Rigid Disk
-Block, RDB), not a single-partition "hardfile": WinUAE's "Create hardfile"
-with RDB, or [amitools](https://github.com/cnvogelg/amitools)' `rdbtool`
-make such images. Kickstart 1.3 has only the old file system (OFS) in ROM, so
-either use OFS partitions, or put the FastFileSystem into the RDB (rdbtool
-`fsadd`), which lide.device then loads at boot. The image size must be a
-multiple of 512 bytes; FAT32 limits a file to 4 GB (for bigger disks see
-the partitions below).
+An image is normally a whole hard disk with a partition table (a Rigid Disk
+Block, RDB): WinUAE's "Create hardfile" with RDB, or
+[amitools](https://github.com/cnvogelg/amitools)' `rdbtool` make such images.
+Kickstart 1.3 has only the old file system (OFS) in ROM, so either use OFS
+partitions, or put the FastFileSystem into the RDB (rdbtool `fsadd`), which
+lide.device then loads at boot. The image size must be a multiple of 512
+bytes; FAT32 limits a file to 4 GB (for bigger disks see the partitions
+below).
+
+Simplified hardfiles work too: an image of a single partition without an RDB,
+as UAE makes them by default (WinUAE's "Add Hardfile" without RDB mode,
+amitools' `xdftool`, and many images that were made for UAE). The core then
+shows the drive with one extra cylinder in front of the image: a made-up RDB
+with one bootable partition that covers the whole image, named `DH0` on the
+master and `DH1` on the slave, with the image's own file system type. MiSTer
+does the same. Such an image is recognised by its first block, which starts
+with `DOS\0` to `DOS\7` (OFS/FFS), `PFS` or `SFS`, and by having no RDB in its
+first 16 blocks; a blank image is left as it is, so HDToolBox can still
+partition it. The partition has UAE's default geometry (32 blocks per track,
+one surface, two reserved blocks); images over about 1 GB that were formatted
+on MiSTer, which uses bigger cylinders there, are recognised by where their
+root block is. Notes:
+
+* The file system must be one the Amiga already has: FFS is in the ROM of
+  Kickstart 2.0 and newer. A PFS3 or SFS image needs that file system
+  installed on the system you boot (a made-up RDB carries no file system), so
+  it can be a second drive but not the boot disk.
+* The made-up blocks are read-only: writes to them are ignored, and HDToolBox
+  shows the drive as "MEGAMIGA DONT REPARTITION". Do not repartition such a
+  drive - its image has no room for a real RDB.
+* An Amiga partition of the SD card (see below) without its own RDB is
+  treated the same way.
 
 To format a partition on the Amiga, use `Format DRIVE DH0: NAME Work`, or
 add `QUICK` to only write the empty file system (much faster, and just as
@@ -483,7 +507,8 @@ its partitions in the list of the cards; it has no folders to browse.
 3. Partition the new disk on the Amiga with HDToolBox (`scsi.device` on
    the Gayle, `lide.device` on the Zorro II board), or
    copy an existing HDF image into the partition on a PC (`dd`); either way
-   the partition holds a whole disk with its own RDB.
+   the partition holds a whole disk with its own RDB (or a single partition
+   without one, see the simplified hardfiles above).
 
 Format the Amiga partitions with `QUICK`: a full format writes and then
 verifies every block, one SD card block at a time, which takes a long time

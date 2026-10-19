@@ -3014,6 +3014,71 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       first pass. **Hardware-confirmed by the user on 2026-10-19** (linux040-d, kernel kit
       linux-g, A1200 profile with the 68040 and Gayle IDE): the OSD is back, Linux boots
       to the busybox shell, libata finds the ATA disk and lists its partitions.
+  - **HDF images without an RDB (branch `vrdb` from main 33fdb93, 2026-10-19).** The
+    user asked for UAE's simplified hardfiles (one file system from block 0 on, no
+    RDB). Like MiSTer's `ide.cpp` (`guess_geometry`, `fill_fake_rdb`), the drive gets a
+    virtual cylinder in front of the image: block 0 an RDSK, block 1 one PART over the
+    whole image, the rest zeros; the image starts at block `HDF_VRDB`.
+    - Detection (`B3_VRDB_DET`, at every mount of a file or an SD partition, after the
+      extent map): block 0 starts with `DOS\0`..`DOS\7`, `PFS\x`, `PDS\x` or `SFS\0`, and
+      blocks 1..15 hold no `RDSK`. Blank images stay as they are (HDToolBox). MiSTer takes
+      any image whose first 16 blocks are not all zero.
+    - Geometry: OFS/FFS put the root block at (blocks - 1 + reserved) / 2 of the
+      partition, so the partition must have exactly the formatted size. UAE's default
+      (32 sectors x 1 surface, 2 reserved, whole cylinders: root = (n & ~31) / 2) is
+      taken unless only MiSTer's cylinder (the smallest of 32..2048 blocks with fewer
+      than 65535 cylinders - it differs from UAE's above ~1 GB) finds an OFS/FFS root
+      (type 2, secondary type 1) there. amitools' `xdftool` images are UAE-shaped
+      (checked at 2, 10, 50, 300 MB: whole 32-block cylinders, root in the middle).
+      Differences to MiSTer: the DosType comes from the image (MiSTer always DOS\1),
+      MaxTransfer 0x1FE00 (MiSTer 0xFFFFFF), vendor/product "MEGAMIGA" / "DONT
+      REPARTITION" / "VRDB", no cylinder clamp at 65535 (RDB fields are 32 bits).
+    - Writes to the virtual blocks are ignored (as MiSTer). No FSHD: PFS/SFS images need
+      the file system on the booting system.
+    - Firmware: code bank 3 `BANK_IDE` (889 words) with the detection, the blocks
+      (`B3_VRDB_RD` builds them in the board buffer; the buffer cannot be read back, so
+      `_VR_PUTL` sums the checksum while writing) and HDF_LINK/HDF_PART_GET moved out of
+      the fixed ROM: 32708 -> 32566 words (142 free). Hooks in the fixed ROM:
+      `IDE_LBA2BLK`/`IDE_SEEK` subtract `HDF_VRDB`, `IDE_READ_SECT`/`IDE_WRITE_SECT` ask
+      `HDF_VRDB_RD`/`_WR` first, `HDF_PREP` calls `HDF_VRDB_DET`. Per drive (inside
+      HDF_FDH..HDF_SAVE): `HDF_VRDB`, `HDF_VDOS_HI/LO`; `HDF_BLK_WORDS` 285 -> 288.
+      HEAP 0xAFCF + 18528 = 0xF82F, 1697 words below VAR$STACK_START for 1536.
+    - Sector engine: per-unit skip register (ide_board 0x38/0x39, `IDE_ENG_SKIP0/1`):
+      a command that starts below it (LBA or CHS) goes to the firmware, the others
+      address LBA - skip; `sects` counts the virtual blocks too. HDF_ENG_SETUP writes it
+      and reads it back: a board without it (a firmware patch into an older build) reads
+      0, then such a drive stays with the firmware (correct, only slower).
+    - Tests: `~/aexp-work/vrdb/fw` (fw-ide4 + vrdb: 14 images - UAE fast path, a
+      fragmented one on the slow path, one over 64K sectors on the slow path, no root,
+      PFS/PDS/SFS, refused ids, RDSK in block 5/15/16, a sparse 1 GB SD partition in
+      MiSTer's geometry with a decoy header at UAE's root, a small DOS\7 partition; the
+      reference RDSK/PART from `vrdb_ref.py` (written from the NDK layouts, checked with
+      amitools: `rdbtool` parses it, `xdftool` mounts the partition through it and reads a
+      file back); the whole fw-ide4 block() suite runs behind the virtual cylinder;
+      `H_OLDHW=1` = a board without the skip register), `~/aexp-work/vrdb/eng`
+      (tb_ide_z3b + SKIP: every LBA command shifted, commands below the skip must reach
+      the firmware; skip 0 and 32, Gayle and RIPPLE with DMA).
+    - Geometry fix after the first hardware test (vrdb-a, the user's SWOS WHDLoad image, 4 MB
+      = 8192 blocks, A1200 profile on the Gayle): it booted, then "read error on disk block
+      8045". Kickstart 3.1's scsi.device addresses by CHS with the IDENTIFY geometry and
+      stops at its capacity: 16 x 63 gave 8 cylinders = 8064 of the 8224 blocks. Like
+      MiSTer, a drive with a virtual RDB now reports the partition's geometry (IDENTIFY
+      words 1/3/6 via `B3_VRDB_ID`: min(spc, 128) sectors, spc / that heads, cylinders =
+      blocks / spc up to 65535) and gets it as the default CHS geometry at the mount
+      (`HDF_HEADS/SPT`, so also the engine's geometry register); `HDF_VRDB_DET` moved
+      behind the 16/63 defaults in HDF_PREP. (Plain RDB images can hit the same limit on
+      the Gayle when their RDB cylinders reach past 16 x 63 ones; MiSTer reports the RDB's
+      geometry for those too - not done here.)
+    - Builds: `vrdb-a` (REF linux040-d, incremental synthesis + implementation; WNS +0.047
+      after post-route phys_opt, WHS +0.010), firmware patch `vrdb-p1` (68a31d8) =
+      **hardware-confirmed by the user 2026-10-19: SWOS loads without errors.** Fixed ROM
+      32572/32768, bank 3 951 words.
+    - Test results: fw - six image cases + the H_OLDHW variant pass (2154 records in
+      case1), 198/198 mutants killed (81 v_* + the fw-ide4 set; the root-check mutants
+      needed per-case PART3B variants - MiSTer root only / both / neither / a T_DATA decoy
+      - and the direct `_VR_LONG` records 13 incl. one right after a WRITE's dirty steal;
+      forged states (record 14) cover 256/2048-block cylinders beyond the emulator's 4 GB;
+      v_is_noff equivalent); eng - skip 0/32 x Gayle/RIPPLE pass, 9/9 HDL mutants killed.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

@@ -30,6 +30,9 @@
 --   base   file: DEV_CLUSTER - (2 << shift) (block of cluster 0); partition: first block
 --   shift  log2(sectors per cluster)
 --   map    words u * 2048 + ...: word 0 extents n, then n x (first cluster lo/hi, clusters lo/hi)
+--   skip   Megamiga 0.7: blocks in front of the image (the firmware's virtual RDB of an image
+--          without one): a command that starts below them goes to the firmware, the others
+--          address the image at LBA - skip (sects counts them too)
 --
 -- Done in 2026 (Megamiga fork) and licensed under GPL v3.
 ---------------------------------------------------------------------------------------------------------
@@ -66,6 +69,8 @@ entity ide_engine is
       -- 0 = none: CHS commands go to the firmware
       cfg_geom0_i    : in  std_logic_vector(15 downto 0) := (others => '0');
       cfg_geom1_i    : in  std_logic_vector(15 downto 0) := (others => '0');
+      cfg_skip0_i    : in  std_logic_vector(15 downto 0) := (others => '0');
+      cfg_skip1_i    : in  std_logic_vector(15 downto 0) := (others => '0');
       cfg_sects0_i   : in  std_logic_vector(31 downto 0);
       cfg_sects1_i   : in  std_logic_vector(31 downto 0);
       cfg_base0_i    : in  std_logic_vector(31 downto 0);
@@ -154,6 +159,7 @@ architecture synthesis of ide_engine is
    signal ch_spt    : unsigned(8 downto 0) := (others => '0');
    signal ch_p1     : unsigned(20 downto 0) := (others => '0');
    signal ch_wr     : std_logic := '0';
+   signal skip      : unsigned(15 downto 0) := (others => '0');   -- of the command's unit
    signal left      : unsigned(8 downto 0) := (others => '0');    -- sectors not yet started
    signal moved     : unsigned(15 downto 0) := (others => '0');   -- sectors done (produced/written)
    signal freed     : unsigned(15 downto 0) := (others => '0');   -- free toggles seen
@@ -254,6 +260,8 @@ begin
       variable g     : std_logic_vector(15 downto 0);
       variable gh    : unsigned(4 downto 0);
       variable gs    : unsigned(8 downto 0);
+      variable sk    : unsigned(15 downto 0);
+      variable l28   : unsigned(27 downto 0);
 
       -- take the command (direction w) / leave it to the firmware
       procedure take(w : std_logic) is
@@ -332,7 +340,12 @@ begin
                else
                   cnt := resize(unsigned(tf_i(23 downto 16)), 9);
                end if;
-               lba  <= x"0" & unsigned(tf_i(51 downto 48)) & unsigned(tf_i(47 downto 24));
+               -- Megamiga 0.7: the image starts at block skip of the unit
+               if tf_i(52) = '1' then sk := unsigned(cfg_skip1_i); else sk := unsigned(cfg_skip0_i); end if;
+               skip <= sk;
+               l28  := unsigned(tf_i(51 downto 48)) & unsigned(tf_i(47 downto 24));
+               --lba  <= x"0" & unsigned(tf_i(51 downto 48)) & unsigned(tf_i(47 downto 24));
+               lba  <= resize(l28, 32) - resize(sk, 32);
                left <= cnt;
                -- Megamiga 0.7: + READ/WRITE MULTIPLE while the unit has a multiple count
                --ok := tf_i(54) = '1' and sd_ready_i = '1' and
@@ -341,7 +354,7 @@ begin
                        (c = x"20" or c = x"21" or c = x"30" or c = x"31" or
                         ((c = x"C4" or c = x"C5") and
                          ((tf_i(52) = '0' and cfg_mult0_i = '1') or (tf_i(52) = '1' and cfg_mult1_i = '1'))));
-               ok := tf_i(54) = '1' and elig;
+               ok := tf_i(54) = '1' and elig and l28 >= resize(sk, 28);
                if tf_i(52) = '1' then
                   ok := ok and cfg_mode1_i /= "00" and
                         resize(unsigned(tf_i(51 downto 48)) & unsigned(tf_i(47 downto 24)), 33) +
@@ -384,7 +397,7 @@ begin
                lba <= resize(ch_p1 * ch_spt, 32) + ch_sec - 1;
                st  <= E_CHS3;
 
-            when E_CHS3 =>                         -- the range check of E_DECIDE
+            when E_CHS3 =>                         -- the range checks of E_DECIDE
                if unit = '1' then
                   ok := cfg_mode1_i /= "00" and
                         resize(lba, 33) + resize(left, 33) <= resize(unsigned(cfg_sects1_i), 33);
@@ -392,7 +405,9 @@ begin
                   ok := cfg_mode0_i /= "00" and
                         resize(lba, 33) + resize(left, 33) <= resize(unsigned(cfg_sects0_i), 33);
                end if;
+               ok := ok and lba >= resize(skip, 32);
                if ok then
+                  lba <= lba - resize(skip, 32);     -- (the image's block)
                   take(ch_wr);
                else
                   forward;
