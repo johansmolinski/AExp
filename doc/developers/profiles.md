@@ -12,6 +12,9 @@ options, and they always belong to the active profile.
 - The default profiles (A500, A600, A1200, A4000) are created only when
   `/amiga/profiles` does not exist or holds no profile. Otherwise the user
   deliberately changed the defaults and nothing is created.
+- Profiles can be named in the menu by typing on the MEGA65 keyboard (option B
+  of 2026-10-19: real typing, not a character picker), with only characters
+  FAT32 allows in long file names.
 
 ## Menu
 
@@ -27,6 +30,7 @@ Profile" below it:
  -----------------------
  Profile: A1200
  Save as New Profile
+ Rename Profile
  -----------------------
  Profile Settings
  Drive Settings
@@ -124,9 +128,35 @@ The AR3 ROM stays a session load as today (not remembered per profile).
   chosen or forgotten) marks the profile dirty; it is written back to its file
   when the menu closes, together with the settings file (ROSM_SAVE). The file is
   rewritten whole (FAT32 write layer: W_SETSIZE + write).
-- **Save as New Profile.** Writes the current settings to `User 1.prof` (the
-  first free `User N`), makes it the active profile and shows its name. Renaming
-  is done outside the core.
+- **Save as New Profile.** Asks for a name (the editor below; Return on an
+  empty name takes the first free `User N`), writes the current settings to
+  `<name>.prof`, makes it the active profile and shows its name.
+- **Rename Profile.** Asks for a new name (prefilled with the old one) and
+  renames the file of the active profile (FAT32$W_RENAME); `profile=` in the
+  settings file follows. Renaming outside the core (PC, `SDCard:`) still works.
+
+## Name editor
+
+A one-line editor in the menu window: `Name: Work 040_` with a cursor.
+
+- Typing: the MEGA65 keyboard with Shift (upper case and the shifted symbols).
+  Accepted: `A-Z a-z 0-9`, space and `! # $ % & ' ( ) + , - . ; = @ [ ] ^ _ `
+  `` ` `` `{ } ~`. Not accepted (nothing happens): `" * / : < > ? \ |` and
+  control characters - the characters FAT32 forbids in long names.
+- Keys: Left/Right move the cursor, Delete (backspace) deletes in front of it,
+  Return accepts, Run/Stop cancels. At most 24 characters (the menu shows
+  "Profile: " + the first 12).
+- On Return: leading and trailing spaces and trailing dots are removed (Windows
+  refuses them too). Empty -> the default (see above). A name that already
+  exists -> "A profile with this name exists" and the editor stays open.
+- Hardware: while the menu is open the framework hides the keyboard from the
+  core and gives the firmware only its 10 menu keys. New: `m2m_keyb.vhd` also
+  exports the UNGATED key status (`key_raw_n_o`, the osm-hotkey pattern of M2M
+  exception 4), threaded through `framework.vhd` and the four board tops into the
+  core; the core turns key-down events into a QNICE-readable register
+  (`{sequence, shift, key number}`, cdc_stable into the QNICE domain), and the
+  firmware maps MEGA65 key numbers to characters (a table with and without
+  Shift). Needs a full build.
 - **Greying, deselecting, cold boot on topology changes**: as now, on the one
   block.
 
@@ -138,7 +168,9 @@ The AR3 ROM stays a session load as today (not remembered per profile).
   (xcheck.py).
 - `mega65.vhd`: prof_decode reads the one block (no v_base); the profile index
   is gone from the HDL.
-- Firmware (code bank 2, ~1900 words free; the fixed ROM has 60): create the
+- Keyboard: m2m_keyb.vhd `key_raw_n_o` -> framework -> board tops R3..R6 ->
+  mega65.vhd (key-down event register, a QNICE device register).
+- Firmware (code bank 2, ~1900 words free, else bank 3; the fixed ROM has 60): create the
   defaults, read/parse a profile into the block bits and paths, write a profile,
   "Save as New", the active name in the settings text; PROFILE_APPLY takes the
   paths from the active profile instead of the `a1200.kick`-style keys
@@ -153,13 +185,15 @@ The AR3 ROM stays a session load as today (not remembered per profile).
   no directory / an empty one / one without `.prof` files, not for one with a
   profile; parse (all keys, missing, invalid, unknown, CR LF, case), write and
   read back, the active profile missing -> the first one, Save as New naming
-  (User 1, User 2 with User 1 present), write-back on menu close; mutants.
+  (User 1, User 2 with User 1 present), write-back on menu close; the name
+  editor (allowed/refused characters, Shift, cursor, delete, trimming, empty,
+  an existing name, rename); mutants. ghdl: the key-down event register.
 - config/ghdl: the one block, prof_decode, xcheck of the renumbered constants;
   render of the main menu and Profile Settings (height).
 - Hardware: first start (defaults created, profile chosen), switching, editing
   and power cycling, a copied and renamed profile, a hand-edited file.
 
-## Open points
+## Open points (proposed answers used unless the user says otherwise)
 
-1. "Empty directory" = no `.prof` file (other files ignored)?
-2. Should a profile also remember the AR3 ROM?
+1. "Empty directory" = no `.prof` file (other files ignored). Proposed: yes.
+2. Should a profile also remember the AR3 ROM? Proposed: no (as today).
