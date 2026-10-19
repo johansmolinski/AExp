@@ -3372,7 +3372,6 @@ _HDFP_SEEK      RSUB    HDF_GEOM_INIT, 1        ; direct block I/O state
 _HDFP_SKM       RSUB    FAT32$FILE_SEEK_MAP, 1
 _HDFP_SKD       CMP     0, R9
                 RBRA    _HDFP_FATERR, !Z
-                RSUB    HDF_VRDB_DET, 1         ; Megamiga 0.7: a virtual RDB?
 
                 MOVE    HDF_FDH, R8             ; remember the card and its
                 MOVE    @R8, R8                 ; generation (see the SD
@@ -3390,6 +3389,7 @@ _HDFP_SKD       CMP     0, R9
                 MOVE    IDE_DEF_SPT, @R8
                 MOVE    HDF_MULT, R8            ; READ/WRITE MULTIPLE in blocks
                 MOVE    IDE_MULT_MAX, @R8       ; of 16 (until SET MULTIPLE)
+                RSUB    HDF_VRDB_DET, 1         ; Megamiga 0.7: a virtual RDB?
                 MOVE    R6, R8                  ; mounted: bit 0 or 1
                 ADD     1, R8
                 MOVE    HDF_UNITS, R1
@@ -3526,6 +3526,8 @@ HDF_VRDB_RD     RSUB    FAR_CALL, 1
                 .DW     BANK_IDE, B3_VRDB_RD
 HDF_VRDB_WR     RSUB    FAR_CALL, 1
                 .DW     BANK_IDE, B3_VRDB_WR
+HDF_VRDB_ID     RSUB    FAR_CALL, 1
+                .DW     BANK_IDE, B3_VRDB_ID
 
 ; HDF_GEOM_INIT: state of the direct block I/O for a freshly mapped HDF:
 ; log2 of the sectors per cluster of its device, extent cache at the start
@@ -4640,6 +4642,7 @@ _IID_CC         MOVE    IDE_IDW_CUR_CYL, R9
                 OR      0x0100, R8
 _IID_M0         MOVE    IDE_IDW_MULT, R9
                 RSUB    IDE_ID_PUT, 1
+                RSUB    HDF_VRDB_ID, 1          ; Megamiga 0.7: its geometry
 
                 DECRB
                 RET
@@ -5339,6 +5342,8 @@ IDE_IDW_MULT    .EQU    59                  ; IDENTIFY: the current count
 IDE_CMD_INITDP  .EQU    0x0091              ; INITIALIZE DEVICE PARAMETERS
 IDE_MAX_CYL     .EQU    16383               ; CHS maximum
 IDE_IDW_CYL     .EQU    1                   ; IDENTIFY word indexes
+IDE_IDW_HDS     .EQU    3                   ; (Megamiga 0.7: the default heads and
+IDE_IDW_SPT     .EQU    6                   ; sectors of a virtual RDB, B3_VRDB_ID)
 IDE_IDW_SERIAL  .EQU    10
 IDE_IDW_FWREV   .EQU    23
 IDE_IDW_MODEL   .EQU    27
@@ -9183,12 +9188,66 @@ _VRD_SET        MOVE    HDF_VDOS_HI, R0
                 ADDC    0, @R1
                 MOVE    HDF_VRDB, R0
                 MOVE    R6, @R0
+                MOVE    R6, R5                  ; the drive's CHS geometry is
+                RSUB    _VRB_GEO, 1             ; the partition's (scsi.device
+                MOVE    HDF_HEADS, R0           ; of Kickstart 3.1 addresses by
+                MOVE    R4, @R0                 ; CHS and stops at the IDENTIFY
+                MOVE    HDF_SPT, R0             ; capacity: with 16 x 63 the
+                MOVE    R3, @R0                 ; last cylinder was out of reach)
 
 _VRD_RET        MOVE    IDE_LBA_HI, R0
                 MOVE    @SP++, @R0
                 MOVE    IDE_LBA_LO, R0
                 MOVE    @SP++, @R0
                 DECRB
+                RET
+
+; _VRB_GEO (the caller's register bank): R3 = sectors per track = min(R5, 128),
+; R4 = heads = R5 / R3 for R5 blocks per cylinder (as MiSTer's ide.cpp)
+_VRB_GEO        MOVE    R5, R3
+                MOVE    1, R4
+                CMP     R3, 128
+                RBRA    _VRG_RET, !N            ; (R3 <= 128)
+                MOVE    128, R3
+                MOVE    R5, R4
+                AND     0xFFFB, SR
+                SHR     7, R4
+_VRG_RET        RET
+
+; B3_VRDB_ID: the end of IDE_IDENTIFY: a drive with a virtual RDB reports the
+; partition's geometry as its default one (words 1, 3, 6: cylinders = sectors /
+; blocks per cylinder, at most 65535), so that a host addressing by CHS reaches
+; every block of it - like MiSTer. Output: none; R8..R12 clobbered.
+B3_VRDB_ID      INCRB
+                MOVE    HDF_VRDB, R5
+                MOVE    @R5, R5                 ; R5: blocks per cylinder
+                RBRA    _VRID_RET, Z
+                RSUB    _VRB_GEO, 1
+                MOVE    R4, R8
+                MOVE    IDE_IDW_HDS, R9
+                RSUB    IDE_ID_PUT, 1
+                MOVE    R3, R8
+                MOVE    IDE_IDW_SPT, R9
+                RSUB    IDE_ID_PUT, 1
+                XOR     R10, R10                ; R10: log2(R5)
+_VRID_LG        MOVE    1, R1
+                AND     0xFFFD, SR
+                SHL     R10, R1
+                CMP     R1, R5
+                RBRA    _VRID_LGD, Z
+                ADD     1, R10
+                RBRA    _VRID_LG, 1
+_VRID_LGD       MOVE    HDF_SECT_LO, R8
+                MOVE    @R8, R8
+                MOVE    HDF_SECT_HI, R9
+                MOVE    @R9, R9
+                RSUB    IDE_SHR32, 1
+                CMP     0, R9
+                RBRA    _VRID_C, Z
+                MOVE    0xFFFF, R8
+_VRID_C         MOVE    IDE_IDW_CYL, R9
+                RSUB    IDE_ID_PUT, 1
+_VRID_RET       DECRB
                 RET
 
 ; _VR_MISTER: MiSTer's blocks per cylinder for an image of HDF_SECT_LO/HI blocks:
@@ -9466,19 +9525,12 @@ _VRB_HCYL       MOVE    R11, R2
                 SUB     1, R3
                 SUBC    0, R2
                 RBRA    _VR_PUTL, 1
-_VRB_SPT        XOR     R2, R2
-                MOVE    R5, R3
-                CMP     R3, 128
-                RBRA    _VR_PUTL, !N            ; (R3 <= 128)
-                MOVE    128, R3
+_VRB_SPT        RSUB    _VRB_GEO, 1             ; (R4 clobbered)
+                XOR     R2, R2
                 RBRA    _VR_PUTL, 1
-_VRB_HEADS      XOR     R2, R2
-                MOVE    1, R3
-                CMP     R5, 128
-                RBRA    _VR_PUTL, !N
-                MOVE    R5, R3
-                AND     0xFFFB, SR
-                SHR     7, R3
+_VRB_HEADS      RSUB    _VRB_GEO, 1
+                XOR     R2, R2
+                MOVE    R4, R3
                 RBRA    _VR_PUTL, 1
 
 ; _VR_TAB (the register bank of B3_VRDB_RD): the longs of table R8 (long, high
