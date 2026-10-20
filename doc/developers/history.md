@@ -3185,6 +3185,8 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     wrong at power-on (second half over the first, $E00000 cleared); PROFILE_APPLY now
     opens kick.rom at boot and, if it is 1 MB, loads it again through KICK_PREP
     (`_PA_KNM`). Fixed ROM 32751/32768 - 17 words left: move code into a bank next.
+    Build `main-b` (fc07dca, REF quickhdf-b, incremental synthesis + implementation):
+    WNS +0.006, WHS +0.035, saved fedora:~/saved/main-b. Not on the hardware yet.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
