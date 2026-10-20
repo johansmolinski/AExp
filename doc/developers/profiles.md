@@ -116,7 +116,8 @@ RIPPLE, 512 kB Chip, 512 kB Slow, no cartridge, Zorro II RAM on, the rest
 off). Names instead of bit positions: a later menu change does not touch the
 profiles (only the general settings file is reset, by its signature).
 
-The AR3 ROM stays a session load as today (not remembered per profile).
+The AR3 ROM was a session load at first; since 2026-10-20 a profile remembers it
+too (`ar3rom=`, like `kick=`; a profile without one keeps the ROM that is loaded).
 
 ## Behaviour
 
@@ -239,4 +240,5 @@ A one-line editor in the menu window: `Name: Work 040_` with a cursor.
 ## Open points (proposed answers used unless the user says otherwise)
 
 1. "Empty directory" = no `.prof` file (other files ignored). Proposed: yes.
-2. Should a profile also remember the AR3 ROM? Proposed: no (as today).
+2. Should a profile also remember the AR3 ROM? Proposed: no (as today). Changed
+   2026-10-20 after a user report: yes (`ar3rom=`).

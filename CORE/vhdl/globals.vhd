@@ -358,7 +358,8 @@ constant LIDE_ROM_NAME_START     : std_logic_vector(15 downto 0) := std_logic_ve
 
 -- Megamiga: the Action Replay III ROM, OPTIONAL. The HDL counts it as loaded only when exactly
 -- the bytes 0..256 KB - 1 arrived (mega65.vhd), so a file of another size never plugs in the
--- cartridge; the menu line above loads another one for the running session.
+-- cartridge; the menu line above loads another one, which the profile remembers (firmware:
+-- "ar3rom=" in the profile file, loaded by PROFILE_APPLY).
 constant AR3_ROM_NAME            : string := "/amiga/ar3.rom" & ENDSTR;
 constant AR3_ROM_NAME_START      : std_logic_vector(15 downto 0) := std_logic_vector(to_unsigned(KICK_ROM_NAME'length + LIDE_ROM_NAME'length, 16));
 

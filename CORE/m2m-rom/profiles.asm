@@ -1414,7 +1414,7 @@ _P_KEYEV        MOVE    M2M$RAMROM_DEV, R8
 
 ; B4_PRF_KGET / B4_PRF_KSET: CFGS_GET / CFGS_SET on the text of the active
 ; profile for bank 2 (B2_PROF_*): the files a profile remembers are its lines
-; "hdf0", "hdf1" and "kick". R8 is the NUMBER of the key (0..2), not a string:
+; "hdf0", "hdf1", "kick" and "ar3rom". R8 is the NUMBER of the key (0..3), not a string:
 ; a string of bank 2 cannot be read while this bank is mapped. R9/R10 as for
 ; CFGS_GET/SET (RAM). A change marks the profile dirty. Registers preserved.
 B4_PRF_KGET     INCRB
@@ -1439,10 +1439,11 @@ B4_PRF_KSET     INCRB
                 MOVE    R1, R8
                 DECRB
                 RET
-_P_FKEYS        .DW     _PF_H0, _PF_H1, _PF_K
+_P_FKEYS        .DW     _PF_H0, _PF_H1, _PF_K, _PF_A3
 _PF_H0          .ASCII_W "hdf0"
 _PF_H1          .ASCII_W "hdf1"
 _PF_K           .ASCII_W "kick"
+_PF_A3          .ASCII_W "ar3rom"
 
 ; B4_PRF_BOOT (PREP_START, before PROFILE_APPLY): the default profiles if
 ; needed, then the active one - the one the settings file names, else the first

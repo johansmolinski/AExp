@@ -63,6 +63,7 @@ WRN_AR3_FAT     .ASCII_P "\n\nThe AR3 ROM cannot be read from the\n"
 ; none (PROFILE_APPLY in m2m-rom.asm; the name after "/amiga/" is what the menu
 ; shows)
 PN_KICK         .ASCII_W "/amiga/kick.rom"
+PN_AR3          .ASCII_W "/amiga/ar3.rom"           ; (the boot-time AR3 ROM)
 
 ; Fatal: SD card write failed during the ADF write-back
 WRN_HDF_NOROM   .ASCII_P "\n\nThe hard disk needs its boot ROM:\n"

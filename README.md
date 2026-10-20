@@ -177,9 +177,9 @@ and the **Network Card**, each on or off. What the profile's CPU cannot use
 is greyed out, switched off and skipped by the cursor: the Zorro III boards
 and the graphics card need a 68020 or 68040, HRTmon does not run on the 68040
 and the Action Replay needs the 68000. The hard disk lines (**HDF 0** =
-master, **HDF 1** = slave) and the **Kickstart** line there pick the
-profile's files: the file is loaded at once (the Amiga restarts) and the
-profile keeps it. <kbd>Space</kbd> on a mounted HDF line ejects the disk and
+master, **HDF 1** = slave), the **Kickstart** and the **AR3 ROM** line there
+pick the profile's files: the file is loaded at once (the Amiga restarts) and
+the profile keeps it. <kbd>Space</kbd> on a mounted HDF line ejects the disk and
 the profile forgets it. Every change is written to the profile's file when
 you close the menu.
 
@@ -199,6 +199,7 @@ gfx=on
 net=on
 kick=SD1:/amiga/kick31-a1200.rom
 hdf0=SD1:/amiga/disks/work.hdf
+ar3rom=SD1:/amiga/ar3.bin
 ```
 
 (`cpu` 68000/68020/68040, `chipset` OCS/ECS/AGA, `hdc` none/gayle/ripple,
@@ -1150,7 +1151,8 @@ has two, chosen per machine profile in **Profile Settings > Cart**:
   cartridge is plugged in.
 * **Action Replay 3** is the Datel Action Replay Mk III for the Amiga 500.
   Bring your own ROM: put a raw 256 KB dump on the SD card as
-  `/amiga/ar3.rom`, or load one at **Profile Settings > AR3 ROM**. The AR3 is
+  `/amiga/ar3.rom`, or load one at **Profile Settings > AR3 ROM** (the profile
+  remembers it; a profile without its own uses `/amiga/ar3.rom`). The AR3 is
   a 68000 cartridge: it is only plugged in while the profile's CPU is the
   68000, and it wants Kickstart 1.3 or 2.04. It sits at `$400000`, so with
   the AR3 the Zorro II Fast RAM board shrinks to 2 MB, just like on a real

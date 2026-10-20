@@ -3137,6 +3137,20 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
       (HARTNDb::dumpUnoptimizedCache): build_all.sh `NO_REF_SYNTH=1` (fresh synthesis, the
       implementation still from REF); `quickhdf-b` (REF main-a): WNS +0.088, WHS +0.036,
       **hardware-confirmed by the user 2026-10-19** ("It works").
+  - **The AR3 ROM remembered per profile (on main after 0.6.4, 2026-10-20).** A user reported
+    that the AR3 ROM setting was not saved: the " AR3 ROM:%s" line was a session load (only
+    /amiga/ar3.rom came back after a restart; the `cart` radio itself was always saved).
+    Now the fourth file key `ar3rom` (`_P_FKEYS` key 3, ROM id `PROF_AR3_ID` 7,
+    `PROF_PEND_NUM` 4, PROF_PNAME 84 words): PREP_LOAD_IMAGE remembers it like the
+    Kickstart (`_PREP_LI_REM`), PROFILE_APPLY calls `PROF_AR3_APPLY` (bank 2 `B2_PROF_AR3`:
+    the fixed ROM had no room - 32785 words with the code inline): a remembered ROM is
+    loaded (CSR LOADING holds the Amiga, OK cold-boots it; a broken one: the line shows
+    <Load>); without one the loaded ROM stays, and at boot the line shows ar3.rom if it was
+    auto-loaded. B2_PROF_SAVED refuses a partition for it, as for the Kickstart. Fixed ROM
+    32720/32768, bank 2 1977 words, HEAP 0xB4D1 + 17248 leaves 1695 stack words. Profiles
+    TB scenario 17 (key 3 written and read back, the file has `ar3rom=`): red on the old
+    table, green now; 17/17. PROFILE_APPLY's AR3 step is not in a harness. Firmware only
+    (patch_firmware.sh); not yet on hardware.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

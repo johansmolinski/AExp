@@ -240,10 +240,11 @@ _PREP_LI_REM    CMP     0, R8                   ; loaded: the profile remembers
 _PREP_LI_RR     DECRB
                 RET
 _PREP_LI_NKCK   CMP     AEXP_OPTM_G_AR3ROM, R10 ; Megamiga: the Action Replay III
-                RBRA    _PREP_LI_NAR3, !Z       ; ROM: own path
+                RBRA    _PREP_LI_NAR3, !Z       ; ROM: own path, remembered
+                MOVE    R8, R5                  ; like the Kickstart
+                MOVE    PROF_AR3_ID, R6
                 RSUB    AR3_PREP, 1             ; R8/R9: result
-                DECRB
-                RET
+                RBRA    _PREP_LI_REM, 1
 _PREP_LI_NAR3   MOVE    R8, R5                  ; R5: keep the new file handle
                 MOVE    R10, R8                 ; one of the three mount items?
                 RSUB    IS_ADF_GROUP, 1         ; (branch on C before anything
@@ -749,6 +750,11 @@ _A3P_RET        MOVE    R4, R10
 ; LOADING: black screen) until the user loads one.
 ; The menu lines Kickstart and HDF show the names, as after a manual load.
 ;
+; The Action Replay III ROM (since 0.6.5): a profile loads the one it remembers;
+; a profile without one keeps the ROM that is loaded (/amiga/ar3.rom from the
+; boot, or the last profile's) - the profile's cartridge radio decides whether
+; the cartridge is plugged in at all.
+;
 ; At boot (PREP_START) /amiga/kick.rom is already loaded if it exists, and no
 ; HDF is mounted.
 ;
@@ -765,6 +771,7 @@ PROFILE_APPLY   SYSCALL(enter, 1)
                 MOVE    R9, R1                  ; R1: 1 = switch, 0 = boot
                 MOVE    PROF_PENDF, R8          ; no menu names waiting yet
                 MOVE    0, @R8++                ; (PROF_PEND follows)
+                MOVE    0, @R8++
                 MOVE    0, @R8++
                 MOVE    0, @R8++
                 MOVE    0, @R8
@@ -826,6 +833,10 @@ _PA_KHOLD       MOVE    AEXP_DEV_KICK, R8
 _PA_HDF         MOVE    R0, R8                  ; the hard disks
                 MOVE    R1, R9
                 RSUB    PROF_HDFS, 1
+
+                MOVE    R0, R8                  ; the Action Replay III ROM
+                MOVE    R1, R9
+                RSUB    PROF_AR3_APPLY, 1
 
 _PA_RET         MOVE    FL_NOBAR, R2
                 MOVE    0, @R2
@@ -936,7 +947,7 @@ _PO_NO          AND     0xFFFB, SR              ; C=0
                 RET
 
 ; PROF_NAME: show the file loaded from path R8 (a read-only data label) on the
-; menu line of manual ROM R9 (PROF_HDF_ID..PROF_KICK_ID), like the Shell does
+; menu line of manual ROM R9 (PROF_HDF_ID..PROF_AR3_ID), like the Shell does
 ; after a load from the file browser. All registers preserved.
 ;
 ; The name buffers of the menu (OPTM_HEAP) only exist once the menu has been
@@ -2896,6 +2907,8 @@ PROF_SAVED      RSUB    FAR_CALL, 1
                 .DW     BANK_F32F, B2_PROF_SAVED
 PROF_FORGET     RSUB    FAR_CALL, 1
                 .DW     BANK_F32F, B2_PROF_FORGET
+PROF_AR3_APPLY  RSUB    FAR_CALL, 1
+                .DW     BANK_F32F, B2_PROF_AR3
 ; Megamiga 0.7: profiles as files (profiles.asm, code bank 3)
 PRF_BOOT        RSUB    FAR_CALL, 1
                 .DW     BANK_PROF, B4_PRF_BOOT
@@ -5429,6 +5442,7 @@ IDE_IDW_LBA_HI  .EQU    61
 IDE_ACK_LOOPS   .EQU    20000               ; a commit is acknowledged in ~2 us
 IDE_RESET_LOOPS .EQU    5000                ; ~0.5 ms reset pulse
 IDE_LIDE_AUTO_ID .EQU   1                   ; lide.rom = auto-load ROM 1
+AR3_AUTO_ID     .EQU    2                   ; ar3.rom = auto-load ROM 2
 IDE_ASCII_SPACE .EQU    0x0020
 HDF_MIN_SIZE_HI .EQU    1                   ; at least 64 KB
 HDF_MAP_WORDS   .EQU    257                 ; extent map: 64 extents
@@ -5484,10 +5498,11 @@ ADF_DRIVES      .EQU    3
 PROF_KICK_ID    .EQU    6                       ; manual ROM ids (order of the
 PROF_HDF_ID     .EQU    4                       ; OPTM_G_LOAD_ROM lines); the
                                                 ; slave HDF is PROF_HDF_ID + 1
+PROF_AR3_ID     .EQU    7                       ; the AR3 ROM line (0.6.5)
 PROF_QHDF_ID    .EQU    3                       ; 0.7: the quick HDF line of the
                                                 ; main page (QHDF_PREP)
 PROF_DIR_LEN    .EQU    7                       ; strlen("/amiga/")
-PROF_PEND_NUM   .EQU    3                       ; PROF_HDF_ID..PROF_KICK_ID
+PROF_PEND_NUM   .EQU    4                       ; PROF_HDF_ID..PROF_AR3_ID
 PROF_PN_LEN     .EQU    21                      ; a name in PROF_PNAME (+ zero)
 KICK_256K_HI    .EQU    0x0004
 KICK_512K_HI    .EQU    0x0008
@@ -8406,7 +8421,7 @@ _SRN_E          MOVE    CFGS_PB, R9              ; the entry address
 
 ; Megamiga 0.7: the keys are lines of the active profile's file (profiles.asm,
 ; code bank 3: PRF_KGET / PRF_KSET work on its text, the key by its NUMBER
-; (ROM id - PROF_HDF_ID): 0 hdf0, 1 hdf1, 2 kick - a string of this bank could
+; (ROM id - PROF_HDF_ID): 0 hdf0, 1 hdf1, 2 kick, 3 ar3rom - a string of this bank could
 ; not be read there). (0.6.1..0.6.4: "a500.kick" & co. in the settings file.)
 _PR_S_PART      .ASCII_W "partition:"           ; a value: an SD card partition
 _PR_S_PLEN      .EQU    10
@@ -8419,7 +8434,7 @@ _PR_KEY         MOVE    R9, R8
 
 ; B2_PROF_REMEMBER: the user loaded the file handle R8 (opened through the
 ; device handle of its card from its current directory) as ROM id R9
-; (PROF_HDF_ID .. PROF_KICK_ID): the selected profile remembers its path. All
+; (PROF_HDF_ID .. PROF_AR3_ID): the selected profile remembers its path. All
 ; registers preserved.
 B2_PROF_REMEMBER SYSCALL(enter, 1)
                 MOVE    R9, R1                  ; R1: ROM id
@@ -8461,6 +8476,51 @@ B2_PROF_FORGET  SYSCALL(enter, 1)
                 MOVE    0, @R9
                 RSUB    PRF_KSET, 1             ; (the active profile's text)
                 SYSCALL(leave, 1)
+                RET
+
+; B2_PROF_AR3 (PROFILE_APPLY): the Action Replay III ROM of profile R8 (R9: 0 =
+; boot, 1 = a switch). One the profile remembers is loaded (the Amiga is held
+; in reset meanwhile, a complete ROM cold-boots it); without one - or if it is
+; not there - the loaded ROM stays, and at boot the line shows /amiga/ar3.rom
+; if that was auto-loaded. All registers preserved.
+B2_PROF_AR3     SYSCALL(enter, 1)
+                MOVE    R9, R1                  ; R1: 1 = switch, 0 = boot
+                MOVE    PROF_AR3_ID, R9         ; one the profile remembers?
+                RSUB    B2_PROF_SAVED, 1        ; (C=1: open, R8: its name)
+                RBRA    _PA3_LD, C
+                CMP     0, R1                   ; none (or not there): the
+                RBRA    _PA3_RET, !Z            ; loaded one stays; at boot
+                MOVE    CRTROM_AUT_LDF, R8      ; the line shows ar3.rom if it
+                ADD     AR3_AUTO_ID, R8         ; was loaded (C_CRTROMS_AUTO)
+                CMP     0, @R8
+                RBRA    _PA3_RET, Z
+                MOVE    PN_AR3, R8
+                RBRA    _PA3_NAME, 1
+_PA3_LD         MOVE    R8, R3                  ; R3: its name
+                MOVE    AEXP_DEV_AR3, R8        ; LOADING holds the Amiga
+                MOVE    CRTROM_CSR_STATUS, R9   ; in reset
+                MOVE    CRTROM_CSR_ST_LDNG, R10
+                RSUB    CRTROM_CSR_W, 1
+                MOVE    PROF_FDH, R8
+                RSUB    AR3_PREP, 1             ; error: CSR back to IDLE
+                CMP     0, R8
+                RBRA    _PA3_ERR, !Z
+                MOVE    AEXP_DEV_AR3, R8        ; OK: the cold boot
+                MOVE    CRTROM_CSR_STATUS, R9
+                MOVE    CRTROM_CSR_ST_OK, R10
+                RSUB    CRTROM_CSR_W, 1
+                MOVE    R3, R8
+_PA3_NAME       MOVE    PROF_AR3_ID, R9
+                RSUB    PROF_NAME, 1
+                RBRA    _PA3_RET, 1
+_PA3_ERR        MOVE    CRTROM_MAN_LDF, R8      ; a broken ROM (no cartridge):
+                ADD     PROF_AR3_ID, R8         ; the menu shows <Load>
+                MOVE    0, @R8
+                MOVE    PROF_PEND, R8
+                ADD     PROF_AR3_ID, R8
+                SUB     PROF_HDF_ID, R8
+                MOVE    0, @R8
+_PA3_RET        SYSCALL(leave, 1)
                 RET
 
 ; B2_PROF_SAVED: the active profile remembers a file for ROM id R9 and it opens
@@ -8538,7 +8598,9 @@ _PRS_NE         MOVE    0, @R6
                 ; an SD card partition: HDF_PREP mounts it (HDF_VPART = slot
                 ; << 8 | number), the handle is an empty one on the device of
                 ; the card (only its device counts)
-_PRS_PART       CMP     PROF_KICK_ID, R0        ; (not a Kickstart)
+_PRS_PART       CMP     PROF_KICK_ID, R0        ; (not a Kickstart, not an
+                RBRA    _PRS_NF, Z              ; AR3 ROM)
+                CMP     PROF_AR3_ID, R0
                 RBRA    _PRS_NF, Z
                 MOVE    @R4, R5                 ; the digit 1..4
                 SUB     0x0031, R5
@@ -9882,7 +9944,7 @@ PRF_LN          .BLOCK 1                        ; the profiles in PRF_LIST
 PRF_LIST        .BLOCK 500                      ; PRF_LMAX x PRF_FLEN
 PROF_PATH       .BLOCK 128                      ; a remembered path (cfg text)
 PROF_DEVP       .BLOCK 1                        ; _PR_PATHOF: the device handle
-PROF_PNAME      .BLOCK 63                       ; PROF_PEND_NUM x PROF_PN_LEN:
+PROF_PNAME      .BLOCK 84                       ; PROF_PEND_NUM x PROF_PN_LEN:
                                                 ; the names of remembered files
 HDF_VPART       .BLOCK 1                        ; HDF_PREP: slot << 8 | 1..4 =
                                                 ; mount this SD card partition,
