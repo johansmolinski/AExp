@@ -3151,6 +3151,40 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     TB scenario 17 (key 3 written and read back, the file has `ar3rom=`): red on the old
     table, green now; 17/17. PROFILE_APPLY's AR3 step is not in a harness. Firmware only
     (patch_firmware.sh); not yet on hardware.
+  - **1 MB Kickstart for AROS (branch `aros` from main 33fdb93, 2026-10-19).** The user
+    wants AROS as a Megamiga target; its ROM is 1 MB: a 512 KB extension at $E00000 and
+    the main half at $F80000 (MiSTer's minimig_config.cpp UploadKickstart: file
+    0..512K -> $E00000, 512K..1M -> $F80000). Minimig already decodes $E00000-$E7FFFF
+    (gary `sel_kick1mb`, bankmapper bank 4, sram bridge A22..A19 = 1100 = SDRAM bank 0
+    $600000-$67FFFF, free: chip 0000-0011, HRTmon 0100, AR3 0101, slow 1000-1010, kick
+    1111), and every CPU reaches it over the chip bus (cpu_wrapper decodes nothing
+    there; the TG68K turbo Kickstart is $F80000 only). Firmware: `KICK_PREP` (the only
+    Kickstart load path: selector, profile Kickstart, kick.rom fallback) accepts 1 MB
+    (`KICK_1M_HI`) and writes the file size into the CSR (FS_LO/FS_HI) before
+    FAST_LOAD; WRN_KICK_SIZE names 1 MB. ROM 32724/32768. mega65.vhd: the CSR length
+    (`qnice_req_length_o`, was open) = $100000 -> `qnice_kick_1mb`. amiga_sdram.vhd: the
+    loader FIFO word grows to 37 bits (E0 = the word goes to $E00000, CLR = a 256/512 KB
+    load); the mirror works per half unchanged (later words overwrite it); word 0 of a
+    256/512 KB load waits until the writer has cleared the $E00000 half (256K words,
+    ~0.15 s), so no AROS extension stays visible to Kickstart 3.x (MiSTer copies the
+    512 KB ROM there instead; a real A1200 has nothing at $E00000). TB
+    `~/aexp-work/aros` (run.sh, ghdl; sdram_ctrl stub recording the chipset-port writes,
+    real loader + FIFO stub; runs on fedora with ghdl-llvm in a few minutes): 1 MB, then
+    512 KB (cleared), then 256 KB (cleared + mirror), then AR3 64 bytes, no write
+    outside the three banks: PASS; `mut.sh` 7/7 killed (no_e0, wrong_half, no_clear,
+    no_redone, short_clear, no_mirror, no_gate).
+    Build `aros-a` (154f721): with REF=linux040-d Vivado segfaulted in synthesis right
+    after `read_checkpoint -incremental` of linux040-d's synth_1 checkpoint (hs_err,
+    signal 11); again with an implementation-only reference (`~/builds/linux040-d-impl`:
+    just the impl_1 link, so build_all finds no synthesis reference): WNS +0.086,
+    WHS +0.010 at the first pass. Not on the hardware yet (aros-a ran Linux with
+    Kickstart 3.1 there on 2026-10-19, so the 512 KB path with the clearing works).
+    Merged into main 2026-10-20 (after 0.6.4 and the AR3 ROM per profile). One gap
+    fixed on the way: the framework's boot-time auto-load of /amiga/kick.rom
+    (CRTROM_AUTOLOAD) writes no file size into the CSR, so a 1 MB kick.rom came out
+    wrong at power-on (second half over the first, $E00000 cleared); PROFILE_APPLY now
+    opens kick.rom at boot and, if it is 1 MB, loads it again through KICK_PREP
+    (`_PA_KNM`). Fixed ROM 32751/32768 - 17 words left: move code into a bank next.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,

@@ -172,6 +172,7 @@ Megamiga fork (johansmolinski):
   upstream as ranzbak/AP68040-pipelined #1); Gayle: ATA signature after a reset
   (`ide_board.vhd`), so libata finds the disk (HW-confirmed linux040-d); kernel on
   fedora `~/linux68k` (clean kit `linux-g`), ILA flow + benches `~/aexp-work/linux/{ila,sim}`.
+  Debian: `~/aexp-builds/debian68k/debian.hdf` (scripts `~/aexp-work/linux/debian`).
 - `profiles` (2026-10-19, Minimig branch `profiles`, QNICE `map-progress`): machine
   profiles are files, one `/amiga/profiles/NN_<name>.prof` each (the number sets the
   order and is hidden; defaults 01_A500..04_A4000 only when the folder is missing or
@@ -192,6 +193,10 @@ Megamiga fork (johansmolinski):
   Firmware in code bank 3 `BANK_IDE` (with HDF_LINK/HDF_PART_GET moved there), sector
   engine skip register (ide_board 0x38/0x39, read back: an older board leaves such a
   drive to the firmware). TBs `~/aexp-work/vrdb/{fw,eng}`.
+- `aros` (2026-10-19, from main 33fdb93): 1 MB Kickstart (AROS): `KICK_PREP` accepts
+  1 MB and writes the file size into the CSR; `amiga_sdram.vhd` puts the file's first
+  512 KB where `$E00000` reads (A22..A19 = 1100, gary `sel_kick1mb`), the second into the
+  kick bank, and clears the `$E00000` half before a 256/512 KB ROM. TB `~/aexp-work/aros`.
 
 Out-of-repo testbenches for all fork increments live under `~/aexp-work/`
 (see the "Local test setup" memory); every history entry names its TB and
