@@ -3248,7 +3248,8 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     the two levels killed only by M2 (256 runs: the same runs as before the fix).
     Build `fpbg-b` (both fixes, REF main-b, NO_REF_SYNTH=1 - incremental synthesis
     segfaulted in fpbg-a): WNS +0.003, WHS +0.035, all constraints met; synthesis read
-    both microcode files, 0 critical warnings. Not on the hardware yet.
+    both microcode files, 0 critical warnings. On the hardware (2026-10-27): `fdivtest`
+    on a 68040 profile finishes all 10 rounds, PASS.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
