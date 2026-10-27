@@ -3187,6 +3187,49 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     (`_PA_KNM`). Fixed ROM 32751/32768 - 17 words left: move code into a bank next.
     Build `main-b` (fc07dca, REF quickhdf-b, incremental synthesis + implementation):
     WNS +0.006, WHS +0.035, saved fedora:~/saved/main-b. Not on the hardware yet.
+  - **68040 FPU hang: a released FP operation's answer in a flush clock (branch `fpbg` from
+    main 4dac552, Minimig branch `fpbg`, 2026-10-26/27).** Reported with a patch by a user
+    porting the AP68040 to a Mac core ("MegaMac", not public yet; MacBench's FP test and a
+    plain FDIV loop hung). A register-destination FP operation (FDIV/FSQRT/FMUL...) is
+    RELEASED at `accepted` and runs on in the background; `fp_bg` holds the next FP
+    instruction at P_START until the unit's one-clock `done` (or enabled exception,
+    `fp_exc_req`) clears it. Both clauses sat in EA-fetch's normal branch, below
+    `if (wf_go)` / `else if (flush)`: an answer in an EX-redirect clock (every interrupt
+    entry ends with one) or a store-fault clock was lost, `fp_bg` stayed set, and the next
+    FP instruction waited for ever while interrupts were still served. The same branches
+    also left `fp_pcap` (the FPU's "prepare the deferred exception's frame") standing
+    through such clocks, so the unit captured the frame two or more times. Fix = the
+    reporter's patch unchanged: both branches clear `fp_bg` on `done`, defer an exception
+    (`fp_pend`/`fp_pvec`/`fp_pcap`) and drop `fp_pcap` as the normal branch does. Same
+    code in upstream ranzbak/AP68040-pipelined.
+    Bench `~/aexp-work/fpbg` (their `tb_fdiv_irq.sv` needs the 1-clock L1 stand-in and
+    covers only `done` in a flush): `ap040_pipe_core` alone with BUS = 1, the real FPU, a
+    memory answering the next clock (+LAT) that faults stores to $F000, a level-1
+    interrupt every N clocks held until the handler acknowledges ($E100; +PULSE=1 their
+    6-clock pulse). `prog.S`: 200 x FMOVE.X FP2,FP0 / FDIV.X FP1,FP0 (1000/3: a full
+    28-clock divide - 1000/8 takes 5 and never overlaps an interrupt entry) / FILL integer
+    instructions; variants d (plain), e (INEX2 enabled: every FDIV excepts in the
+    background), w/we (+ a faulting store after the fillers), sb (the store before the
+    FDIV). Checks iterations, interrupts, faults, FP exceptions = 200, FP0 = 333 and one
+    frame capture per exception. `campaign.sh` (lists A-E, 6960 runs, fedora 16 jobs
+    ~70 min): without the fix 1029 runs do not pass, 915 of them pass with it (A 337,
+    C 290, D 12 - w hangs at 15/16 fillers and we - E 276): 714 hangs, each with an
+    answer lost in a flush/wf_go clock, and 201 FAILs, each a repeated frame capture
+    (captures != exceptions). With the fix A, C, D all PASS. Left over, the same on both
+    RTLs: E 103 and B 10 hangs are
+    interrupt starvation (a period at the handler's length: with 10x the clocks the
+    worst one finishes), and B's one FAIL is the next bug.
+    A late store fault (list D2, +SLAT delays only the faulting store's answer up to 6
+    clocks): without the fix 17 hangs and 10 FAILs, with it all 468 runs pass.
+    Mutants (`mkmut.py`, 16, on the 87-run red sample R.txt): 14 killed; the two
+    survivors drop the `fp_bg &&` guard on the `done` clause (`flush-nobgterm`,
+    `wf-nobgterm`), equivalent in these programs (no `done` arrives with `fp_bg` clear).
+    Controls: the fixed RTL passes 87/87, the old one fails 87/87. Regression: ranzbak's
+    `tb/run_pipe_tests.sh` 285 pass / 6 FAIL before and after (the same six bus tests
+    berr_trace/berr_write that expect WB1, we report WB3 since 2887b7e); the Linux
+    full-system benches exctest3/exctest2/exctest/bbtest reach C0DE. Amiga test
+    `fdivtest` (in the build directory; vasm hunk exe, PASS under vamos): 10 rounds of
+    1M FDIV.X and 1M FSQRT.X with AmigaOS's interrupts running, 333 and 32 expected.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
