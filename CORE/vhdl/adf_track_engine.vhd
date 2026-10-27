@@ -366,6 +366,10 @@ architecture synthesis of adf_track_engine is
    signal delay_cnt    : natural range 0 to G_POLL_DELAY := 0;
    signal word_cnt     : unsigned(9 downto 0);          -- stream/pop word index
    signal word_total   : unsigned(9 downto 0);          -- words to stream/pop in this frame
+   -- Megamiga, October 2026 (Apidya): Paula's DMA length left at w2 of a sector frame, and
+   -- whether that frame continues a running read session (see ST_STREAM_DATA)
+   signal frame_len    : unsigned(13 downto 0) := (others => '0');
+   signal strm_cont    : std_logic := '0';
    signal hdr_cnt      : unsigned(1 downto 0);          -- w1/w2 sub-count
 
    -- captured Paula state
@@ -1181,6 +1185,7 @@ begin
                               -- validator; belt-and-braces for the clamp below)
                               serve_unit  <= v_serve;
                               adf_stream  <= '1';
+                              strm_cont   <= '0';     -- first sector frame of a session
                               state_after <= ST_SERVE;
                            else
                               adf_stream  <= '0';
@@ -1659,7 +1664,8 @@ begin
                         secbuf_raddr <= f_buf_idx(to_unsigned(0, 10));   -- prime word 0
                         hdr_cnt      <= "01";
                         xfer         <= XF_STROBE; -- w2
-                     when others =>                -- w2: {dmaen, dsklen} - discarded
+                     when others =>                -- w2: {dmaen, dsklen}
+                        frame_len <= unsigned(xfer_resp(13 downto 0));
                         word_cnt <= (others => '0');
                         if sector = 10 then
                            word_total <= to_unsigned(C_MFM_SECTOR_WORDS + C_MFM_GAP_WORDS, 10);
@@ -1679,7 +1685,19 @@ begin
             when ST_STREAM_DATA =>
                if xfer_done = '1' then
                   if word_cnt = word_total - 1 then
-                     sector_next(to_integer(serve_unit)) <= (sector + 1) mod 11;
+                     -- Megamiga, October 2026 (Apidya): a running DMA that had at most two
+                     -- words left at w2 ended in this sector's preamble, before its sync -
+                     -- it did not read the sector. Paula re-arms the next DMA only at a
+                     -- later poll, so advancing here would skip the sector for that DMA
+                     -- (a loader asking for 0x21E words per sector then sees only every
+                     -- other sector of the track, forever). A real disk would still bring
+                     -- this sector under the head, so serve it again.
+                     if strm_cont = '1' and frame_len <= 2 then
+                        sector_next(to_integer(serve_unit)) <= sector;
+                     else
+                        sector_next(to_integer(serve_unit)) <= (sector + 1) mod 11;
+                     end if;
+                     strm_cont   <= '1';
                      state_after <= ST_SERVE;      -- next sector (re-checks status first)
                      io_fpga_o   <= '0';
                      delay_cnt   <= C_GAP_DELAY;
