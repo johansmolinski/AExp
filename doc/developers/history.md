@@ -3230,6 +3230,25 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     full-system benches exctest3/exctest2/exctest/bbtest reach C0DE. Amiga test
     `fdivtest` (in the build directory; vasm hunk exe, PASS under vamos): 10 rounds of
     1M FDIV.X and 1M FSQRT.X with AmigaOS's interrupts running, 333 and 32 expected.
+    **Found on the way, fixed in a second commit (upstream too): the interrupt mask came
+    from the wrong clock.** Exception entry took `x_lvl <= irq_lvl` (the live level), but
+    the vector from `irq_take_lvl` (the previous clock's); an IPL change in exactly the
+    take clock gave the handler a different mask. With the 6-clock pulse (B, d_1 at
+    period 50) the level-1 handler ran with mask 0, nested at every pulse and grew the
+    stack into the vectors (the bench's "access outside memory" at $20000000). On an
+    Amiga: a level rising in that clock (CIA level 6 during a level-3 take) only delays
+    levels 4/5 until the RTE; one dropping lets a handler re-enter itself. Fix:
+    `x_lvl <= irq_take_lvl`. Bench: `prog.S` MASKCHK (variant m): each handler checks
+    SR's mask = its level, a second level-2 source at $E102 (+PER2/+PH2).
+    Lists M1 (6-clock pulse, periods 40..250) and M2 (level 2 every 397/531/663 clocks over
+    level 1 every 110..200): before the mask fix 725 of 1477 and 256 of 855 runs report
+    a wrong mask; after it none - M1's 24 remaining hangs are starvation (6-clock pulse
+    at about the handler's length) and also fail before it, M2 passes 855/855. Mutants
+    on M1+M2: back to `irq_lvl` killed (983 runs), mask 7 killed (2298), the larger of
+    the two levels killed only by M2 (256 runs: the same runs as before the fix).
+    Build `fpbg-b` (both fixes, REF main-b, NO_REF_SYNTH=1 - incremental synthesis
+    segfaulted in fpbg-a): WNS +0.003, WHS +0.035, all constraints met; synthesis read
+    both microcode files, 0 critical warnings. Not on the hardware yet.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
