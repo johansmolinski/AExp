@@ -3250,6 +3250,38 @@ Version 2 (audio improvements, Hardware Floppy, more drives).
     segfaulted in fpbg-a): WNS +0.003, WHS +0.035, all constraints met; synthesis read
     both microcode files, 0 critical warnings. On the hardware (2026-10-27): `fdivtest`
     on a 68040 profile finishes all 10 rounds, PASS.
+  - **Apidya ADF hang: the track engine skipped the sector after a short DMA (branch
+    `apidya` from main e0ac508, 2026-10-27).** Reported on AExp too: Apidya (Quartex
+    crack and other versions) hangs right after the bootblock, drive LED on. The
+    bootblock loads a loader to $7E800. It reads stage 2 with whole-track DMAs
+    (DSKLEN $1930); stage 2 ($7A666, loaded to $7A400) reads one sector per DMA with
+    DSKLEN $821E, which is the sector after its first sync word plus ONE word. As soon
+    as DSKBLK fires it re-arms the next DMA and decodes the previous sector. An
+    unwanted sector restarts the DMA after its header. That extra word is word 0 of
+    sector n+1's frame; Paula stores nothing beyond the length (`fifo_wr` gated by
+    `~lenzero`), so the rest of n+1 is lost, but the engine still advanced
+    `sector_next` past n+1. Paula arms the re-armed DMA only at word 1 of a later
+    poll frame (1-2 ms: two 1 ms parks in ST_IDLE), so it got n+2. Sector 10's frame
+    carries the track gap, so the engine served 0, 2, 4, ... 10, 0, 2 ... forever and
+    the loader waited for the odd sectors of track 53. A real disk keeps rotating:
+    the unwanted-sector restarts land mid-sector and catch the odd sectors on the next
+    pass. Fix (`adf_track_engine.vhd`): keep Paula's DMA length from w2 of each sector
+    frame (`frame_len`). When a frame continues a running session (`strm_cont`, cleared
+    when a poll starts a session) and that DMA had at most 2 words left at w2, it ended
+    in the preamble before this sector's sync, so `sector_next` stays on the same sector.
+    The Hardware Floppy path (`ST_PHYS_*`) has no sector counter and is unchanged.
+    Bench `~/aexp-work/apidya` (fedora, `rtest.sh`): minimig_m65 as an OCS A500 (fx68k,
+    512K chip + 512K slow), the engine and amiga_config ghdl-synthesized
+    (`flp_sim.vhd`), the ADF as the Avalon read model, a stub Kickstart that recreates
+    the state after the bootblock and jumps to $7E800; tracers for the disk registers,
+    Paula's DMA state and the engine's frames. 10 s of Amiga time takes about 8 min.
+    Without the fix the loader is still cycling on track 53 at 10 s; with it, it leaves
+    track 53 at about 4.1 s, depacks file 0 and the game code keeps loading
+    (tracks 59..143) until the 10 s limit. `ENG=<vhd> ./build.sh <suffix>` swaps the engine.
+    The ~2 ms re-arm after DSKBLK (ST_IDLE's 1 ms park, twice) remains: slower than a
+    real Amiga, no hang. Build `apidya-a` (REF fpbg-b, incremental synthesis +
+    implementation): WNS +0.020, WHS +0.035. On the hardware (2026-10-27): Apidya loads
+    from the ADF.
 - **Firmware patching without synthesis (2026-10-12).** `CORE/patch_firmware.sh
   save <dir>` keeps a build's routed checkpoint, bitstream and firmware images;
   `patch <dir> [out.bit]` assembles the current firmware, opens the checkpoint,
